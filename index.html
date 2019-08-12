@@ -65,10 +65,11 @@ function miniscript_analyze() {
 Bitcoin Script is an unusual stack-based language with many edge cases, designed for implementing spending conditions consisting of various combinations of
 signatures, hash locks, and time locks). Yet despite being limited in functionality it is still highly nontrivial to:<ul>
 <li>Given a combination of spending conditions, finding the most economical script to implement it.</li>
-<li>Given a two scripts, construct a script that implements a composition of their spending conditions (e.g. a multisig where one of the "keys" in another multisig).</li>
+<li>Given a two scripts, construct a script that implements a composition of their spending conditions (e.g. a multisig where one of the "keys" is another multisig).</li>
 <li>Given a script, find out what spending conditions it permits.</li>
 <li>Given a script and access to a sufficient set of private keys, construct a general satisfying witness for it.</li>
 <li>Given a script, be able to predict the cost of spending an output.</li>
+<li>Given a script, know whether any code path through it can cause exceeding the opcode limit (201 non-push opcodes + number of keys in executed <samp>OP_CHECKMULTISIG</samp>s).</li>
 </ul>
 </p>
 
@@ -77,16 +78,28 @@ Miniscript functions as a representation for scripts that makes these sort of op
 statically analyze for various properties (spending conditions, correctness, security properties, malleability, ...). It can be targeted by spending policy compilers
 (see further). Finally, compatible scripts easily can be converted to miniscript - avoiding the need for additional metadata for e.g. signing devices that support it.
 </p>
+
+<p>
+For now, Miniscript is restricted to P2WSH and P2SH-P2WSH embedded scripts. Most of its constructions works fine in P2SH as well, but some of the (optional) security properties
+rely on Segwit-specific rules.
+</p>
 </div>
 </div>
 
 <div class="card mb-3 text-left">
 <h3 class="card-header">Miniscript reference</h3>
 <div class="card-block">
-<h4>Mapping between Miniscript and Bitcoin Script</h4>
+<h4>Translation table</h4>
+<p>
+This table shows all Miniscript <em>fragments</em> and their associated semantics and Bitcoin Script.
+Fragments that do not change the semantics of their subexpressions are called <em>wrappers</em>. Normal fragments use
+a "fragment(arguments,...)" notation, while wrappers are written using prefixes separated from other fragments
+by a colon. The colon is dropped between subsequent wrappers; e.g. <code>vc:pk(key)</code> is the <code>v:</code>
+wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fragment for a given key.
+
 <table class="table table-sm">
 <thead class="thead-light">
-<tr><th scope="col">Semantics</th><th scope="col">Miniscript</th><th scope="col">Bitcoin Script</th></tr></thead>
+<tr><th scope="col">Semantics</th><th scope="col">Miniscript fragment</th><th scope="col">Bitcoin Script</th></tr></thead>
 <tbody>
 <tr>
   <td>true</td>
@@ -137,21 +150,21 @@ statically analyze for various properties (spending conditions, correctness, sec
   <td><code>hash160(h)</code></td>
   <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH160 &lt;h&gt; OP_EQUAL</samp></td>
 <tr>
-  <td>(<em>X</em> and Y) or <em>Z</em></td>
-  <td><code>andor(<em>X</em>,Y,<em>Z</em>)</code></td>
+  <td>(<em>X</em> and <em>Y</em>) or <em>Z</em></td>
+  <td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td>
   <td><samp><em>X</em> OP_NOTIF <em>Z</em> OP_ELSE <em>Y</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
-  <td rowspan="3"><em>X</em> and Y</td>
-  <td><code>and_v(<em>X</em>,Y)</code></td>
+  <td rowspan="3"><em>X</em> and <em>Y</em></td>
+  <td><code>and_v(<em>X</em>,<em>Y</em>)</code></td>
   <td><samp><em>X</em> <em>Y</em></samp></td>
 </tr>
 <tr>
-  <td><code>and_b(<em>X</em>,Y)</code></td>
+  <td><code>and_b(<em>X</em>,<em>Y</em>)</code></td>
   <td><samp><em>X</em> <em>Y</em> OP_BOOLAND</samp></td>
 </tr>
 <tr>
-  <td><code>and_n(<em>X</em>,Y) = andor(<em>X</em>,<em>Y</em>,0)</code></td>
+  <td><code>and_n(<em>X</em>,<em>Y</em>)</code> = <code>andor(<em>X</em>,<em>Y</em>,0)</code></td>
   <td><samp><em>X</em> OP_NOTIF OP_0 OP_ELSE <em>Y</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
@@ -172,9 +185,9 @@ statically analyze for various properties (spending conditions, correctness, sec
   <td><samp>OP_IF <em>X</em> OP_ELSE <em>Z</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
-  <td><em>X</em> + <em>Y</em> + <em>Z</em> + ... = k</td>
-  <td><code>thresh(k,<em>X</em>,<em>Y</em>,<em>Z</em>,...)</code></td>
-  <td><samp><em>X</em> <em>Y</em> OP_ADD <em>Z</em> OP_ADD ... &lt;k&gt; OP_EQUAL</samp></td>
+  <td><em>X<sub>1</sub></em> + ... + <em>X<sub>n</sub></em> = k</td>
+  <td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td>
+  <td><samp><em>X<sub>1</sub></em> <em>X<sub>2</sub></em> OP_ADD ... <em>X<sub>n</sub></em> OP_ADD ... &lt;k&gt; OP_EQUAL</samp></td>
 </tr>
 <tr>
   <td>check(key<sub>1</sub>) + ... + check(key<sub>n</sub>) = k</td>
@@ -203,7 +216,7 @@ statically analyze for various properties (spending conditions, correctness, sec
 </tr>
 <tr>
   <td><code>v:<em>X</em></code></td>
-  <td><samp><em>X</em> OP_VERIFY (or VERIFY version of last opcode in <em>X</em>)</samp></td>
+  <td><samp><em>X</em> OP_VERIFY</samp> (or <samp>VERIFY</samp> version of last opcode in <em>X</em>)</td>
 </tr>
 <tr>
   <td><code>j:<em>X</em></code></td>
@@ -223,6 +236,7 @@ statically analyze for various properties (spending conditions, correctness, sec
 </tr>
 </tbody>
 </table>
+</p>
 
 <h4>Correctness properties</h4>
 
@@ -245,20 +259,20 @@ Every miniscript expression has one of four basic types:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>When satisfactied, pushes nothing.</li>
   <li>Cannot be dissatisfied (aborts execution instead).</li>
-  <li>A "V" can be obtained using the v: wrapper on a "B" expression, or by combining other "V" expressions using and_v, or_i, or andor.</li>
+  <li>A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.</li>
   <li>For example <code>vc:pk(key)</code> = <samp>&lt;key&gt; OP_CHECKSIGVERIFY</samp>.</li>
 </ul></li>
 <li><b>"K"</b> Key expressions:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>Always pushes a public key onto the stack, for which a signature is to be provided to satisfy the expression.</li>
-  <li>Can be converted into a "B" using the c: wrapper (OP_CHECKSIG).</li>
+  <li>Can be converted into a "B" using the <code>c:</code> wrapper (<samp>OP_CHECKSIG</samp>).</li>
   <li>For example <code>pk_h(key)</code> = <samp>OP_DUP OP_HASH160 &lt;Hash160(key)&gt; OP_EQUALVERIFY</samp></li>
 </ul></li>
 <li><b>"W"</b> Wrapped expressions:<ul>
   <li>Takes its input from one below the top of the stack.</li>
   <li>When satisfied, pushes a nonzero value (like B) on top of the stack, or one below the top.</li>
   <li>When dissatisfied, pushes 0 op top of the stack or one below the top.</li>
-  <li>Every "W" is either s:B (OP_SWAP B) or a:B (OP_TOALTSTACK B OP_FROMALTSTACK).</li>
+  <li>Every "W" is either <code>s:B</code> (<samp>OP_SWAP B</samp>) or <code>a:B</code> (<samp>OP_TOALTSTACK B OP_FROMALTSTACK</code>).</li>
   <li>For example <code>sc:pk(key)</code> = <samp>OP_SWAP &lt;key&gt; OP_CHECKSIG</samp>.</li>
 </ul></li>
 </ul>
@@ -279,35 +293,50 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <table class="table table-sm">
 <thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Requires</th><th scope="col">Type</th><th scope="col">Properties</th></tr></thead>
 <tbody>
-<tr><td>0        </td><td></td><td>B</td><td>z; u; d</td></tr>
-<tr><td>1        </td><td></td><td>B</td><td>z; u</td></tr>
-<tr><td>pk(key)  </td><td></td><td>K</td><td>o; n; d; u</td></tr>
-<tr><td>pk_h(key)</td><td></td><td>K</td><td>n; d; u</td></tr>
-<tr><td>older(n), after(n) </td><td>1 &le; n &lt; 2<sup>31</sup></td><td>B</td><td>z</td></tr>
-<tr><td>sha256(h)</td><td></td><td>B</td><td>o; n; d; u</td></tr>
-<tr><td>ripemd160(h)</td><td></td><td>B</td><td>o; n; d; u</td></tr>
-<tr><td>hash256(h)</td><td></td><td>B</td><td>o; n; d; u</td></tr>
-<tr><td>hash160(h)</td><td></td><td>B</td><td>o; n; d; u</td></tr>
-<tr><td>and_v(X,Y)</td><td>X is V; Y is B, K, or V</td><td>same as Y</td><td>z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; u=u<sub>Y</sub></td></tr>
-<tr><td>and_b(X,Y)</td><td>X is B; Y is W</td><td>B</td><td>z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; d=d<sub>X</sub>d<sub>Y</sub>; u</td></tr>
-<tr><td>or_b(X,Z)</td><td>X is Bd; Z is Wd</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; d; u</td></tr>
-<tr><td>or_c(X,Z)</td><td>X is Bdu; Z is V</td><td>V</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub></td></tr>
-<tr><td>or_d(X,Z)</td><td>X is Bdu; Z is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>; d=d<sub>Z</sub>; u=u<sub>Z</sub></td></tr>
-<tr><td>or_i(X,Z)</td><td>both are B, K, or V</td><td>same as X/Z</td><td>o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
-<tr><td>andor(X,Y,Z)</td><td>X is Bdu; Y and Z are both B, K, or V</td><td>same as Y/Z</td><td>z=z<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub>o<sub>Z</sub> or o<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; u=u<sub>Y</sub>u<sub>Z</sub>; d=d<sub>Z</sub></td></tr>
-<tr><td>thresh(k,X,Y,Z,...)</td><td>1 &lt; k &lt; n; first is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
-<tr><td>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
-<tr><td>a:X</td><td>X is B</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
-<tr><td>s:X</td><td>X is Bo</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
-<tr><td>c:X</td><td>X is K</td><td>B</td><td>o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
-<tr><td>d:X</td><td>X is Vz</td><td>B</td><td>o=z<sub>X</sub>; n; u; d</td></tr>
-<tr><td>v:X</td><td>X is B</td><td>V</td><td>z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub></td></tr>
-<tr><td>j:X</td><td>X is Bn</td><td>B</td><td>o=o<sub>X</sub>; n; d; u=u<sub>X</sub></td></tr>
-<tr><td>n:X</td><td>X is B</td><td>B</td><td>z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
+<tr><td><code>0</code></td><td></td><td>B</td><td>z; u; d</td></tr>
+<tr><td><code>1</code></td><td></td><td>B</td><td>z; u</td></tr>
+<tr><td><code>pk(key)</code></td><td></td><td>K</td><td>o; n; d; u</td></tr>
+<tr><td><code>pk_h(key)</code></td><td></td><td>K</td><td>n; d; u</td></tr>
+<tr><td><code>older(n)</code>, <code>after(n)</code></td><td>1 &le; n &lt; 2<sup>31</sup></td><td>B</td><td>z</td></tr>
+<tr><td><code>sha256(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td><code>ripemd160(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td><code>hash256(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td><code>hash160(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td><em>X</em> is V; <em>Y</em> is B, K, or V</td><td>same as <em>Y</em></td><td>z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; u=u<sub>Y</sub></td></tr>
+<tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td><em>X</em> is B; <em>Y</em> is W</td><td>B</td><td>z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; d=d<sub>X</sub>d<sub>Y</sub>; u</td></tr>
+<tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bd; <em>Z</em> is Wd</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; d; u</td></tr>
+<tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Z</em> is V</td><td>V</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub></td></tr>
+<tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Z</em> is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>; d=d<sub>Z</sub>; u=u<sub>Z</sub></td></tr>
+<tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>both are B, K, or V</td><td>same as X/Z</td><td>o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
+<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Y</em> and <em>Z</em> are both B, K, or V</td><td>same as Y/Z</td><td>z=z<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub>o<sub>Z</sub> or o<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; u=u<sub>Y</sub>u<sub>Z</sub>; d=d<sub>Z</sub></td></tr>
+<tr><td><code>thresh(k,<em>X<sub>1</sub><em>,...,<em>X<sub>n</sub></em>)</code></td><td>1 &lt; k &lt; n; <em>X<sub>1</sub></em> is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
+<tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
+<tr><td><code>a:X</code></td><td><em>X</em> is B</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
+<tr><td><code>s:X</code></td><td><em>X</em> is Bo</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
+<tr><td><code>c:X</code></td><td><em>X</em> is K</td><td>B</td><td>o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
+<tr><td><code>d:X</code></td><td><em>X</em> is Vz</td><td>B</td><td>o=z<sub>X</sub>; n; u; d</td></tr>
+<tr><td><code>v:X</code></td><td><em>X</em> is B</td><td>V</td><td>z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub></td></tr>
+<tr><td><code>j:X</code></td><td><em>X</em> is Bn</td><td>B</td><td>o=o<sub>X</sub>; n; d; u=u<sub>X</sub></td></tr>
+<tr><td><code>n:X</code></td><td><em>X</em> is B</td><td>B</td><td>z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
 </tbody>
 </table>
 </p>
 
+<h4>Security properties</h4>
+<p>
+What the type system above guarantees is that the corresponding Bitcoin Scripts are <b>sound</b> and <b>complete</b>. This means that for every way the spending conditions associated
+with the Miniscript can be met, a satisfying Script witness can be found. And, conversely, no satisfying witness can be constructed unless the spending conditions are met.
+</p>
+
+<p>
+These properties follow directly from the Script consensus rules, and are valid under P2SH, P2WSH, and P2SH-P2WSH. The completeness property has been extensively tested by verifying
+large numbers of random satisfactions for random Miniscript expressions.
+<p>
+
+<p>In order for these properties to not just apply to script, but to an entire transaction, it's important that the witness commits to all data relevant for verification. In practice
+this means that scripts whose conditions can be met without any digital signature are insecure. For example, if an output can be spent by simply passing a certain <samp>nLockTime</samp>
+(an <code>after(n)</code> fragment in Miniscript) but without any digital signatures, an attacker can modify the <samp>nLockTime</samp> field in the spending transaction.
+</p>
 </div>
 </div>
 
