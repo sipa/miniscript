@@ -90,136 +90,136 @@ statically analyze for various properties (spending conditions, correctness, sec
 <tbody>
 <tr>
   <td>true</td>
-  <td>1</td>
-  <td>OP_1</td>
+  <td><code>1</code></td>
+  <td><samp>OP_1</samp></td>
 </tr>
 <tr>
   <td>false</td>
-  <td>0</td>
-  <td>OP_0</td>
+  <td><code>0</code></td>
+  <td><samp>OP_0</samp></td>
 </tr>
 <tr>
   <td rowspan="2">check(key)</td>
-  <td>pk(key)</td>
-  <td>&lt;key&gt;</td>
+  <td><code>pk(key)</code></td>
+  <td><samp>&lt;key&gt;</samp></td>
 </tr>
 <tr>
-  <td>pk_h(key)</td>
-  <td>OP_DUP OP_HASH160 &lt;HASH160(key)&gt; OP_EQUALVERFIFY</td>
+  <td><code>pk_h(key)</code></td>
+  <td><samp>OP_DUP OP_HASH160 &lt;HASH160(key)&gt; OP_EQUALVERFIFY</samp></td>
 </tr>
 <tr>
   <td>nSequence &ge; n (and compatible)</td>
-  <td>older(n)</td>
-  <td>&lt;n&gt; OP_CHECKSEQUENCEVERIFY</td>
+  <td><code>older(n)</code></td>
+  <td><samp>&lt;n&gt; OP_CHECKSEQUENCEVERIFY</samp></td>
 </tr>
 <tr>
   <td>nLockTime &ge; n (and compaitlbe)</td>
-  <td>after(n)</td>
-  <td>&lt;n&gt; OP_CHECKLOCKTIMEVERIFY</td>
+  <td><code>after(n)</code></td>
+  <td><samp>&lt;n&gt; OP_CHECKLOCKTIMEVERIFY</samp></td>
 </tr>
 <tr>
   <td>len(x) = 32 and SHA256(x) = h</td>
-  <td>sha256(h)</td>
-  <td>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_SHA256 &lt;h&gt; OP_EQUAL</td>
+  <td><code>sha256(h)</code></td>
+  <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_SHA256 &lt;h&gt; OP_EQUAL</samp></td>
 </tr>
 <tr>
   <td>len(x) = 32 and HASH256(x) = h</td>
-  <td>hash256(h)</td>
-  <td>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH256 &lt;h&gt; OP_EQUAL</td>
+  <td><code>hash256(h)</code></td>
+  <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH256 &lt;h&gt; OP_EQUAL</samp></td>
 </tr>
 <tr>
   <td>len(x) = 32 and RIPEMD160(x) = h</td>
-  <td>ripemd160(h)</td>
-  <td>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_RIPEMD160 &lt;h&gt; OP_EQUAL</td>
+  <td><code>ripemd160(h)</code></td>
+  <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_RIPEMD160 &lt;h&gt; OP_EQUAL</samp></td>
 </tr>
 <tr>
   <td>len(x) = 32 and HASH160(x) = h</td>
-  <td>hash160(h)</td>
-  <td>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH160 &lt;h&gt; OP_EQUAL</td>
+  <td><code>hash160(h)</code></td>
+  <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH160 &lt;h&gt; OP_EQUAL</samp></td>
 <tr>
   <td>(<em>X</em> and Y) or <em>Z</em></td>
-  <td>andor(<em>X</em>,Y,<em>Z</em>)</td>
-  <td><em>X</em> OP_NOTIF <em>Z</em> OP_ELSE <em>Y</em> OP_ENDIF</td>
+  <td><code>andor(<em>X</em>,Y,<em>Z</em>)</code></td>
+  <td><samp><em>X</em> OP_NOTIF <em>Z</em> OP_ELSE <em>Y</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
   <td rowspan="3"><em>X</em> and Y</td>
-  <td>and_v(<em>X</em>,Y)</td>
-  <td><em>X</em> <em>Y</em></td>
+  <td><code>and_v(<em>X</em>,Y)</code></td>
+  <td><samp><em>X</em> <em>Y</em></samp></td>
 </tr>
 <tr>
-  <td>and_b(<em>X</em>,Y)</td>
-  <td><em>X</em> <em>Y</em> OP_BOOLAND</td>
+  <td><code>and_b(<em>X</em>,Y)</code></td>
+  <td><samp><em>X</em> <em>Y</em> OP_BOOLAND</samp></td>
 </tr>
 <tr>
-  <td>and_n(<em>X</em>,Y) = andor(<em>X</em>,<em>Y</em>,0)</td>
-  <td><em>X</em> OP_NOTIF OP_0 OP_ELSE <em>Y</em> OP_ENDIF</td>
+  <td><code>and_n(<em>X</em>,Y) = andor(<em>X</em>,<em>Y</em>,0)</code></td>
+  <td><samp><em>X</em> OP_NOTIF OP_0 OP_ELSE <em>Y</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
   <td rowspan="4"><em>X</em> or <em>Z</em></td>
-  <td>or_b(<em>X</em>,<em>Z</em>)</td>
-  <td><em>X</em> <em>Z</em> OP_BOOLOR</td>
+  <td><code>or_b(<em>X</em>,<em>Z</em>)</code></td>
+  <td><samp><em>X</em> <em>Z</em> OP_BOOLOR</samp></td>
 </tr>
 <tr>
-  <td>or_d(<em>X</em>,<em>Z</em>)</td>
-  <td><em>X</em> OP_IFDUP OP_NOTIF <em>Z</em> OP_ENDIF</td>
+  <td><code>or_d(<em>X</em>,<em>Z</em>)</code></td>
+  <td><samp><em>X</em> OP_IFDUP OP_NOTIF <em>Z</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
-  <td>or_c(<em>X</em>,<em>Z</em>)</td>
-  <td><em>X</em> OP_NOTIF <em>Z</em> OP_ENDIF</td>
+  <td><code>or_c(<em>X</em>,<em>Z</em>)</code></td>
+  <td><samp><em>X</em> OP_NOTIF <em>Z</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
-  <td>or_i(<em>X</em>,<em>Z</em>)</td>
-  <td>OP_IF <em>X</em> OP_ELSE <em>Z</em> OP_ENDIF</td>
+  <td><code>or_i(<em>X</em>,<em>Z</em>)</code></td>
+  <td><samp>OP_IF <em>X</em> OP_ELSE <em>Z</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
   <td><em>X</em> + <em>Y</em> + <em>Z</em> + ... = k</td>
-  <td>thresh(k,<em>X</em>,<em>Y</em>,<em>Z</em>,...)</td>
-  <td><em>X</em> <em>Y</em> OP_ADD <em>Z</em> OP_ADD ... &lt;k&gt; OP_EQUAL</td>
+  <td><code>thresh(k,<em>X</em>,<em>Y</em>,<em>Z</em>,...)</code></td>
+  <td><samp><em>X</em> <em>Y</em> OP_ADD <em>Z</em> OP_ADD ... &lt;k&gt; OP_EQUAL</samp></td>
 </tr>
 <tr>
   <td>check(key<sub>1</sub>) + ... + check(key<sub>n</sub>) = k</td>
-  <td>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</td>
-  <td>&lt;k&gt; &lt;key<sub>1</sub>&gt; ... &lt;key<sub>n</sub>&gt; &lt;n&gt; OP_CHECKMULTISIG</td>
+  <td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td>
+  <td><samp>&lt;k&gt; &lt;key<sub>1</sub>&gt; ... &lt;key<sub>n</sub>&gt; &lt;n&gt; OP_CHECKMULTISIG</samp></td>
 </tr>
 <tr>
   <td rowspan="10"><em>X</em> (identities)</td>
-  <td>a:<em>X</em></td>
-  <td>OP_TOALTSTACK <em>X</em> OP_FROMALTSTACK</td>
+  <td><code>a:<em>X</em></code></td>
+  <td><samp>OP_TOALTSTACK <em>X</em> OP_FROMALTSTACK</samp></td>
 </tr>
 <tr>
-  <td>s:<em>X</em></td>
-  <td>OP_SWAP <em>X</em></td>
+  <td><code>s:<em>X</em></code></td>
+  <td><samp>OP_SWAP <em>X</em></samp></td>
 </tr>
 <tr>
-  <td>c:<em>X</em></td>
-  <td><em>X</em> OP_CHECKSIG</td>
+  <td><code>c:<em>X</em></code></td>
+  <td><samp><em>X</em> OP_CHECKSIG</samp></td>
 </tr>
 <tr>
-  <td>t:<em>X</em> = and_v(<em>X</em>,1)</td>
-  <td><em>X</em> OP_1</td>
+  <td><code>t:<em>X</em></code> = <code>and_v(<em>X</em>,1)</code></td>
+  <td><samp><em>X</em> OP_1</samp></td>
 <tr>
-  <td>d:<em>X</em></td>
-  <td>OP_DUP OP_IF <em>X</em> OP_ENDIF</td>
+  <td><code>d:<em>X</em></code></td>
+  <td><samp>OP_DUP OP_IF <em>X</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
-  <td>v:<em>X</em></td>
-  <td><em>X</em> OP_VERIFY (or VERIFY version of last opcode in <em>X</em>)</td>
+  <td><code>v:<em>X</em></code></td>
+  <td><samp><em>X</em> OP_VERIFY (or VERIFY version of last opcode in <em>X</em>)</samp></td>
 </tr>
 <tr>
-  <td>j:<em>X</em></td>
-  <td>OP_SI<em>Z</em>E OP_0NOTEQUAL OP_IF <em>X</em> OP_ENDIF</td>
+  <td><code>j:<em>X</em></code></td>
+  <td><samp>OP_SIZE OP_0NOTEQUAL OP_IF <em>X</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
-  <td>n:<em>X</em></td>
-  <td><em>X</em> OP_0NOTEQUAL</td>
+  <td><code>n:<em>X</em></code></td>
+  <td><samp><em>X</em> OP_0NOTEQUAL</samp></td>
 </tr>
 <tr>
-  <td>l:<em>X</em> = or_i(0,<em>X</em>)</td>
-  <td>OP_IF OP_0 OP_ELSE <em>X</em> OP_ENDIF</td>
+  <td><code>l:<em>X</em></code> = <code>or_i(0,<em>X</em>)</code></td>
+  <td><samp>OP_IF OP_0 OP_ELSE <em>X</em> OP_ENDIF</samp></td>
 </tr>
 <tr>
-  <td>u:<em>X</em> = or_i(<em>X</em>,0)</td>
-  <td>OP_IF <em>X</em> OP_ELSE 0 OP_ENDIF</td>
+  <td><code>u:<em>X</em></code> = <code>or_i(<em>X</em>,0)</code></td>
+  <td><samp>OP_IF <em>X</em> OP_ELSE 0 OP_ENDIF</samp></td>
 </tr>
 </tbody>
 </table>
@@ -239,27 +239,27 @@ Every miniscript expression has one of four basic types:<ul>
   <li>When satisfied, pushes a nonzero value of up to 4 bytes onto the stack.</li>
   <li>When dissatisfied, pushes a 0 onto the stack.</li>
   <li>This is used for most expressions, and required for the top level one.</li>
-  <li>For example: older(n) = &lt;n&gt; OP_CHECKSEQUENCEVERIFY.</li>
+  <li>For example: <code>older(n)</code> = <samp>&lt;n&gt; OP_CHECKSEQUENCEVERIFY</samp>.</li>
 </ul></li>
 <li><b>"V"</b> Verify expressions:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>When satisfactied, pushes nothing.</li>
   <li>Cannot be dissatisfied (aborts execution instead).</li>
   <li>A "V" can be obtained using the v: wrapper on a "B" expression, or by combining other "V" expressions using and_v, or_i, or andor.</li>
-  <li>For example vc:pk(key) = &lt;key&gt; OP_CHECKSIGVERIFY</li>
+  <li>For example <code>vc:pk(key)</code> = <samp>&lt;key&gt; OP_CHECKSIGVERIFY</samp>.</li>
 </ul></li>
 <li><b>"K"</b> Key expressions:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>Always pushes a public key onto the stack, for which a signature is to be provided to satisfy the expression.</li>
   <li>Can be converted into a "B" using the c: wrapper (OP_CHECKSIG).</li>
-  <li>For example pk_h(key) = OP_DUP OP_HASH160 &lt;Hash160(key)&gt; OP_EQUALVERIFY</li>
+  <li>For example <code>pk_h(key)</code> = <samp>OP_DUP OP_HASH160 &lt;Hash160(key)&gt; OP_EQUALVERIFY</samp></li>
 </ul></li>
 <li><b>"W"</b> Wrapped expressions:<ul>
   <li>Takes its input from one below the top of the stack.</li>
   <li>When satisfied, pushes a nonzero value (like B) on top of the stack, or one below the top.</li>
   <li>When dissatisfied, pushes 0 op top of the stack or one below the top.</li>
   <li>Every "W" is either s:B (OP_SWAP B) or a:B (OP_TOALTSTACK B OP_FROMALTSTACK).</li>
-  <li>For example sc:pk(key) = OP_SWAP &lt;key&gt; OP_CHECKSIG</li>
+  <li>For example <code>sc:pk(key)</code> = <samp>OP_SWAP &lt;key&gt; OP_CHECKSIG</samp>.</li>
 </ul></li>
 </ul>
 </p>
@@ -279,23 +279,31 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <table class="table table-sm">
 <thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Requires</th><th scope="col">Type</th><th scope="col">Properties</th></tr></thead>
 <tbody>
-<tr><td>0        </td><td></td><td>B</td><td>z, u, d</td></tr>
-<tr><td>1        </td><td></td><td>B</td><td>z, u</td></tr>
-<tr><td>pk(key)  </td><td></td><td>K</td><td>o, n, d, u</td></tr>
-<tr><td>pk_h(key)</td><td></td><td>K</td><td>n, d, u</td></tr>
+<tr><td>0        </td><td></td><td>B</td><td>z; u; d</td></tr>
+<tr><td>1        </td><td></td><td>B</td><td>z; u</td></tr>
+<tr><td>pk(key)  </td><td></td><td>K</td><td>o; n; d; u</td></tr>
+<tr><td>pk_h(key)</td><td></td><td>K</td><td>n; d; u</td></tr>
 <tr><td>older(n), after(n) </td><td>1 &le; n &lt; 2<sup>31</sup></td><td>B</td><td>z</td></tr>
-<tr><td>sha256(h)</td><td></td><td>B</td><td>o, n, d, u</td></tr>
-<tr><td>ripemd160(h)</td><td></td><td>B</td><td>o, n, d, u</td></tr>
-<tr><td>hash256(h)</td><td></td><td>B</td><td>o, n, d, u</td></tr>
-<tr><td>hash160(h)</td><td></td><td>B</td><td>o, n, d, u</td></tr>
-<tr><td>and_v(X,Y)</td><td>X is V, Y is B/K/V</td><td>same as Y</td><td>z=z<sub>X</sub>z<sub>Y</sub>, o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>, n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>, u=u<sub>Y</sub></td></tr>
-<tr><td>and_b(X,Y)</td><td>X is B, Y is W</td><td>B</td><td>z=z<sub>X</sub>z<sub>Y</sub>, o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>, n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>, d=d<sub>X</sub>d<sub>Y</sub>, u</td></tr>
-<tr><td>or_b(X,Z)</td><td>X is Bd, Z is Wd</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>, o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>, d, u</td></tr>
-<tr><td>or_c(X,Z)</td><td>X is Bdu, Z is V</td><td>V</td><td>z=z<sub>X</sub>z<sub>Z</sub>, o=o<sub>X</sub>z<sub>Z</sub></td></tr>
-<tr><td>or_d(X,Z)</td><td>X is Bdu, Z is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>, o=o<sub>X</sub>z<sub>Z</sub>, d=d<sub>Z</sub>, u=u<sub>Z</sub></td></tr>
-<tr><td>or_i(X,Z)</td><td>both are B, K, or V</td><td>same as both</td><td>o=z<sub>X</sub>z<sub>Z</sub>, u=u<sub>X</sub>u<sub>Z</sub>, d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
-<tr><td>andor(X,Y,Z)</td><td>X is Bdu, Y and Z are both B, K, or V</td><td>same as Y and Z</td><td>z=z<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>, o=z<sub>X</sub>o<sub>Y</sub>o<sub>Z</sub> or o<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>, u=u<sub>Y</sub>u<sub>Z</sub>, d=d<sub>Z</sub></td></tr>
-
+<tr><td>sha256(h)</td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td>ripemd160(h)</td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td>hash256(h)</td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td>hash160(h)</td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td>and_v(X,Y)</td><td>X is V; Y is B, K, or V</td><td>same as Y</td><td>z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; u=u<sub>Y</sub></td></tr>
+<tr><td>and_b(X,Y)</td><td>X is B; Y is W</td><td>B</td><td>z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; d=d<sub>X</sub>d<sub>Y</sub>; u</td></tr>
+<tr><td>or_b(X,Z)</td><td>X is Bd; Z is Wd</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; d; u</td></tr>
+<tr><td>or_c(X,Z)</td><td>X is Bdu; Z is V</td><td>V</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub></td></tr>
+<tr><td>or_d(X,Z)</td><td>X is Bdu; Z is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>; d=d<sub>Z</sub>; u=u<sub>Z</sub></td></tr>
+<tr><td>or_i(X,Z)</td><td>both are B, K, or V</td><td>same as X/Z</td><td>o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
+<tr><td>andor(X,Y,Z)</td><td>X is Bdu; Y and Z are both B, K, or V</td><td>same as Y/Z</td><td>z=z<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub>o<sub>Z</sub> or o<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; u=u<sub>Y</sub>u<sub>Z</sub>; d=d<sub>Z</sub></td></tr>
+<tr><td>thresh(k,X,Y,Z,...)</td><td>1 &lt; k &lt; n; first is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
+<tr><td>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
+<tr><td>a:X</td><td>X is B</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
+<tr><td>s:X</td><td>X is Bo</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
+<tr><td>c:X</td><td>X is K</td><td>B</td><td>o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
+<tr><td>d:X</td><td>X is Vz</td><td>B</td><td>o=z<sub>X</sub>; n; u; d</td></tr>
+<tr><td>v:X</td><td>X is B</td><td>V</td><td>z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub></td></tr>
+<tr><td>j:X</td><td>X is Bn</td><td>B</td><td>o=o<sub>X</sub>; n; d; u=u<sub>X</sub></td></tr>
+<tr><td>n:X</td><td>X is B</td><td>B</td><td>z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
 </tbody>
 </table>
 </p>
