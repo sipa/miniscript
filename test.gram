@@ -1,0 +1,52 @@
+prob = "" | ("3" | "99") "@";
+
+s1 = s;
+s2 = s "," s1;
+s3 = s "," s2;
+s4 = s "," s3;
+s5 = s "," s4;
+
+w1 = w;
+w2 = w "," w1;
+w3 = w "," w2;
+w4 = w "," w3;
+w5 = w "," w4;
+
+t11 = s1;
+t12 = w1 "," s1;
+t22 = s2;
+t13 = w2 "," s1;
+t23 = w1 "," s2;
+t33 = s3;
+t14 = w3 "," s1;
+t24 = w2 "," s2;
+t34 = w1 "," s3;
+t44 = s4;
+t15 = w4 "," s1;
+t25 = w3 "," s2;
+t35 = w2 "," s3;
+t45 = w1 "," s4;
+t55 = s5;
+
+s = "pk(C)" |
+    "and(" (t12 | t22) ")" |
+    "or(" prob s "," prob s ")" |
+    "thresh(2," (t23 | t33) ")" |
+    "thresh(2," (t34 | t44) ")" |
+    "thresh(3," (t24 | t34 | t44) ")" |
+    "thresh(2," (t45 | t55) ")" |
+    "thresh(3," (t35 | t45 | t55) ")" |
+    "thresh(4," (t25 | t35 | t45 | t55) ")";
+
+w = "after(9)" |
+    "sha256(H)" |
+    "or(" prob w "," prob s ")" |
+    "and(" w "," w ")" |
+    "thresh(2," t13 ")" |
+    "thresh(2," t24 ")" |
+    "thresh(3," t14 ")" |
+    "thresh(2," t35 ")" |
+    "thresh(3," t25 ")" |
+    "thresh(4," t15 ")";
+
+main = s;

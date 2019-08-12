@@ -1,0 +1,14 @@
+digraph wrapper {
+
+  c -> "a/s";
+  c -> v;
+  d -> "a/s";
+  j -> "a/s";
+  n -> "a/s";
+  n -> "l/u";
+  t -> j;
+  t -> "l/u";
+  "l/u" -> "a/s";
+  v -> d;
+  v -> t;
+}
