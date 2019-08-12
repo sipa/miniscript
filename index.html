@@ -246,20 +246,20 @@ Every miniscript expression has one of four basic types:<ul>
   <li>When satisfactied, pushes nothing.</li>
   <li>Cannot be dissatisfied (aborts execution instead).</li>
   <li>A "V" can be obtained using the v: wrapper on a "B" expression, or by combining other "V" expressions using and_v, or_i, or andor.</li>
-  <li>For example vc:pk(key) = <key> OP_CHECKSIGVERIFY</li>
+  <li>For example vc:pk(key) = &lt;key&gt; OP_CHECKSIGVERIFY</li>
 </ul></li>
 <li><b>"K"</b> Key expressions:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>Always pushes a public key onto the stack, for which a signature is to be provided to satisfy the expression.</li>
   <li>Can be converted into a "B" using the c: wrapper (OP_CHECKSIG).</li>
-  <li>For example pk_h(key) = OP_DUP OP_HASH160 <Hash160(key)> OP_EQUALVERIFY</li>
+  <li>For example pk_h(key) = OP_DUP OP_HASH160 &lt;Hash160(key)&gt; OP_EQUALVERIFY</li>
 </ul></li>
 <li><b>"W"</b> Wrapped expressions:<ul>
   <li>Takes its input from one below the top of the stack.</li>
   <li>When satisfied, pushes a nonzero value (like B) on top of the stack, or one below the top.</li>
   <li>When dissatisfied, pushes 0 op top of the stack or one below the top.</li>
   <li>Every "W" is either s:B (OP_SWAP B) or a:B (OP_TOALTSTACK B OP_FROMALTSTACK).</li>
-  <li>For example sc:pk(key) = OP_SWAP <key> OP_CHECKSIG</li>
+  <li>For example sc:pk(key) = OP_SWAP &lt;key&gt; OP_CHECKSIG</li>
 </ul></li>
 </ul>
 </p>
