@@ -55,11 +55,251 @@ function miniscript_analyze() {
 <div class="container" style="margin-top:50px">
 
 <div class="card mb-3 text-left">
-<h3 class="card-header">Miniscript introduction</h3>
+<h3 class="card-header">Introduction</h3>
 <div class="card-block">
 <p>
-Some explanation goes here.
+<em>Miniscript</em> is a language for writing (a subset of) Bitcoin Scripts in a structured way, enabling analysis, composition, generic signing and more.
 </p>
+
+<p>
+Bitcoin Script is an unusual stack-based language with many edge cases, designed for implementing spending conditions consisting of various combinations of
+signatures, hash locks, and time locks). Yet despite being limited in functionality it is still highly nontrivial to:<ul>
+<li>Given a combination of spending conditions, finding the most economical script to implement it.</li>
+<li>Given a two scripts, construct a script that implements a composition of their spending conditions (e.g. a multisig where one of the "keys" in another multisig).</li>
+<li>Given a script, find out what spending conditions it permits.</li>
+<li>Given a script and access to a sufficient set of private keys, construct a general satisfying witness for it.</li>
+<li>Given a script, be able to predict the cost of spending an output.</li>
+</ul>
+</p>
+
+<p>
+Miniscript functions as a representation for scripts that makes these sort of operations possible. It has a structure that allows composition. It is very easy to 
+statically analyze for various properties (spending conditions, correctness, security properties, malleability, ...). It can be targeted by spending policy compilers
+(see further). Finally, compatible scripts easily can be converted to miniscript - avoiding the need for additional metadata for e.g. signing devices that support it.
+</p>
+</div>
+</div>
+
+<div class="card mb-3 text-left">
+<h3 class="card-header">Miniscript reference</h3>
+<div class="card-block">
+<h4>Mapping between Miniscript and Bitcoin Script</h4>
+<table class="table table-sm">
+<thead class="thead-light">
+<tr><th scope="col">Semantics</th><th scope="col">Miniscript</th><th scope="col">Bitcoin Script</th></tr></thead>
+<tbody>
+<tr>
+  <td>true</td>
+  <td>1</td>
+  <td>OP_1</td>
+</tr>
+<tr>
+  <td>false</td>
+  <td>0</td>
+  <td>OP_0</td>
+</tr>
+<tr>
+  <td rowspan="2">check(key)</td>
+  <td>pk(key)</td>
+  <td>&lt;key&gt;</td>
+</tr>
+<tr>
+  <td>pk_h(key)</td>
+  <td>OP_DUP OP_HASH160 &lt;HASH160(key)&gt; OP_EQUALVERFIFY</td>
+</tr>
+<tr>
+  <td>nSequence &ge; n (and compatible)</td>
+  <td>older(n)</td>
+  <td>&lt;n&gt; OP_CHECKSEQUENCEVERIFY</td>
+</tr>
+<tr>
+  <td>nLockTime &ge; n (and compaitlbe)</td>
+  <td>after(n)</td>
+  <td>&lt;n&gt; OP_CHECKLOCKTIMEVERIFY</td>
+</tr>
+<tr>
+  <td>len(x) = 32 and SHA256(x) = h</td>
+  <td>sha256(h)</td>
+  <td>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_SHA256 &lt;h&gt; OP_EQUAL</td>
+</tr>
+<tr>
+  <td>len(x) = 32 and HASH256(x) = h</td>
+  <td>hash256(h)</td>
+  <td>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH256 &lt;h&gt; OP_EQUAL</td>
+</tr>
+<tr>
+  <td>len(x) = 32 and RIPEMD160(x) = h</td>
+  <td>ripemd160(h)</td>
+  <td>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_RIPEMD160 &lt;h&gt; OP_EQUAL</td>
+</tr>
+<tr>
+  <td>len(x) = 32 and HASH160(x) = h</td>
+  <td>hash160(h)</td>
+  <td>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH160 &lt;h&gt; OP_EQUAL</td>
+<tr>
+  <td>(<em>X</em> and Y) or <em>Z</em></td>
+  <td>andor(<em>X</em>,Y,<em>Z</em>)</td>
+  <td><em>X</em> OP_NOTIF <em>Z</em> OP_ELSE <em>Y</em> OP_ENDIF</td>
+</tr>
+<tr>
+  <td rowspan="3"><em>X</em> and Y</td>
+  <td>and_v(<em>X</em>,Y)</td>
+  <td><em>X</em> <em>Y</em></td>
+</tr>
+<tr>
+  <td>and_b(<em>X</em>,Y)</td>
+  <td><em>X</em> <em>Y</em> OP_BOOLAND</td>
+</tr>
+<tr>
+  <td>and_n(<em>X</em>,Y) = andor(<em>X</em>,<em>Y</em>,0)</td>
+  <td><em>X</em> OP_NOTIF OP_0 OP_ELSE <em>Y</em> OP_ENDIF</td>
+</tr>
+<tr>
+  <td rowspan="4"><em>X</em> or <em>Z</em></td>
+  <td>or_b(<em>X</em>,<em>Z</em>)</td>
+  <td><em>X</em> <em>Z</em> OP_BOOLOR</td>
+</tr>
+<tr>
+  <td>or_d(<em>X</em>,<em>Z</em>)</td>
+  <td><em>X</em> OP_IFDUP OP_NOTIF <em>Z</em> OP_ENDIF</td>
+</tr>
+<tr>
+  <td>or_c(<em>X</em>,<em>Z</em>)</td>
+  <td><em>X</em> OP_NOTIF <em>Z</em> OP_ENDIF</td>
+</tr>
+<tr>
+  <td>or_i(<em>X</em>,<em>Z</em>)</td>
+  <td>OP_IF <em>X</em> OP_ELSE <em>Z</em> OP_ENDIF</td>
+</tr>
+<tr>
+  <td><em>X</em> + <em>Y</em> + <em>Z</em> + ... = k</td>
+  <td>thresh(k,<em>X</em>,<em>Y</em>,<em>Z</em>,...)</td>
+  <td><em>X</em> <em>Y</em> OP_ADD <em>Z</em> OP_ADD ... &lt;k&gt; OP_EQUAL</td>
+</tr>
+<tr>
+  <td>check(key<sub>1</sub>) + ... + check(key<sub>n</sub>) = k</td>
+  <td>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</td>
+  <td>&lt;k&gt; &lt;key<sub>1</sub>&gt; ... &lt;key<sub>n</sub>&gt; &lt;n&gt; OP_CHECKMULTISIG</td>
+</tr>
+<tr>
+  <td rowspan="10"><em>X</em> (identities)</td>
+  <td>a:<em>X</em></td>
+  <td>OP_TOALTSTACK <em>X</em> OP_FROMALTSTACK</td>
+</tr>
+<tr>
+  <td>s:<em>X</em></td>
+  <td>OP_SWAP <em>X</em></td>
+</tr>
+<tr>
+  <td>c:<em>X</em></td>
+  <td><em>X</em> OP_CHECKSIG</td>
+</tr>
+<tr>
+  <td>t:<em>X</em> = and_v(<em>X</em>,1)</td>
+  <td><em>X</em> OP_1</td>
+<tr>
+  <td>d:<em>X</em></td>
+  <td>OP_DUP OP_IF <em>X</em> OP_ENDIF</td>
+</tr>
+<tr>
+  <td>v:<em>X</em></td>
+  <td><em>X</em> OP_VERIFY (or VERIFY version of last opcode in <em>X</em>)</td>
+</tr>
+<tr>
+  <td>j:<em>X</em></td>
+  <td>OP_SI<em>Z</em>E OP_0NOTEQUAL OP_IF <em>X</em> OP_ENDIF</td>
+</tr>
+<tr>
+  <td>n:<em>X</em></td>
+  <td><em>X</em> OP_0NOTEQUAL</td>
+</tr>
+<tr>
+  <td>l:<em>X</em> = or_i(0,<em>X</em>)</td>
+  <td>OP_IF OP_0 OP_ELSE <em>X</em> OP_ENDIF</td>
+</tr>
+<tr>
+  <td>u:<em>X</em> = or_i(<em>X</em>,0)</td>
+  <td>OP_IF <em>X</em> OP_ELSE 0 OP_ENDIF</td>
+</tr>
+</tbody>
+</table>
+
+<h4>Correctness properties</h4>
+
+<p>
+Not every Miniscript expression can be composed with every other. Some return their result by putting zero or false on the stack; others distinguish by aborting or continuing.
+Some require subexpressions that consume an exactly known number of arguments, while others need a subexpression that has a nonzero top stack element to satisfy. To model all
+these properties, we define a correctness type system for Miniscript.
+</p>
+
+<p>
+Every miniscript expression has one of four basic types:<ul>
+<li><b>"B"</b> Base expressions:<ul>
+  <li>Takes its inputs from the top of the stack.</li>
+  <li>When satisfied, pushes a nonzero value of up to 4 bytes onto the stack.</li>
+  <li>When dissatisfied, pushes a 0 onto the stack.</li>
+  <li>This is used for most expressions, and required for the top level one.</li>
+  <li>For example: older(n) = &lt;n&gt; OP_CHECKSEQUENCEVERIFY.</li>
+</ul></li>
+<li><b>"V"</b> Verify expressions:<ul>
+  <li>Takes its inputs from the top of the stack.</li>
+  <li>When satisfactied, pushes nothing.</li>
+  <li>Cannot be dissatisfied (aborts execution instead).</li>
+  <li>A "V" can be obtained using the v: wrapper on a "B" expression, or by combining other "V" expressions using and_v, or_i, or andor.</li>
+  <li>For example vc:pk(key) = <key> OP_CHECKSIGVERIFY</li>
+</ul></li>
+<li><b>"K"</b> Key expressions:<ul>
+  <li>Takes its inputs from the top of the stack.</li>
+  <li>Always pushes a public key onto the stack, for which a signature is to be provided to satisfy the expression.</li>
+  <li>Can be converted into a "B" using the c: wrapper (OP_CHECKSIG).</li>
+  <li>For example pk_h(key) = OP_DUP OP_HASH160 <Hash160(key)> OP_EQUALVERIFY</li>
+</ul></li>
+<li><b>"W"</b> Wrapped expressions:<ul>
+  <li>Takes its input from one below the top of the stack.</li>
+  <li>When satisfied, pushes a nonzero value (like B) on top of the stack, or one below the top.</li>
+  <li>When dissatisfied, pushes 0 op top of the stack or one below the top.</li>
+  <li>Every "W" is either s:B (OP_SWAP B) or a:B (OP_TOALTSTACK B OP_FROMALTSTACK).</li>
+  <li>For example sc:pk(key) = OP_SWAP <key> OP_CHECKSIG</li>
+</ul></li>
+</ul>
+</p>
+
+<p>
+Then there are 5 type modifiers, which guarantee additional properties:<ul>
+<li><b>"z"</b> Zero-arg: this expression always consumes exactly 0 stack elements.</li>
+<li><b>"o"</b> One-arg: this expression always consumes exactly 1 stack element.</li>
+<li><b>"n"</b> Nonzero: no satisfaction for this expression requires a top stack element that is zero.</li>
+<li><b>"d"</b> Dissatisfiable: this expression can be dissatisfied by anyone.</li>
+<li><b>"u"</b> Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).</li>
+</ul>
+</p>
+
+<p>
+This tables lists the correctness requirements for each of the Miniscript expressions, and its type properties in function of those of their subexpressions:
+<table class="table table-sm">
+<thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Requires</th><th scope="col">Type</th><th scope="col">Properties</th></tr></thead>
+<tbody>
+<tr><td>0        </td><td></td><td>B</td><td>z, u, d</td></tr>
+<tr><td>1        </td><td></td><td>B</td><td>z, u</td></tr>
+<tr><td>pk(key)  </td><td></td><td>K</td><td>o, n, d, u</td></tr>
+<tr><td>pk_h(key)</td><td></td><td>K</td><td>n, d, u</td></tr>
+<tr><td>older(n), after(n) </td><td>1 &le; n &lt; 2<sup>31</sup></td><td>B</td><td>z</td></tr>
+<tr><td>sha256(h)</td><td></td><td>B</td><td>o, n, d, u</td></tr>
+<tr><td>ripemd160(h)</td><td></td><td>B</td><td>o, n, d, u</td></tr>
+<tr><td>hash256(h)</td><td></td><td>B</td><td>o, n, d, u</td></tr>
+<tr><td>hash160(h)</td><td></td><td>B</td><td>o, n, d, u</td></tr>
+<tr><td>and_v(X,Y)</td><td>X is V, Y is B/K/V</td><td>same as Y</td><td>z=z<sub>X</sub>z<sub>Y</sub>, o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>, n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>, u=u<sub>Y</sub></td></tr>
+<tr><td>and_b(X,Y)</td><td>X is B, Y is W</td><td>B</td><td>z=z<sub>X</sub>z<sub>Y</sub>, o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>, n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>, d=d<sub>X</sub>d<sub>Y</sub>, u</td></tr>
+<tr><td>or_b(X,Z)</td><td>X is Bd, Z is Wd</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>, o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>, d, u</td></tr>
+<tr><td>or_c(X,Z)</td><td>X is Bdu, Z is V</td><td>V</td><td>z=z<sub>X</sub>z<sub>Z</sub>, o=o<sub>X</sub>z<sub>Z</sub></td></tr>
+<tr><td>or_d(X,Z)</td><td>X is Bdu, Z is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>, o=o<sub>X</sub>z<sub>Z</sub>, d=d<sub>Z</sub>, u=u<sub>Z</sub></td></tr>
+<tr><td>or_i(X,Z)</td><td>both are B, K, or V</td><td>same as both</td><td>o=z<sub>X</sub>z<sub>Z</sub>, u=u<sub>X</sub>u<sub>Z</sub>, d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
+<tr><td>andor(X,Y,Z)</td><td>X is Bdu, Y and Z are both B, K, or V</td><td>same as Y and Z</td><td>z=z<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>, o=z<sub>X</sub>o<sub>Y</sub>o<sub>Z</sub> or o<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>, u=u<sub>Y</sub>u<sub>Z</sub>, d=d<sub>Z</sub></td></tr>
+
+</tbody>
+</table>
+</p>
+
 </div>
 </div>
 
