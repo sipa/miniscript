@@ -736,7 +736,12 @@ private:
             }
             case NodeType::WRAP_J: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal);
-                return InputResult(ZERO, x.sat);
+                // If a dissatisfaction with a nonzero top stack element exists, an alternative dissatisfaction exists.
+                // As the dissatisfaction logic currently doesn't keep track of this nonzeroness property, and thus even
+                // if a dissatisfaction with a top zero element is found, we don't know whether another one with a
+                // nonzero top stack element exists. Make the conservative assumption that whenever the subexpression is weakly
+                // dissatisfiable, this alternative dissatisfaction exists and leads to malleability.
+                return InputResult(InputStack(ZERO).Malleable(x.nsat.valid && !x.nsat.has_sig), x.sat);
             }
             case NodeType::WRAP_V: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal);

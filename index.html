@@ -102,14 +102,14 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 <tr><th scope="col">Semantics</th><th scope="col">Miniscript fragment</th><th scope="col">Bitcoin Script</th></tr></thead>
 <tbody>
 <tr>
-  <td>true</td>
-  <td><code>1</code></td>
-  <td><samp>OP_1</samp></td>
-</tr>
-<tr>
   <td>false</td>
   <td><code>0</code></td>
-  <td><samp>OP_0</samp></td>
+  <td><samp>0</samp></td>
+</tr>
+<tr>
+  <td>true</td>
+  <td><code>1</code></td>
+  <td><samp>1</samp></td>
 </tr>
 <tr>
   <td rowspan="2">check(key)</td>
@@ -118,41 +118,41 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 </tr>
 <tr>
   <td><code>pk_h(key)</code></td>
-  <td><samp>OP_DUP OP_HASH160 &lt;HASH160(key)&gt; OP_EQUALVERFIFY</samp></td>
+  <td><samp>DUP HASH160 &lt;HASH160(key)&gt; EQUALVERFIFY</samp></td>
 </tr>
 <tr>
   <td>nSequence &ge; n (and compatible)</td>
   <td><code>older(n)</code></td>
-  <td><samp>&lt;n&gt; OP_CHECKSEQUENCEVERIFY</samp></td>
+  <td><samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp></td>
 </tr>
 <tr>
   <td>nLockTime &ge; n (and compaitlbe)</td>
   <td><code>after(n)</code></td>
-  <td><samp>&lt;n&gt; OP_CHECKLOCKTIMEVERIFY</samp></td>
+  <td><samp>&lt;n&gt; CHECKLOCKTIMEVERIFY</samp></td>
 </tr>
 <tr>
   <td>len(x) = 32 and SHA256(x) = h</td>
   <td><code>sha256(h)</code></td>
-  <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_SHA256 &lt;h&gt; OP_EQUAL</samp></td>
+  <td><samp>SIZE &lt;32&gt; EQUALVERIFY SHA256 &lt;h&gt; EQUAL</samp></td>
 </tr>
 <tr>
   <td>len(x) = 32 and HASH256(x) = h</td>
   <td><code>hash256(h)</code></td>
-  <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH256 &lt;h&gt; OP_EQUAL</samp></td>
+  <td><samp>SIZE &lt;32&gt; EQUALVERIFY HASH256 &lt;h&gt; EQUAL</samp></td>
 </tr>
 <tr>
   <td>len(x) = 32 and RIPEMD160(x) = h</td>
   <td><code>ripemd160(h)</code></td>
-  <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_RIPEMD160 &lt;h&gt; OP_EQUAL</samp></td>
+  <td><samp>SIZE &lt;32&gt; EQUALVERIFY RIPEMD160 &lt;h&gt; EQUAL</samp></td>
 </tr>
 <tr>
   <td>len(x) = 32 and HASH160(x) = h</td>
   <td><code>hash160(h)</code></td>
-  <td><samp>OP_SIZE &lt;32&gt; OP_EQUALVERIFY OP_HASH160 &lt;h&gt; OP_EQUAL</samp></td>
+  <td><samp>SIZE &lt;32&gt; EQUALVERIFY HASH160 &lt;h&gt; EQUAL</samp></td>
 <tr>
   <td>(<em>X</em> and <em>Y</em>) or <em>Z</em></td>
   <td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td>
-  <td><samp><em>[X]</em> OP_NOTIF <em>[Z]</em> OP_ELSE <em>[Y]</em> OP_ENDIF</samp></td>
+  <td><samp><em>[X]</em> NOTIF <em>[Z]</em> ELSE <em>[Y]</em> ENDIF</samp></td>
 </tr>
 <tr>
   <td rowspan="3"><em>X</em> and <em>Y</em></td>
@@ -161,78 +161,78 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 </tr>
 <tr>
   <td><code>and_b(<em>X</em>,<em>Y</em>)</code></td>
-  <td><samp><em>[X]</em> <em>[Y]</em> OP_BOOLAND</samp></td>
+  <td><samp><em>[X]</em> <em>[Y]</em> BOOLAND</samp></td>
 </tr>
 <tr>
   <td><code>and_n(<em>X</em>,<em>Y</em>)</code> = <code>andor(<em>X</em>,<em>Y</em>,0)</code></td>
-  <td><samp><em>[X]</em> OP_NOTIF OP_0 OP_ELSE <em>[Y]</em> OP_ENDIF</samp></td>
+  <td><samp><em>[X]</em> NOTIF 0 ELSE <em>[Y]</em> ENDIF</samp></td>
 </tr>
 <tr>
   <td rowspan="4"><em>X</em> or <em>Z</em></td>
   <td><code>or_b(<em>X</em>,<em>Z</em>)</code></td>
-  <td><samp><em>[X]</em> <em>[Z]</em> OP_BOOLOR</samp></td>
-</tr>
-<tr>
-  <td><code>or_d(<em>X</em>,<em>Z</em>)</code></td>
-  <td><samp><em>[X]</em> OP_IFDUP OP_NOTIF <em>[Z]</em> OP_ENDIF</samp></td>
+  <td><samp><em>[X]</em> <em>[Z]</em> BOOLOR</samp></td>
 </tr>
 <tr>
   <td><code>or_c(<em>X</em>,<em>Z</em>)</code></td>
-  <td><samp><em>[X]</em> OP_NOTIF <em>[Z]</em> OP_ENDIF</samp></td>
+  <td><samp><em>[X]</em> NOTIF <em>[Z]</em> ENDIF</samp></td>
+</tr>
+<tr>
+  <td><code>or_d(<em>X</em>,<em>Z</em>)</code></td>
+  <td><samp><em>[X]</em> IFDUP NOTIF <em>[Z]</em> ENDIF</samp></td>
 </tr>
 <tr>
   <td><code>or_i(<em>X</em>,<em>Z</em>)</code></td>
-  <td><samp>OP_IF <em>[X]</em> OP_ELSE <em>[Z]</em> OP_ENDIF</samp></td>
+  <td><samp>IF <em>[X]</em> ELSE <em>[Z]</em> ENDIF</samp></td>
 </tr>
 <tr>
   <td><em>X<sub>1</sub></em> + ... + <em>X<sub>n</sub></em> = k</td>
   <td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td>
-  <td><samp><em>[X<sub>1</sub>]</em> <em>[X<sub>2</sub>]</em> OP_ADD ... <em>[X<sub>n</sub>]</em> OP_ADD ... &lt;k&gt; OP_EQUAL</samp></td>
+  <td><samp><em>[X<sub>1</sub>]</em> <em>[X<sub>2</sub>]</em> ADD ... <em>[X<sub>n</sub>]</em> ADD ... &lt;k&gt; EQUAL</samp></td>
 </tr>
 <tr>
   <td>check(key<sub>1</sub>) + ... + check(key<sub>n</sub>) = k</td>
   <td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td>
-  <td><samp>&lt;k&gt; &lt;key<sub>1</sub>&gt; ... &lt;key<sub>n</sub>&gt; &lt;n&gt; OP_CHECKMULTISIG</samp></td>
+  <td><samp>&lt;k&gt; &lt;key<sub>1</sub>&gt; ... &lt;key<sub>n</sub>&gt; &lt;n&gt; CHECKMULTISIG</samp></td>
 </tr>
 <tr>
   <td rowspan="10"><em>X</em> (identities)</td>
   <td><code>a:<em>X</em></code></td>
-  <td><samp>OP_TOALTSTACK <em>[X]</em> OP_FROMALTSTACK</samp></td>
+  <td><samp>TOALTSTACK <em>[X]</em> FROMALTSTACK</samp></td>
 </tr>
 <tr>
   <td><code>s:<em>X</em></code></td>
-  <td><samp>OP_SWAP <em>[X]</em></samp></td>
+  <td><samp>SWAP <em>[X]</em></samp></td>
 </tr>
 <tr>
   <td><code>c:<em>X</em></code></td>
-  <td><samp><em>[X]</em> OP_CHECKSIG</samp></td>
+  <td><samp><em>[X]</em> CHECKSIG</samp></td>
 </tr>
 <tr>
   <td><code>t:<em>X</em></code> = <code>and_v(<em>X</em>,1)</code></td>
-  <td><samp><em>[X]</em> OP_1</samp></td>
+  <td><samp><em>[X]</em> 1</samp></td>
 <tr>
   <td><code>d:<em>X</em></code></td>
-  <td><samp>OP_DUP OP_IF <em>[X]</em> OP_ENDIF</samp></td>
+  <td><samp>DUP IF <em>[X]</em> ENDIF</samp></td>
 </tr>
 <tr>
   <td><code>v:<em>X</em></code></td>
-  <td><samp><em>[X]</em> OP_VERIFY</samp> (or <samp>VERIFY</samp> version of last opcode in <samp><em>[X]</em></samp>)</td>
+  <td><samp><em>[X]</em> VERIFY</samp> (or <samp>VERIFY</samp> version of last opcode in <samp><em>[X]</em></samp>)</td>
 </tr>
 <tr>
   <td><code>j:<em>X</em></code></td>
-  <td><samp>OP_SIZE OP_0NOTEQUAL OP_IF <em>[X]</em> OP_ENDIF</samp></td>
+  <td><samp>SIZE 0NOTEQUAL IF <em>[X]</em> ENDIF</samp></td>
 </tr>
 <tr>
   <td><code>n:<em>X</em></code></td>
-  <td><samp><em>[X]</em> OP_0NOTEQUAL</samp></td>
+  <td><samp><em>[X]</em> 0NOTEQUAL</samp></td>
 </tr>
 <tr>
   <td><code>l:<em>X</em></code> = <code>or_i(0,<em>X</em>)</code></td>
-  <td><samp>OP_IF OP_0 OP_ELSE <em>[X]</em> OP_ENDIF</samp></td>
+  <td><samp>IF 0 ELSE <em>[X]</em> ENDIF</samp></td>
 </tr>
 <tr>
   <td><code>u:<em>X</em></code> = <code>or_i(<em>X</em>,0)</code></td>
-  <td><samp>OP_IF <em>[X]</em> OP_ELSE 0 OP_ENDIF</samp></td>
+  <td><samp>IF <em>[X]</em> ELSE 0 ENDIF</samp></td>
 </tr>
 </tbody>
 </table>
@@ -255,27 +255,27 @@ Every miniscript expression has one of four basic types:<ul>
   <li>When satisfied, pushes a nonzero value of up to 4 bytes onto the stack.</li>
   <li>When dissatisfied, pushes a 0 onto the stack.</li>
   <li>This is used for most expressions, and required for the top level one.</li>
-  <li>For example: <code>older(n)</code> = <samp>&lt;n&gt; OP_CHECKSEQUENCEVERIFY</samp>.</li>
+  <li>For example: <code>older(n)</code> = <samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp>.</li>
 </ul></li>
 <li><b>"V"</b> Verify expressions:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>When satisfactied, pushes nothing.</li>
   <li>Cannot be dissatisfied (aborts execution instead).</li>
   <li>A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.</li>
-  <li>For example <code>vc:pk(key)</code> = <samp>&lt;key&gt; OP_CHECKSIGVERIFY</samp>.</li>
+  <li>For example <code>vc:pk(key)</code> = <samp>&lt;key&gt; CHECKSIGVERIFY</samp>.</li>
 </ul></li>
 <li><b>"K"</b> Key expressions:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>Always pushes a public key onto the stack, for which a signature is to be provided to satisfy the expression.</li>
-  <li>Can be converted into a "B" using the <code>c:</code> wrapper (<samp>OP_CHECKSIG</samp>).</li>
-  <li>For example <code>pk_h(key)</code> = <samp>OP_DUP OP_HASH160 &lt;Hash160(key)&gt; OP_EQUALVERIFY</samp></li>
+  <li>Can be converted into a "B" using the <code>c:</code> wrapper (<samp>CHECKSIG</samp>).</li>
+  <li>For example <code>pk_h(key)</code> = <samp>DUP HASH160 &lt;Hash160(key)&gt; EQUALVERIFY</samp></li>
 </ul></li>
 <li><b>"W"</b> Wrapped expressions:<ul>
   <li>Takes its input from one below the top of the stack.</li>
   <li>When satisfied, pushes a nonzero value (like B) on top of the stack, or one below the top.</li>
   <li>When dissatisfied, pushes 0 op top of the stack or one below the top.</li>
-  <li>Every "W" is either <code>s:B</code> (<samp>OP_SWAP B</samp>) or <code>a:B</code> (<samp>OP_TOALTSTACK B OP_FROMALTSTACK</code>).</li>
-  <li>For example <code>sc:pk(key)</code> = <samp>OP_SWAP &lt;key&gt; OP_CHECKSIG</samp>.</li>
+  <li>Every "W" is either <code>s:B</code> (<samp>SWAP B</samp>) or <code>a:B</code> (<samp>TOALTSTACK B FROMALTSTACK</code>).</li>
+  <li>For example <code>sc:pk(key)</code> = <samp>SWAP &lt;key&gt; CHECKSIG</samp>.</li>
 </ul></li>
 </ul>
 </p>
@@ -285,7 +285,7 @@ Then there are 5 type modifiers, which guarantee additional properties:<ul>
 <li><b>"z"</b> Zero-arg: this expression always consumes exactly 0 stack elements.</li>
 <li><b>"o"</b> One-arg: this expression always consumes exactly 1 stack element.</li>
 <li><b>"n"</b> Nonzero: no satisfaction for this expression requires a top stack element that is zero.</li>
-<li><b>"d"</b> Dissatisfiable: this expression can be dissatisfied by anyone.</li>
+<li><b>"d"</b> Dissatisfiable: a canonical dissatisfaction exists for this expression that can be constructed by anyone.</li>
 <li><b>"u"</b> Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).</li>
 </ul>
 </p>
@@ -304,13 +304,13 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <tr><td><code>ripemd160(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
 <tr><td><code>hash256(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
 <tr><td><code>hash160(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
+<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Y</em> and <em>Z</em> are both B, K, or V</td><td>same as Y/Z</td><td>z=z<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub>o<sub>Z</sub> or o<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; u=u<sub>Y</sub>u<sub>Z</sub>; d=d<sub>Z</sub></td></tr>
 <tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td><em>X</em> is V; <em>Y</em> is B, K, or V</td><td>same as <em>Y</em></td><td>z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; u=u<sub>Y</sub></td></tr>
 <tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td><em>X</em> is B; <em>Y</em> is W</td><td>B</td><td>z=z<sub>X</sub>z<sub>Y</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; n=n<sub>X</sub> or z<sub>X</sub>n<sub>Y</sub>; d=d<sub>X</sub>d<sub>Y</sub>; u</td></tr>
 <tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bd; <em>Z</em> is Wd</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub> or z<sub>Y</sub>o<sub>X</sub>; d; u</td></tr>
 <tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Z</em> is V</td><td>V</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub></td></tr>
 <tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Z</em> is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>; d=d<sub>Z</sub>; u=u<sub>Z</sub></td></tr>
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>both are B, K, or V</td><td>same as X/Z</td><td>o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
-<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Y</em> and <em>Z</em> are both B, K, or V</td><td>same as Y/Z</td><td>z=z<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; o=z<sub>X</sub>o<sub>Y</sub>o<sub>Z</sub> or o<sub>X</sub>z<sub>Y</sub>z<sub>Z</sub>; u=u<sub>Y</sub>u<sub>Z</sub>; d=d<sub>Z</sub></td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub><em>,...,<em>X<sub>n</sub></em>)</code></td><td>1 &lt; k &lt; n; <em>X<sub>1</sub></em> is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
 <tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
 <tr><td><code>a:X</code></td><td><em>X</em> is B</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
@@ -364,38 +364,46 @@ this means that scripts whose conditions can be met without any digital signatur
 <h4>Basic satisfactions</h4>
 <p>
 The following table shows how to construct valid satisfactions and dissatisfactions for every Miniscript, using satisfactions and dissatisfactions of its subexpressions.
+Multiple possibilities are separated by semicolons.
 <table class="table table-sm">
-<thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Dissatisfaction (dsat)</th><th scope="col" colspan="2">Satisfaction (sat)</th></thead>
+<thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Dissatisfactions (dsat)</th><th scope="col">Satisfactions (sat)</th></thead>
 <tbody>
-<tr><td><code>0</code></td><td></td><td colspan="2">-</td></tr>
-<tr><td><code>1</code></td><td>-</td><td colspan="2"></td></tr>
-<tr><td><code>pk(key)</code></td><td>0</td><td colspan="2">sig</td></tr>
-<tr><td><code>pk_h(key)</code></td><td>0</td><td colspan="2">sig key</td></tr>
-<tr><td><code>older(n)</code></td><td>-</td><td colspan="2"></td></tr>
-<tr><td><code>after(n)</code></td><td>-</td><td colspan="2"></td></tr>
-<tr><td><code>sha256(h)</code></td><td>any 32-byte vector</td><td colspan="2">preimage</td></tr>
-<tr><td><code>ripemd160(h)</code></td><td>any 32-byte vector</td><td colspan="2">preimage</td></tr>
-<tr><td><code>hash256(h)</code></td><td>any 32-byte vector</td><td colspan="2">preimage</td></tr>
-<tr><td><code>hash160(h)</code></td><td>any 32-byte vector</td><td colspan="2">preimage</td></tr>
-<tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 0 ... 0 (n+1 times)</td><td colspan="2">0 sig ... sig</td></tr>
-<tr><td><code>a:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td colspan="2">sat(<em>X</em>)</td></tr>
-<tr><td><code>s:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td colspan="2">sat(<em>X</em>)</td></tr>
-<tr><td><code>c:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td colspan="2">sat(<em>X</em>)</td></tr>
-<tr><td><code>n:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td colspan="2">sat(<em>X</em>)</td></tr>
-<tr><td><code>v:<em>X</em></code></td><td>-</td><td colspan="2">sat(<em>X</em>)</td></tr>
-<tr><td><code>d:<em>X</em></code></td><td>0</td><td colspan="2">sat(<em>X</em>) 1</td></tr>
-<tr><td><code>j:<em>X</em></code></td><td>0</td><td colspan="2">sat(<em>X</em>)</td></tr>
-<tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td>-</td><td colspan="2">sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
-<tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td>dsat(<em>Y</em>) dsat(<em>X</em>)</td><td colspan="2">sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
-<tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>dsat(<em>X<sub>n</sub></em>) ... dsat(<em>X<sub>1</sub></em>)</td><td colspan="2">[d]sat(<em>X<sub>n</sub></em>) ... [d]sat(<em>X<sub>1</sub></em>) (with k sats and n-k dsats)</td></tr>
-<thead class="thead-light"><tr><th scope="col"></th><th scope="col"></th><th scope="col">Left</th><th scope="col">Right</th></tr>
-<tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>dsat(<em>Z</em>) sat(<em>X</em>)</td><td>sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
-<tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td>-</td><td>sat(<em>X</em>)</td><td>sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
-<tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td><td>sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
-<tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>X</em>) 1 or dsat(<em>Z</em>) 0</td><td>sat(<em>X</em>) 1</td><td>sat(<em>Z</em>) 0</td></tr>
-<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>sat(<em>Y</em>) sat(<em>X</em>)</td><td>sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
+<tr><td><code>0</code></td><td></td><td>-</td></tr>
+<tr><td><code>1</code></td><td>-</td><td></td></tr>
+<tr><td><code>pk(key)</code></td><td>0</td><td>sig</td></tr>
+<tr><td><code>pk_h(key)</code></td><td>0</td><td>sig key</td></tr>
+<tr><td><code>older(n)</code></td><td>-</td><td></td></tr>
+<tr><td><code>after(n)</code></td><td>-</td><td></td></tr>
+<tr><td><code>sha256(h)</code></td><td>any 32-byte vector</td><td>preimage</td></tr>
+<tr><td><code>ripemd160(h)</code></td><td>any 32-byte vector</td><td>preimage</td></tr>
+<tr><td><code>hash256(h)</code></td><td>any 32-byte vector</td><td>preimage</td></tr>
+<tr><td><code>hash160(h)</code></td><td>any 32-byte vector</td><td>preimage</td></tr>
+<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>); dsat(<em>Y</em>) sat(<em>X</em>)</td><td>sat(<em>Y</em>) sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
+<tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td>-</td><td>sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
+<tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td>dsat(<em>Y</em>) dsat(<em>X</em>); sat(<em>Y</em>) dsat(<em>X</em>); dsat(<em>Y</em>) sat(<em>X</em>)</td><td>sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
+<tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>dsat(<em>Z</em>) sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>); sat(<em>Z</em>) sat(<em>X</em>)</td></tr>
+<tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td>-</td><td>sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
+<tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
+<tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>X</em>) 1; dsat(<em>Z</em>) 0</td><td>sat(<em>X</em>) 1; sat(<em>Z</em>) 0</td></tr>
+<tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>dsat(<em>X<sub>n</sub></em>) ... dsat(<em>X<sub>1</sub></em>)</td><td>[d]sat(<em>X<sub>n</sub></em>) ... [d]sat(<em>X<sub>1</sub></em>) (with k sats and n-k dsats)</td></tr>
+<tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 0 ... 0 (n+1 times)</td><td>0 sig ... sig</td></tr>
+<tr><td><code>a:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
+<tr><td><code>s:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
+<tr><td><code>c:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
+<tr><td><code>d:<em>X</em></code></td><td>0</td><td>sat(<em>X</em>) 1</td></tr>
+<tr><td><code>v:<em>X</em></code></td><td>-</td><td>sat(<em>X</em>)</td></tr>
+<tr><td><code>j:<em>X</em></code></td><td>0; nsat(<em>X</em>) (if nonzero top stack)</td><td>sat(<em>X</em>)</td></tr>
+<tr><td><code>n:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 </tbody>
 </table>
+</p>
+<p>
+The correctness properties in the previous section are based on the availability of satisfactions and dissatisfactions listed above. The requirements will include a "d" for every
+subexpression whose dissatisfaction may be needed in building a satisfaction for the superexpression. The "d" properties themselves rely on the "d" properties of subexpressions.
+A conservative simplification is made here, namely that satisfaction for untaken branches are never available (this is typically the case, but not for <code>1</code>). For example,
+<code>or_b(<em>X</em>,<em>Z</em>)</code> can in theory be satisfied using "sat(<em>Z</em>) sat(<em>X</em>)", which wouldn't require any dissatisfactions. However, we can't assume
+that satisfactions for both sides of the disjunction are available; as a result, for completeness this fragment requires a "d" for both subexpressions. This simplification does
+impose some harmless restrictions. For example, <code>and_b(0,1)</code> 
 </p>
 
 <h4>Malleability</h4>
@@ -422,7 +430,7 @@ Because of these reasons, Miniscript is actually designed to permit non-malleabl
 
 <p>
 Several ways to introduce malleability under the assumptions above exist:<ul>
-<li>Dissatisfactions for <code>sha256(h)</code> and other hash locks are always malleable, as any 32-byte input suffices. An attacker can modify any such dissatisfaction into another one. Because of this, inside a non-malleable satisfaction, a hash lock can never be directly dissatisfied. Instead it must be protected by an <samp>OP_IF</samp> (e.g. <code>u:</code>) that skip execution of the hash lock check entirely when its satsifaction is not required.</li>
+<li>Dissatisfactions for <code>sha256(h)</code> and other hash locks are always malleable, as any 32-byte input suffices. An attacker can modify any such dissatisfaction into another one. Because of this, inside a non-malleable satisfaction, a hash lock can never be directly dissatisfied. Instead it must be protected by an <samp>IF</samp> (e.g. <code>u:</code>) that skip execution of the hash lock check entirely when its satsifaction is not required.</li>
 <li>For certain conjunctions (<code>and_b</code>, <code>andor</code>, and <code>thresh</code>) a dissatisfaction could be constructed that involves subexpressions that are actually satisfied. To prevent this, we must require that satisfying those subexpressions requires a digital signature. In that case, a malleability attacker cannot construct a satisfaction as we assume he has no access to private keys.</li>
 <li>For <code>or_i</code> two possible ways for dissatisfying the expression exist: one involving the left subexpression and one involving the right one. To prevent the dissatisfaction from being malleable, we must make sure that at most one of the two subexpressions is dissatisfiable.</code>
 <li>For disjunctions (<code>or_*</code>, <code>andor</code>, and <code>thresh</code>) multiple ways of satisfaction exist. We must prevent malleability attackers from changing a satsifaction from one branch to another. Whenever a satisfaction exists for an expression that does not involve any signatures, we must take it. Otherwise the attacker could change the satisfaction to the non-signature requiring one. Whenever multiple ways exist that all require no signature, the result is inevitably malleable.</li>
