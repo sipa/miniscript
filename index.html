@@ -417,17 +417,19 @@ Because of these reasons, Miniscript is actually designed to permit non-malleabl
 <li>The attacker gets to see exactly one satisfying witness of the script. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
 <li>No public keys appear more than once in the script.</li>
 <li>We want something that works even when the attacker has access to all the hash preimages the honest participants have access to (even if the honest participants choose a satisfaction that does not reveal that preimage).</li>
-</lu>
+</ul>
 </p>
 
 <p>
 Several ways to introduce malleability under the assumptions above exist:<ul>
-<li>Dissatisfactions for <code>sha256(h)</code> and other hash locks are always malleable, as any 32-byte input suffices. An attacker can modify any such dissatisfaction into another one. Because of this, inside a non-malleable satisfaction, a hash lock can never be directly dissatisfied. Instead if must be protected by an <samp>OP_IF</samp> (e.g. <code>u:</code>) that skip execution of the hash lock check entirely when its satsifaction is not required.</li>
+<li>Dissatisfactions for <code>sha256(h)</code> and other hash locks are always malleable, as any 32-byte input suffices. An attacker can modify any such dissatisfaction into another one. Because of this, inside a non-malleable satisfaction, a hash lock can never be directly dissatisfied. Instead it must be protected by an <samp>OP_IF</samp> (e.g. <code>u:</code>) that skip execution of the hash lock check entirely when its satsifaction is not required.</li>
 <li>For certain conjunctions (<code>and_b</code>, <code>andor</code>, and <code>thresh</code>) a dissatisfaction could be constructed that involves subexpressions that are actually satisfied. To prevent this, we must require that satisfying those subexpressions requires a digital signature. In that case, a malleability attacker cannot construct a satisfaction as we assume he has no access to private keys.</li>
-<li>For <code>or_i</code> two possible ways for dissatisfying the expression exist: one involving the left subexpression and one involving the right one. To prevent the dissatisfaction from being malleable, we must make sure that at most one of the two is dissatisfiable.</code>
+<li>For <code>or_i</code> two possible ways for dissatisfying the expression exist: one involving the left subexpression and one involving the right one. To prevent the dissatisfaction from being malleable, we must make sure that at most one of the two subexpressions is dissatisfiable.</code>
 <li>For disjunctions (<code>or_*</code>, <code>andor</code>, and <code>thresh</code>) multiple ways of satisfaction exist. We must prevent malleability attackers from changing a satsifaction from one branch to another. Whenever a satisfaction exists for an expression that does not involve any signatures, we must take it. Otherwise the attacker could change the satisfaction to the non-signature requiring one. Whenever multiple ways exist that all require no signature, the result is inevitably malleable.</li>
 </ul>
 </p>
+
+<h4>Non-malleable satisfaction algorithm</h4>
 
 </div>
 </div>
