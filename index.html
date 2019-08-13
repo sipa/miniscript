@@ -412,7 +412,7 @@ of the same transaction.
 </p>
 
 <p>
-Because of these reasons, Miniscript is actually designed to permit non-malleable signing. As this guarantee is restricted in nob-obvious ways, let's first state the assumptions:<ul>
+Because of these reasons, Miniscript is actually designed to permit non-malleable signing. As this guarantee is restricted in non-obvious ways, let's first state the assumptions:<ul>
 <li>The attacker does not have access to any of the private keys of public keys that participate in the Script. Limiting the impact a rogue participant can have is a distinct attack model.</li>
 <li>The attacker gets to see exactly one satisfying witness of the script. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
 <li>The attacker has access to all the hash preimages the honest participants have access to (even if the honest participants choose a satisfaction that does not reveal that preimage).</li>
