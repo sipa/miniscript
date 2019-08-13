@@ -702,11 +702,11 @@ private:
             }
             case NodeType::AND_B: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(y.nsat + x.nsat, y.sat + x.sat);
+                return InputResult(Choose(Choose(y.nsat + x.nsat, y.sat + x.nsat, nonmal), y.nsat + x.sat, nonmal), y.sat + x.sat);
             }
             case NodeType::OR_B: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), z = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(z.nsat + x.nsat, Choose(z.nsat + x.sat, z.sat + x.nsat, nonmal));
+                return InputResult(z.nsat + x.nsat, Choose(Choose(z.nsat + x.sat, z.sat + x.nsat, nonmal), z.sat + x.sat, nonmal));
             }
             case NodeType::OR_C: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), z = subs[1]->ProduceInput(ctx, nonmal);
@@ -723,7 +723,7 @@ private:
             }
             case NodeType::ANDOR: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal), z = subs[2]->ProduceInput(ctx, nonmal);
-                return InputResult(z.nsat + x.nsat, Choose(y.sat + x.sat, z.sat + x.nsat, nonmal));
+                return InputResult(Choose(y.nsat + x.sat, z.nsat + x.nsat, nonmal), Choose(y.sat + x.sat, z.sat + x.nsat, nonmal));
             }
             case NodeType::WRAP_A:
             case NodeType::WRAP_S:
