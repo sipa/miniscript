@@ -403,7 +403,8 @@ subexpression whose dissatisfaction may be needed in building a satisfaction for
 A conservative simplification is made here, namely that satisfaction for untaken branches are never available (this is typically the case, but not for <code>1</code>). For example,
 <code>or_b(<em>X</em>,<em>Z</em>)</code> can in theory be satisfied using "sat(<em>Z</em>) sat(<em>X</em>)", which wouldn't require any dissatisfactions. However, we can't assume
 that satisfactions for both sides of the disjunction are available; as a result, for completeness this fragment requires a "d" for both subexpressions. This simplification does
-impose some harmless restrictions. For example, <code>and_b(0,1)</code> 
+impose some harmless restrictions. For example, <code>and_b(0,1)</code> can in fact be dissatisfied without problems, but it still won't have the "d" property. As these only
+occur with <code>0</code> and <code>1</code> fragments in combinations that are not actually useful, we don't consider this to be a problem.
 </p>
 
 <h4>Malleability</h4>
