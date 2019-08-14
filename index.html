@@ -425,17 +425,31 @@ Because of these reasons, Miniscript is actually designed to permit non-malleabl
 <li>The attacker does not have access to any of the private keys of public keys that participate in the Script. Limiting the impact a rogue participant can have is a distinct attack model.</li>
 <li>The attacker gets to see exactly one satisfying witness of the script. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
 <li>No public keys appear more than once in the script.</li>
-<li>We want something that works even when the attacker has access to all the hash preimages the honest participants have access to (even if the honest participants choose a satisfaction that does not reveal that preimage).</li>
+<li>We assume honest users have access to all the hash preimages that attackers have access to (even if the honest participants choose a satisfaction that does not reveal that preimage).</li>
 </ul>
 </p>
 
 <p>
-Several ways to introduce malleability under the assumptions above exist:<ul>
-<li>Dissatisfactions for <code>sha256(h)</code> and other hash locks are always malleable, as any 32-byte input suffices. An attacker can modify any such dissatisfaction into another one. Because of this, inside a non-malleable satisfaction, a hash lock can never be directly dissatisfied. Instead it must be protected by an <samp>IF</samp> (e.g. <code>u:</code>) that skip execution of the hash lock check entirely when its satsifaction is not required.</li>
-<li>For certain conjunctions (<code>and_b</code>, <code>andor</code>, and <code>thresh</code>) a dissatisfaction could be constructed that involves subexpressions that are actually satisfied. To prevent this, we must require that satisfying those subexpressions requires a digital signature. In that case, a malleability attacker cannot construct a satisfaction as we assume he has no access to private keys.</li>
-<li>For <code>or_i</code> two possible ways for dissatisfying the expression exist: one involving the left subexpression and one involving the right one. To prevent the dissatisfaction from being malleable, we must make sure that at most one of the two subexpressions is dissatisfiable.</code>
-<li>For disjunctions (<code>or_*</code>, <code>andor</code>, and <code>thresh</code>) multiple ways of satisfaction exist. We must prevent malleability attackers from changing a satsifaction from one branch to another. Whenever a satisfaction exists for an expression that does not involve any signatures, we must take it. Otherwise the attacker could change the satisfaction to the non-signature requiring one. Whenever multiple ways exist that all require no signature, the result is inevitably malleable.</li>
+Malleable satisfactions or dissatisfactions appear whenever more than one option is available to attackers. This can happen because of two reasons:<ul>
+<li>Two or more options are listed in the table above which are both available to attackers directly. Regardless of which option used in the honest solution, the attacker can pick the other one.</li>
+<li>Two ore more options are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the other one.</li>
 </ul>
+Because we assume attackers never have access to private keys, we can treat any solution that includes a signature as one that is unavailable to attackers.
+For timelocks, the availability of solutions is determined by the <samp>nLockTime</samp> and <samp>nSequence</samp> values in the to-be-signed transaction. As long as the overall
+satisfaction includes one signature, those values are signed, and the availability of timelock solutions is identical for attackers and honest users.
+Combining those with the assumption access to all preimages that attackers have access to, the set of solutions available to honest users is always a superset of what is available to attackers.
+For timelocks this is true because their availability is determined by 
+satisfaction contains at least one signature, those values cannot be modified by the attacker, and thus the availability of timelock solutions identical to attackers and honest users.
+
+Because we assume attackers never have access to private keys, and we
+ assume attackers do have access to all preimages that honest users have access to, options are available to
+attackers exactly whenever those options do not include a signature. 
+
+
+Whenever multiple options are listed in the table above for a satisfaction or dissatisfaction, which can all be produced by attackers, that satisfaction or dissatisfaction must
+be considered malleable. Furthermore, even when just one option exists that is available to attackers, if the honest user chooses 
+Each of the places in the above table where multiple satisfactions or dissatisfactions are listed gives rise to a source of malleability. But just having multiple options isn't
+enough to cause malleability directly. After all, honest users may be able to produce things that attackers cannot due to lack of access to private keys.
 </p>
 
 <h4>Non-malleable satisfaction algorithm</h4>
