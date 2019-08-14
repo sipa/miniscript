@@ -265,9 +265,10 @@ inline InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
         // If one option is weak, we must pick that one.
         if (!a.has_sig) return a;
         if (!b.has_sig) return b;
-        // If both options are strong, prefer the nonmalleable one.
+        // If both options are strong, prefer the canonical one.
         if (b.non_canon) return a;
         if (a.non_canon) return b;
+        // If both options are strong and canonical, prefer the nonmalleable one.
         if (b.malleable) return a;
         if (a.malleable) return b;
     }
@@ -639,9 +640,8 @@ private:
         if (nonmal) {
             if (GetType() << "e"_mst) assert(!ret.nsat.malleable);
             if (GetType() << "m"_mst && ret.sat.valid) assert(!ret.sat.malleable);
-            if (ret.sat.valid && ret.sat.non_canon) {
-                fprintf(stderr, "Non-canonical satisfaction for '%s'\n", ToString(ctx).c_str());
-            }
+            // Valid non-malleable satisfactions can never be non-canonical.
+            assert(!ret.sat.valid || ret.sat.malleable || !ret.sat.non_canon);
         }
         return ret;
     }

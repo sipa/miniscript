@@ -399,12 +399,12 @@ Multiple possibilities are separated by semicolons.
 </p>
 <p>
 The correctness properties in the previous section are based on the availability of satisfactions and dissatisfactions listed above. The requirements will include a "d" for every
-subexpression whose dissatisfaction may be needed in building a satisfaction for the superexpression. The "d" properties themselves rely on the "d" properties of subexpressions.
-A conservative simplification is made here, namely that satisfaction for untaken branches are never available (this is typically the case, but not for <code>1</code>). For example,
+subexpression whose dissatisfaction may be needed in building a satisfaction for the parent expression. The "d" properties themselves rely on the "d" properties of subexpressions.
+A conservative simplification is made here, namely that satisfactions for untaken branches are never available. For example,
 <code>or_b(<em>X</em>,<em>Z</em>)</code> can in theory be satisfied using "sat(<em>Z</em>) sat(<em>X</em>)", which wouldn't require any dissatisfactions. However, we can't assume
 that satisfactions for both sides of the disjunction are available; as a result, for completeness this fragment requires a "d" for both subexpressions. This simplification does
 impose some harmless restrictions. For example, <code>and_b(0,1)</code> can in fact be dissatisfied without problems, but it still won't have the "d" property. As these only
-occur with <code>0</code> and <code>1</code> fragments in combinations that are not actually useful, we don't consider this to be a problem.
+occur with always-true expressions like <code>1</code> or <code>after(date in past)</code> which can always be optimized away, this is a not a significant restriction.
 </p>
 
 <h4>Malleability</h4>
@@ -417,22 +417,23 @@ Malleability is the ability for a third party (<em>not</em> a participant in the
 Since Segwit, malleating a transaction no longer breaks the validity of unconfirmed descendant transactions. However, unintentional malleability may still have a number of
 much weaker undesirable effects. If a witness can be stuffed with additional data, the transaction's feerate will go down, potentially to the point where its ability to
 propagate and get confirmed is impacted. Additionally, malleability can be exploited to add roundtrips to BIP152 block propagation, by trying to get different miners to mine different versions
-of the same transaction.
+of the same transaction. Finally, malleability may interfere with the usage of hash locks as a mechanism for publishing preimages.
 </p>
 
 <p>
 Because of these reasons, Miniscript is actually designed to permit non-malleable signing. As this guarantee is restricted in non-obvious ways, let's first state the assumptions:<ul>
 <li>The attacker does not have access to any of the private keys of public keys that participate in the Script. Limiting the impact a rogue participant can have is a distinct attack model.</li>
+<li>The attacker only has access to hash preimages that honest users have access to as well.</li>
 <li>The attacker gets to see exactly one satisfying witness of the script. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
-<li>No public keys appear more than once in the script.</li>
-<li>We assume honest users have access to all the hash preimages that attackers have access to (even if the honest participants choose a satisfaction that does not reveal that preimage).</li>
 </ul>
+Next we will derive what properties a satisfaction must have in order to be non-malleable under this assumptions.
 </p>
 
 <p>
-Malleable satisfactions or dissatisfactions appear whenever more than one option is available to attackers. This can happen because of two reasons:<ul>
-<li>Two or more options are listed in the table above which are both available to attackers directly. Regardless of which option used in the honest solution, the attacker can pick the other one.</li>
-<li>Two ore more options are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the other one.</li>
+Malleable satisfactions or dissatisfactions appear whenever more than one option is available to attackers. This can happen for multiple reasons:<ul>
+<li>Two or more options for a satisfaction or dissatisfaction are listed in the table above which are both available to attackers directly. Regardless of which option is used in the honest solution, the attacker can change the solution to the other one.</li>
+<li>Two ore more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the other one.</li>
+<li>The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. This is the case for example with an <code>or_b(<em>X</em>,<em>Z</em>)</code> where both subexpressions are satisfied.</li>
 </ul>
 Because we assume attackers never have access to private keys, we can treat any solution that includes a signature as one that is unavailable to attackers.
 For timelocks, the availability of solutions is determined by the <samp>nLockTime</samp> and <samp>nSequence</samp> values in the to-be-signed transaction. As long as the overall
