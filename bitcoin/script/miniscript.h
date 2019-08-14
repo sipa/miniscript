@@ -206,6 +206,7 @@ struct InputStack {
     bool valid = false;
     bool has_sig = false;
     bool malleable = false;
+    bool non_canon = false;
     size_t size = 0;
     std::vector<std::vector<unsigned char>> stack;
 
@@ -219,6 +220,11 @@ struct InputStack {
 
     InputStack& WithSig() {
         has_sig = true;
+        return *this;
+    }
+
+    InputStack& NonCanon() {
+        non_canon = true;
         return *this;
     }
 
@@ -241,6 +247,7 @@ struct InputStack {
             a.size += b.size;
             a.has_sig |= b.has_sig;
             a.malleable |= b.malleable;
+            a.non_canon |= b.non_canon;
         }
         return a;
     }
@@ -259,6 +266,8 @@ inline InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
         if (!a.has_sig) return a;
         if (!b.has_sig) return b;
         // If both options are strong, prefer the nonmalleable one.
+        if (b.non_canon) return a;
+        if (a.non_canon) return b;
         if (b.malleable) return a;
         if (a.malleable) return b;
     }
@@ -630,6 +639,9 @@ private:
         if (nonmal) {
             if (GetType() << "e"_mst) assert(!ret.nsat.malleable);
             if (GetType() << "m"_mst && ret.sat.valid) assert(!ret.sat.malleable);
+            if (ret.sat.valid && ret.sat.non_canon) {
+                fprintf(stderr, "Non-canonical satisfaction for '%s'\n", ToString(ctx).c_str());
+            }
         }
         return ret;
     }
@@ -702,11 +714,11 @@ private:
             }
             case NodeType::AND_B: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(Choose(Choose(y.nsat + x.nsat, y.sat + x.nsat, nonmal), y.nsat + x.sat, nonmal), y.sat + x.sat);
+                return InputResult(Choose(Choose(y.nsat + x.nsat, (y.sat + x.nsat).NonCanon(), nonmal), (y.nsat + x.sat).NonCanon(), nonmal), y.sat + x.sat);
             }
             case NodeType::OR_B: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), z = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(z.nsat + x.nsat, Choose(Choose(z.nsat + x.sat, z.sat + x.nsat, nonmal), z.sat + x.sat, nonmal));
+                return InputResult(z.nsat + x.nsat, Choose(Choose(z.nsat + x.sat, z.sat + x.nsat, nonmal), (z.sat + x.sat).NonCanon(), nonmal));
             }
             case NodeType::OR_C: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), z = subs[1]->ProduceInput(ctx, nonmal);
@@ -723,7 +735,7 @@ private:
             }
             case NodeType::ANDOR: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal), z = subs[2]->ProduceInput(ctx, nonmal);
-                return InputResult(Choose(y.nsat + x.sat, z.nsat + x.nsat, nonmal), Choose(y.sat + x.sat, z.sat + x.nsat, nonmal));
+                return InputResult(Choose((y.nsat + x.sat).NonCanon(), z.nsat + x.nsat, nonmal), Choose(y.sat + x.sat, z.sat + x.nsat, nonmal));
             }
             case NodeType::WRAP_A:
             case NodeType::WRAP_S:
