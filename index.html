@@ -363,8 +363,9 @@ this means that scripts whose conditions can be met without any digital signatur
 <div class="card-block">
 <h4>Basic satisfactions</h4>
 <p>
-The following table shows how to construct valid satisfactions and dissatisfactions for every Miniscript, using satisfactions and dissatisfactions of its subexpressions.
-Multiple possibilities are separated by semicolons.
+The following table shows all valid satisfactions and dissatisfactions for every Miniscript, using satisfactions and dissatisfactions of its subexpressions.
+Multiple possibilities are separated by semicolons. Some options are not actually necessary to produce correct witnesses, and are called <em>non-canonical</em> options. They
+are listed for completeness, but marked in <span class="text-muted">[grey]</span> below.
 <table class="table table-sm">
 <thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Dissatisfactions (dsat)</th><th scope="col">Satisfactions (sat)</th></thead>
 <tbody>
@@ -374,14 +375,14 @@ Multiple possibilities are separated by semicolons.
 <tr><td><code>pk_h(key)</code></td><td>0</td><td>sig key</td></tr>
 <tr><td><code>older(n)</code></td><td>-</td><td></td></tr>
 <tr><td><code>after(n)</code></td><td>-</td><td></td></tr>
-<tr><td><code>sha256(h)</code></td><td>any 32-byte vector</td><td>preimage</td></tr>
-<tr><td><code>ripemd160(h)</code></td><td>any 32-byte vector</td><td>preimage</td></tr>
-<tr><td><code>hash256(h)</code></td><td>any 32-byte vector</td><td>preimage</td></tr>
-<tr><td><code>hash160(h)</code></td><td>any 32-byte vector</td><td>preimage</td></tr>
-<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>); dsat(<em>Y</em>) sat(<em>X</em>)</td><td>sat(<em>Y</em>) sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
+<tr><td><code>sha256(h)</code></td><td>any 32-byte vector except the preimage</td><td>preimage</td></tr>
+<tr><td><code>ripemd160(h)</code></td><td>any 32-byte vector except the preimage</td><td>preimage</td></tr>
+<tr><td><code>hash256(h)</code></td><td>any 32-byte vector except the preimage</td><td>preimage</td></tr>
+<tr><td><code>hash160(h)</code></td><td>any 32-byte vector except the preimage</td><td>preimage</td></tr>
+<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>); <span class="text-muted">[dsat(<em>Y</em>) sat(<em>X</em>)]</span></td><td>sat(<em>Y</em>) sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
 <tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td>-</td><td>sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
-<tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td>dsat(<em>Y</em>) dsat(<em>X</em>); sat(<em>Y</em>) dsat(<em>X</em>); dsat(<em>Y</em>) sat(<em>X</em>)</td><td>sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
-<tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>dsat(<em>Z</em>) sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>); sat(<em>Z</em>) sat(<em>X</em>)</td></tr>
+<tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td>dsat(<em>Y</em>) dsat(<em>X</em>); <span class="text-muted">[sat(<em>Y</em>) dsat(<em>X</em>)]</span>; <span class="text-muted">[dsat(<em>Y</em>) sat(<em>X</em>)]</span></td><td>sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
+<tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>dsat(<em>Z</em>) sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>); <span class="text-muted">[sat(<em>Z</em>) sat(<em>X</em>)]</span></td></tr>
 <tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td>-</td><td>sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
 <tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>X</em>) 1; dsat(<em>Z</em>) 0</td><td>sat(<em>X</em>) 1; sat(<em>Z</em>) 0</td></tr>
@@ -392,19 +393,27 @@ Multiple possibilities are separated by semicolons.
 <tr><td><code>c:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>d:<em>X</em></code></td><td>0</td><td>sat(<em>X</em>) 1</td></tr>
 <tr><td><code>v:<em>X</em></code></td><td>-</td><td>sat(<em>X</em>)</td></tr>
-<tr><td><code>j:<em>X</em></code></td><td>0; nsat(<em>X</em>) (if nonzero top stack)</td><td>sat(<em>X</em>)</td></tr>
+<tr><td><code>j:<em>X</em></code></td><td>0; <span class="text-muted">[nsat(<em>X</em>) (if nonzero top stack)]</span></td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>n:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 </tbody>
 </table>
 </p>
 <p>
-The correctness properties in the previous section are based on the availability of satisfactions and dissatisfactions listed above. The requirements will include a "d" for every
+The correctness properties in the previous section are based on the availability of satisfactions and dissatisfactions listed above. The requirements include a "d" for every
 subexpression whose dissatisfaction may be needed in building a satisfaction for the parent expression. The "d" properties themselves rely on the "d" properties of subexpressions.
-A conservative simplification is made here, namely that satisfactions for untaken branches are never available. For example,
-<code>or_b(<em>X</em>,<em>Z</em>)</code> can in theory be satisfied using "sat(<em>Z</em>) sat(<em>X</em>)", which wouldn't require any dissatisfactions. However, we can't assume
-that satisfactions for both sides of the disjunction are available; as a result, for completeness this fragment requires a "d" for both subexpressions. This simplification does
-impose some harmless restrictions. For example, <code>and_b(0,1)</code> can in fact be dissatisfied without problems, but it still won't have the "d" property. As these only
-occur with always-true expressions like <code>1</code> or <code>after(date in past)</code> which can always be optimized away, this is a not a significant restriction.
+</p>
+
+<p>
+A conservative simplification is made here, ignoring the existence of always-true expressions like <code>1</code>. This makes the typing rules incorrect in the following cases:<ul>
+<li><code>or_b(<em>X</em>,1)</code> and <code>or_b(1,<em>X</em>)</code> are complete when <em>X</em> is. In that case, the condition is equivalent to 1 and is always met, and a satisfaction of the form "nsat(<em>X</em>)" exists.
+<li><code>or_b(1,1)</code> is complete, as it is equivalent to 1 and "" is a valid satisfaction.</li>
+<li><code>and_b(<em>X</em>,1)</code> and <code>and_b(1,<em>X</em>)</code> are dissatisfiable ("d") when <em>X</em> is.
+<li><code>andor(1,1,<em>Z</em>)</code> is complete, as it is equivalent to 1 and "" is a valid satisfaction.</li>
+<li><code>andor(1,<em>Y</em>,0)</code> is complete when <em>Y</em> is; it also has the same type as <em>Y</em>, despite <code>0</code> always being a "B". This is also dissatisfiable when <em>Y</em> is.
+<li>The <code>1</code>s items listed above can be replaced with any other always-true expression.
+</ul>
+Since all these cases of incorrect typing involve always-true expressions that can be avoided
+using simpler, cheaper Miniscripts, we don't consider this to be a serious restriction.
 </p>
 
 <h4>Malleability</h4>
@@ -426,35 +435,44 @@ Because of these reasons, Miniscript is actually designed to permit non-malleabl
 <li>The attacker only has access to hash preimages that honest users have access to as well.</li>
 <li>The attacker gets to see exactly one satisfying witness of the script. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
 </ul>
-Next we will derive what properties a satisfaction must have in order to be non-malleable under this assumptions.
 </p>
 
 <p>
-Malleable satisfactions or dissatisfactions appear whenever more than one option is available to attackers. This can happen for multiple reasons:<ul>
+Malleable satisfactions or dissatisfactions appear whenever options are available to attackers distinct from the one taken by honest users. This can happen for multiple reasons:<ul>
 <li>Two or more options for a satisfaction or dissatisfaction are listed in the table above which are both available to attackers directly. Regardless of which option is used in the honest solution, the attacker can change the solution to the other one.</li>
-<li>Two ore more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the other one.</li>
-<li>The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. This is the case for example with an <code>or_b(<em>X</em>,<em>Z</em>)</code> where both subexpressions are satisfied.</li>
+<li>Two ore more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the one available to him.</li>
+<li>The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. Those are called an overcomplete solutions.</li>
 </ul>
-Because we assume attackers never have access to private keys, we can treat any solution that includes a signature as one that is unavailable to attackers.
-For timelocks, the availability of solutions is determined by the <samp>nLockTime</samp> and <samp>nSequence</samp> values in the to-be-signed transaction. As long as the overall
-satisfaction includes one signature, those values are signed, and the availability of timelock solutions is identical for attackers and honest users.
-Combining those with the assumption access to all preimages that attackers have access to, the set of solutions available to honest users is always a superset of what is available to attackers.
-For timelocks this is true because their availability is determined by 
-satisfaction contains at least one signature, those values cannot be modified by the attacker, and thus the availability of timelock solutions identical to attackers and honest users.
-
-Because we assume attackers never have access to private keys, and we
- assume attackers do have access to all preimages that honest users have access to, options are available to
-attackers exactly whenever those options do not include a signature. 
-
-
-Whenever multiple options are listed in the table above for a satisfaction or dissatisfaction, which can all be produced by attackers, that satisfaction or dissatisfaction must
-be considered malleable. Furthermore, even when just one option exists that is available to attackers, if the honest user chooses 
-Each of the places in the above table where multiple satisfactions or dissatisfactions are listed gives rise to a source of malleability. But just having multiple options isn't
-enough to cause malleability directly. After all, honest users may be able to produce things that attackers cannot due to lack of access to private keys.
 </p>
 
 <h4>Non-malleable satisfaction algorithm</h4>
 
+<p>
+Because we assume attackers never have access to private keys, we can treat any solution that includes a signature as one that is unavailable to attackers.
+For others, the worst case is that the attacker has access to every solution the honest users have, but no others: for preimages this is an explicit assumption, while timelock availability is determined
+by the <samp>nLockTime</samp> and <samp>nSequence</samp> fields in the transaction. As long as the overall satisfaction includes at least one signature, those values are fixed, and timelock availability is identical for attackers and honest users.
+</p>
+
+<p>
+In order to produce non-malleable satisfactions we make use of a function that returns the optimal satisfaction and dissatisfaction for a given expression (if any exist), or a special DONTUSE value, together with an optional HASSIG marker that tracks whether the solution contains at least one signature. To implement the function: <ul>
+<li>Invoke the function recursively for all subexpressions, obtaining all satisfactions/dissatisfactions for those.</li>
+<li>Iterate over all the valid satisfactions/dissatisfactions in the table above (including the non-canonical ones), taking into account:<ul>
+  <li>The dissatisfactions for <code>sha256</code>, <code>ripemd160</code>, <code>hash256</code>, and <code>hash160</code> are always malleable, so instead use DONTUSE there.</li>
+  <li>The non-canonical options for <code>and_b</code> and <code>or_b</code> are always overcomplete, so instead use DONTUSE there as well (but keep the HASSIG flag if the origin had one).
+  <li>The satisfactions for <code>pk</code>, <code>pk_h</code>, and <code>thresh_m</code> can be marked HASSIG.</li>
+  <li>When constructing solutions by combining results for subexpressions, the result is DONTUSE if any of the constituent results is DONTUSE. Furthermore, the result gets the HASSIG tag if any of the constituents do.</li>
+</ul></li>
+<li>If among all valid solutions (including DONTUSE ones) more than one does not have the HASSIG marker, return DONTUSE, as this means there are multiple options for the attacker, so whatever we pick, the attacker could change it to the other option.</li>
+<li>If instead exactly one does not have the HASSIG marker, return that solution. It means there is exactly one option available to the attacker, so we have to pick it to prevent him from changing another solution to this one.</li>
+<li>If all valid solutions have the HASSIG marker, but all of them are DONTUSE, return DONTUSE-HASSIG. The HASSIG marker is important because while this represents a choice between multiple options that would cause malleability if used, they are not available to the attacker, and we may be able to avoid them entirely still.
+<li>Otherwise, return the smallest solution (in terms of witness size) among the not-DONTUSE ones.
+</ul>
+To produce an overall satisfaction, invoke the function on the toplevel expression. If no valid satisfaction is returned, or it is DONTUSE, fail. Otherwise, if any timelocking is used in the script but the result does not have the HASSIG flag, also fail, as this represents a situation where an attacker could change the <samp>nLockTime</samp> or <samp>nSequence</samp> values to meet additional timelock conditions. Not to mention that solutions without signatures are generally insecure. If the satisfaction is both not DONTUSE and HASSIG, return it.
+</p>
+
+<p>
+Some optimizations are possible. Even though the non-canonical <code>andor</code> options are not actually overcomplete, it can be shown that they will never appear in non-malleable satisfactions. So that too can be treated as DONTUSE. Another optimization is that for <code>thresh</code> it isn't necessary to go through all combinations of satisfactions; instead, by considering solutions to subexpressions in order of increasing difference between dissatisfaction and satisfaction size, the optimal solutions can be found very quickly.
+</p>
 </div>
 </div>
 
