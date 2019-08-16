@@ -635,13 +635,14 @@ private:
         if (GetType() << "o"_mst && ret.sat.valid) assert(ret.sat.stack.size() == 1);
         if (GetType() << "n"_mst && ret.sat.valid) assert(ret.sat.stack.back().size() != 0);
         if (GetType() << "d"_mst) assert(ret.nsat.valid);
-        if (GetType() << "f"_mst) assert(!ret.nsat.valid);
+        if (GetType() << "f"_mst && ret.nsat.valid) assert(ret.nsat.has_sig);
         if (GetType() << "s"_mst && ret.sat.valid) assert(ret.sat.has_sig);
         if (nonmal) {
+            if (GetType() << "d"_mst) assert(!ret.nsat.has_sig);
+            if (GetType() << "d"_mst && !ret.nsat.malleable) assert(!ret.nsat.non_canon);
             if (GetType() << "e"_mst) assert(!ret.nsat.malleable);
             if (GetType() << "m"_mst && ret.sat.valid) assert(!ret.sat.malleable);
-            // Valid non-malleable satisfactions can never be non-canonical.
-            assert(!ret.sat.valid || ret.sat.malleable || !ret.sat.non_canon);
+            if (ret.sat.valid && !ret.sat.malleable) assert(!ret.sat.non_canon);
         }
         return ret;
     }
@@ -710,7 +711,7 @@ private:
             }
             case NodeType::AND_V: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(INVALID, y.sat + x.sat);
+                return InputResult((y.nsat + x.sat).NonCanon(), y.sat + x.sat);
             }
             case NodeType::AND_B: {
                 auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal);

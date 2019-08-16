@@ -490,8 +490,8 @@ The above can be used to show that no non-canonical solutions listed in the sati
 Now we have an algorithm that can find the optimal non-malleable satisfaction for any Miniscript, if it exists. But can we statically prove that such a solution always exists?
 In order to do that, we add additional properties to the type system:<ul>
 <li><b>"s"</b> Requires signature: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).</li>
-<li><b>"f"</b> Forced to be satisfied: this expression cannot be dissatisfied. This conflicts with "d", but is not implied by non-"d". </li>
-<li><b>"e"</b> Expressive: this expression always has a non-malleable dissatisfaction (predicting non-DONTUSE dissatisfactions). This requires "d", but is not implied by it.</li>
+<li><b>"f"</b> Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG). This conflicts with "d". </li>
+<li><b>"e"</b> Expressive: regardless of what conditions are met, exactly one dissatisfaction without signatures is available (predicting non-DONTUSE dissatisfactions). This implies "d".</li>
 </ul>
 </p>
 
@@ -510,9 +510,9 @@ The following table lists these additional properties, and the requirements for 
 <tr><td><code>ripemd160(h)</code></td><td></td><td></td></tr>
 <tr><td><code>hash256(h)</code></td><td></td><td></td></tr>
 <tr><td><code>hash160(h)</code></td><td></td><td></td></tr>
-<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Y</sub> or s<sub>Z</sub>)</td><td>s=s<sub>Z</sub> and (s<sub>X</sub> or s<sub>Y</sub>); f=f<sub>Y</sub>f<sub>Z</sub>; e=e<sub>Z</sub> and (s<sub>X</sub> or f<sub>Y</sub>)</td></tr>
-<tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td></td><td>s=s<sub>X</sub> or s<sub>Y</sub>; f=f<sub>Y</sub></td></tr>
-<tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td></td><td>s=s<sub>X</sub> or s<sub>Y</sub>; f=f<sub>X</sub>f<sub>Y</sub>; e=e<sub>X</sub>e<sub>Y</sub>s<sub>X</sub>s<sub>Y</sub></td></tr>
+<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Y</sub> or s<sub>Z</sub>)</td><td>s=s<sub>Z</sub> and (s<sub>X</sub> or s<sub>Y</sub>); f=f<sub>Z</sub> and (s<sub>X</sub> or f<sub>Y</sub>); e=e<sub>Z</sub> and (s<sub>X</sub> or f<sub>Y</sub>)</td></tr>
+<tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td></td><td>s=s<sub>X</sub> or s<sub>Y</sub>; f=s<sub>X</sub> or f<sub>Y</sub></td></tr>
+<tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td></td><td>s=s<sub>X</sub> or s<sub>Y</sub>; f=f<sub>X</sub>f<sub>Y</sub> or s<sub>X</sub>f<sub>X</sub> or s<sub>Y</sub>f<sub>Y</sub>; e=e<sub>X</sub>e<sub>Y</sub>s<sub>X</sub>s<sub>Y</sub></td></tr>
 <tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td>e<sub>X</sub>e<sub>Z</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; e</td></tr>
 <tr><td><code>or_c(<em>X</em>,<em>Z</en>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f</td></tr>
 <tr><td><code>or_d(<em>X</em>,<em>Z</en>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>Z</sub>; e=e<sub>Z</sub></td></tr>
@@ -529,9 +529,6 @@ The following table lists these additional properties, and the requirements for 
 </tbody>
 </table>
 Some examples from this table explained:<ul>
-<li><b><code>and_v(<em>X</em>,<em>Y</em>)</code> f property</b>: if <em>X</em> is dissatisfied, the script aborts (it's a "V" expression), so dissatisfaction is only possible by satisfying <em>X</em> (cannot be prevented) and then dissatisfying <em>Y</em>. If the latter cannot be dissatisfied (f<sub>Y</sub>), the overall expression can't be dissatisfied.
-<li><b><code>or_b(<em>X</em>,<em>Z</em>)</code> requirements</b>: the canonical satisfactions are "dsat(<em>Z</em>) sat(<em>X</em>)" and "sat(<em>Z</em>) dsat(<em>X</em>)". Since these involve dissatisfactions of both subexpressions, to guarantee non-malleable satisfaction, those dissatisfactions must be non-malleable as well (e<sub>X</sub>e<sub>Z</sub>). If both options were non-HASSIG, the result would be malleable, so we require that at least one can only be satisfied using a signature (s<sub>X</sub> or s<sub>Z</sub>).</li>
-<li><b><code>or_i(<em>X</em>,<em>Z</em>)</code> e property</b>: there are two canonical dissatisfactions ("dsat(<em>X</em>) 1" and "dsat(<em>Z</em>) 0"). It is not sufficient to require that just non-malleable dissatisfactions of the subexpressions exist, since we must also prevent the case where both exist. To do that, we use the f property. Either <em>X</em> is non-malleably dissatisfiable but <em>Z</em> isn't dissatisfiable at all (e<sub>X</sub>f<sub>Z</sub>) or the other way around (e<sub>Z</sub>f<sub>X</sub>). </li>
 </ul>
 </p>
 

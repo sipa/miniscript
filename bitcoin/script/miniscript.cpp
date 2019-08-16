@@ -55,7 +55,7 @@ Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z) {
             (x & "udfemsx"_mst); // u=u_x, d=d_x, f=f_x, e=e_x, m=m_x, s=s_x, x=x_x
         case NodeType::WRAP_C: return
             "B"_mst.If(x << "K"_mst) | // B=K_x
-             (x & "ondem"_mst) | // o=o_x, n=n_x, d=d_x, e=e_x, m=m_x
+             (x & "ondfem"_mst) | // o=o_x, n=n_x, d=d_x, f=f_x, e=e_x, m=m_x
              "us"_mst; // u, s
         case NodeType::WRAP_D: return
             "B"_mst.If(x << "Vz"_mst) | // B=V_x*z_x
@@ -81,13 +81,15 @@ Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z) {
             ((x | y) & "o"_mst).If((x | y) << "z"_mst) | // o=o_x*z_y+z_x*o_y
             (x & y & "dmz"_mst) | // d=d_x*d_y, m=m_x*m_y, z=z_x*z_y
             ((x | y) & "s"_mst) | // s=s_x+s_y
-            (y & "ufx"_mst); // u=u_y, f=f_y, x=x_y
+            "f"_mst.If((y << "f"_mst) || (x << "s"_mst)) | // f=f_y+s_x
+            (y & "ux"_mst); // u=u_y, x=x_y
         case NodeType::AND_B: return
             (x & "B"_mst).If(y << "W"_mst) | // B=B_x*W_y
             ((x | y) & "o"_mst).If((x | y) << "z"_mst) | // o=o_x*z_y+z_x*o_y
             (x & "n"_mst) | (y & "n"_mst).If(x << "z"_mst) | // n=n_x+z_x*n_y
             (x & y & "e"_mst).If((x & y) << "s"_mst) | // e=e_x*e_y*s_x*s_y
-            (x & y & "dfzm"_mst) | // d=d_x*d_y, f=f_x*f_y, z=z_x*z_y, m=m_x*m_y
+            (x & y & "dzm"_mst) | // d=d_x*d_y, z=z_x*z_y, m=m_x*m_y
+            "f"_mst.If(((x & y) << "f"_mst) || (x << "sf"_mst) || (y << "sf"_mst)) | // f=f_x*f_y + f_x*s_x + f_y*s_y
             ((x | y) & "s"_mst) | // s=s_x+s_y
             "ux"_mst; // u, x
         case NodeType::OR_B: return
@@ -120,7 +122,8 @@ Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z) {
             (y & z & "BKV"_mst).If(x << "Bdu"_mst) | // B=B_x*d_x*u_x*B_y*B_z, K=B_x*d_x*u_x*K_y*K_z, V=B_x*d_x*u_x*V_y*V_z
             (x & y & z & "z"_mst) | // z=z_x*z_y*z_z
             ((x | (y & z)) & "o"_mst).If((x | (y & z)) << "z"_mst) | // o=o_x*z_y*z_z+z_x+o_y*o_z
-            (y & z & "fu"_mst) | // f=f_y*f_z, u=u_y*u_z
+            (y & z & "u"_mst) | // f=f_y*f_z, u=u_y*u_z
+            (z & "f"_mst).If((x << "s"_mst) || (y << "f"_mst)) |
             (z & "d"_mst) | // d=d_x
             (x & z & "e"_mst).If(x << "s"_mst || y << "f"_mst) | // e=e_x*e_z*(s_x+s_y)
             (x & y & z & "m"_mst).If(x << "e"_mst && (x | y | z) << "s"_mst) | // m=m_x*m_y*m_z*e_x*(s_x+s_y+s_z)
