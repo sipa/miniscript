@@ -386,7 +386,7 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td>-</td><td>sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
 <tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>X</em>) 1; dsat(<em>Z</em>) 0</td><td>sat(<em>X</em>) 1; sat(<em>Z</em>) 0</td></tr>
-<tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>dsat(<em>X<sub>n</sub></em>) ... dsat(<em>X<sub>1</sub></em>)</td><td>[d]sat(<em>X<sub>n</sub></em>) ... [d]sat(<em>X<sub>1</sub></em>) (with k sats and n-k dsats)</td></tr>
+<tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>All dsats <span class="text-muted">[Sats/dsats with 1 &le; #(sats) &ne; k]</span></td><td>Sats/dsats with #(sats) = k</td></tr>
 <tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 0 ... 0 (n+1 times)</td><td>0 sig ... sig</td></tr>
 <tr><td><code>a:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>s:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
@@ -412,8 +412,8 @@ A conservative simplification is made here, ignoring the existence of always-tru
 <li><code>andor(1,<em>Y</em>,0)</code> is complete when <em>Y</em> is; it also has the same type as <em>Y</em>, despite <code>0</code> always being a "B". This is also dissatisfiable when <em>Y</em> is.
 <li>The <code>1</code>s items listed above can be replaced with any other always-true expression.
 </ul>
-Since all these cases of incorrect typing involve always-true expressions that can be avoided
-using simpler, cheaper Miniscripts, we don't consider this to be a serious restriction.
+Since all these cases of simplified typing involve always-true expressions that can be avoided
+using strictly cheaper Miniscripts, we don't consider this to be a serious restriction.
 </p>
 
 <h4>Malleability</h4>
@@ -458,7 +458,7 @@ In order to produce non-malleable satisfactions we make use of a function that r
 <li>Invoke the function recursively for all subexpressions, obtaining all satisfactions/dissatisfactions for those.</li>
 <li>Iterate over all the valid satisfactions/dissatisfactions in the table above (including the non-canonical ones), taking into account:<ul>
   <li>The dissatisfactions for <code>sha256</code>, <code>ripemd160</code>, <code>hash256</code>, and <code>hash160</code> are always malleable, so instead use DONTUSE there.</li>
-  <li>The non-canonical options for <code>and_b</code> and <code>or_b</code> are always overcomplete, so instead use DONTUSE there as well (but keep the HASSIG flag if the origin had one).
+  <li>The non-canonical options for <code>and_b</code>, <code>or_b</code>, and <code>thresh</code> are always overcomplete, so instead use DONTUSE there as well (with HASSIG flag if the original non-canonical solution had one).
   <li>The satisfactions for <code>pk</code>, <code>pk_h</code>, and <code>thresh_m</code> can be marked HASSIG.</li>
   <li>When constructing solutions by combining results for subexpressions, the result is DONTUSE if any of the constituent results is DONTUSE. Furthermore, the result gets the HASSIG tag if any of the constituents do.</li>
 </ul></li>
@@ -471,8 +471,20 @@ To produce an overall satisfaction, invoke the function on the toplevel expressi
 </p>
 
 <p>
-Some optimizations are possible. Even though the non-canonical <code>andor</code> options are not actually overcomplete, it can be shown that they will never appear in non-malleable satisfactions. So that too can be treated as DONTUSE. Another optimization is that for <code>thresh</code> it isn't necessary to go through all combinations of satisfactions; instead, by considering solutions to subexpressions in order of increasing difference between dissatisfaction and satisfaction size, the optimal solutions can be found very quickly.
+The above can be used to show that no non-canonical solutions listed in the satisfaction table can occur inside non-malleable satisfactions.<ul>
+<li>The <code>or_b(<em>X</em>,<em>Z</em>)</code> non-canonical satisfaction is overcomplete, and thus can clearly not appear in non-malleable satisfactions.</li>
+<li>It can be shown that non-"d" expressions cannot be dissatisfied in valid witnesses, as for those, dissatisfaction implies aborting or propagating failure upwards, ultimately dissatisfying the top-level expression.</li>
+<li>"d" expressions are by the type system guaranteed to be dissatisfiable using dissatisfactions of its subexpressions which are themselves "d".
+    Since no dissatisfactions ever directly include a signature, every "d" expression must have a non-HASSIG dissatisfaction. Non-HASSIG solutions
+    are preferred over HASSIG ones, and when multiple non-HASSIG ones exist, none can be used. This is the case for the other non-canonical options in the table:<ul>
+        <li>If <code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Z</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)".</li>
+        <li><code>j:X</code> is always "d", its non-HASSIG dissatisfaction "0" always exists, and thus rules out any usage of "dsat(<em>X</em>)".
+        <li>If <code>and_b(<em>X</em>,<em>Y</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Y</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)" and "sat(<em>Y</em>) dsat(<em>X</em>)". Those are also overcomplete. </li>
+        <li><code>thresh(k,...)</code> is always "d", a non-HASSIG dissatisfaction with just dissatisfactions must exist due to typing rules, and thus rules out usage of the other dissatisfactions. They are also overcomplete.</li>
+    </ul>
+</ul>
 </p>
+
 </div>
 </div>
 
