@@ -433,7 +433,7 @@ of the same transaction. Finally, malleability may interfere with the usage of h
 Because of these reasons, Miniscript is actually designed to permit non-malleable signing. As this guarantee is restricted in non-obvious ways, let's first state the assumptions:<ul>
 <li>The attacker does not have access to any of the private keys of public keys that participate in the Script. Limiting the impact a rogue participant can have is a distinct attack model.</li>
 <li>The attacker only has access to hash preimages that honest users have access to as well.</li>
-<li>The attacker gets to see exactly one satisfying witness of the script. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
+<li>The attacker gets to see exactly one satisfying witness of any transaction. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
 </ul>
 </p>
 
@@ -476,17 +476,69 @@ The above can be used to show that no non-canonical solutions listed in the sati
 <li>It can be shown that non-"d" expressions cannot be dissatisfied in valid witnesses, as for those, dissatisfaction implies aborting or propagating failure upwards, ultimately dissatisfying the top-level expression.</li>
 <li>"d" expressions are by the type system guaranteed to be dissatisfiable using dissatisfactions of its subexpressions which are themselves "d".
     Since no dissatisfactions ever directly include a signature, every "d" expression must have a non-HASSIG dissatisfaction. Non-HASSIG solutions
-    are preferred over HASSIG ones, and when multiple non-HASSIG ones exist, none can be used. This is the case for the other non-canonical options in the table:<ul>
-        <li>If <code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Z</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)".</li>
+    are preferred over HASSIG ones, and when multiple non-HASSIG ones exist, none can be used. This lets us rule out the other non-canonical options in the table:<ul>
         <li><code>j:X</code> is always "d", its non-HASSIG dissatisfaction "0" always exists, and thus rules out any usage of "dsat(<em>X</em>)".
+        <li>If <code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Z</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)".</li>
         <li>If <code>and_b(<em>X</em>,<em>Y</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Y</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)" and "sat(<em>Y</em>) dsat(<em>X</em>)". Those are also overcomplete. </li>
         <li><code>thresh(k,...)</code> is always "d", a non-HASSIG dissatisfaction with just dissatisfactions must exist due to typing rules, and thus rules out usage of the other dissatisfactions. They are also overcomplete.</li>
     </ul>
 </ul>
 </p>
 
+<h4>Guaranteeing non-malleability</h4>
+
+<p>
+Now we have an algorithm that can find the optimal non-malleable satisfaction for any Miniscript, if it exists. But can we statically prove that such a solution always exists?
+In order to do that, we add additional properties to the type system:<ul>
+<li><b>"s"</b> Requires signature: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).</li>
+<li><b>"f"</b> Forced to be satisfied: this expression cannot be dissatisfied. This conflicts with "d", but is not implied by non-"d". </li>
+<li><b>"e"</b> Expressive: this expression always has a non-malleable dissatisfaction (predicting non-DONTUSE dissatisfactions). This requires "d", but is not implied by it.</li>
+</ul>
+</p>
+
+<p>
+The following table lists these additional properties, and the requirements for non-malleability.
+<table class="table table-sm">
+<thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Requires</th><th scope="col">Properties</th></tr></thead>
+<tbody>
+<tr><td><code>0</code></td><td></td><td>s, e</td></tr>
+<tr><td><code>1</code></td><td></td><td>f</td></tr>
+<tr><td><code>pk(key)</code></td><td></td><td>s, e</td></tr>
+<tr><td><code>pk_h(key)</code></td><td></td><td>s, e</td></tr>
+<tr><td><code>older(n)</code></td><td></td><td>f</td></tr>
+<tr><td><code>after(n)</code></td><td></td><td>f</td></tr>
+<tr><td><code>sha256(h)</code></td><td></td><td></td></tr>
+<tr><td><code>ripemd160(h)</code></td><td></td><td></td></tr>
+<tr><td><code>hash256(h)</code></td><td></td><td></td></tr>
+<tr><td><code>hash160(h)</code></td><td></td><td></td></tr>
+<tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Y</sub> or s<sub>Z</sub>)</td><td>s=s<sub>Z</sub> and (s<sub>X</sub> or s<sub>Y</sub>); f=f<sub>Y</sub>f<sub>Z</sub>; e=e<sub>Z</sub> and (s<sub>X</sub> or f<sub>Y</sub>)</td></tr>
+<tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td></td><td>s=s<sub>X</sub> or s<sub>Y</sub>; f=f<sub>Y</sub></td></tr>
+<tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td></td><td>s=s<sub>X</sub> or s<sub>Y</sub>; f=f<sub>X</sub>f<sub>Y</sub>; e=e<sub>X</sub>e<sub>Y</sub>s<sub>X</sub>s<sub>Y</sub></td></tr>
+<tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td>e<sub>X</sub>e<sub>Z</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; e</td></tr>
+<tr><td><code>or_c(<em>X</em>,<em>Z</en>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f</td></tr>
+<tr><td><code>or_d(<em>X</em>,<em>Z</en>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>Z</sub>; e=e<sub>Z</sub></td></tr>
+<tr><td><code>or_i(<em>X</em>,<em>Z</en>)</code></td><td>s<sub>X</sub> or s<sub>Z</sub></td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>X</sub>f<sub>Z</sub>; e=e<sub>X</sub>f<sub>Z</sub> or e<sub>Z</sub>f<sub>X</sub></td></tr>
+<tr><td><code>thresh(k,<em>X<sub>1</sub><em>,...,<em>X<sub>n</sub></em>)</code></td><td>all are e; at most k are non-s</td><td>s=at most k-1 are non-s; e=all are s</td></tr>
+<tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td></td><td>s; e</td></tr>
+<tr><td><code>a:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
+<tr><td><code>s:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
+<tr><td><code>c:<em>X</em></code></td><td></td><td>s; e=e<sub>X</sub></td></tr>
+<tr><td><code>d:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; e</td></tr>
+<tr><td><code>v:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f</td></tr>
+<tr><td><code>j:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; e=f<sub>X</sub></td></tr>
+<tr><td><code>n:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
+</tbody>
+</table>
+Some examples from this table explained:<ul>
+<li><b><code>and_v(<em>X</em>,<em>Y</em>)</code> f property</b>: if <em>X</em> is dissatisfied, the script aborts (it's a "V" expression), so dissatisfaction is only possible by satisfying <em>X</em> (cannot be prevented) and then dissatisfying <em>Y</em>. If the latter cannot be dissatisfied (f<sub>Y</sub>), the overall expression can't be dissatisfied.
+<li><b><code>or_b(<em>X</em>,<em>Z</em>)</code> requirements</b>: the canonical satisfactions are "dsat(<em>Z</em>) sat(<em>X</em>)" and "sat(<em>Z</em>) dsat(<em>X</em>)". Since these involve dissatisfactions of both subexpressions, to guarantee non-malleable satisfaction, those dissatisfactions must be non-malleable as well (e<sub>X</sub>e<sub>Z</sub>). If both options were non-HASSIG, the result would be malleable, so we require that at least one can only be satisfied using a signature (s<sub>X</sub> or s<sub>Z</sub>).</li>
+<li><b><code>or_i(<em>X</em>,<em>Z</em>)</code> e property</b>: there are two canonical dissatisfactions ("dsat(<em>X</em>) 1" and "dsat(<em>Z</em>) 0"). It is not sufficient to require that just non-malleable dissatisfactions of the subexpressions exist, since we must also prevent the case where both exist. To do that, we use the f property. Either <em>X</em> is non-malleably dissatisfiable but <em>Z</em> isn't dissatisfiable at all (e<sub>X</sub>f<sub>Z</sub>) or the other way around (e<sub>Z</sub>f<sub>X</sub>). </li>
+</ul>
+</p>
+
 </div>
 </div>
+
 
 <div class="card mb-3 text-left">
 <h3 class="card-header">Compiler demo</h3>
