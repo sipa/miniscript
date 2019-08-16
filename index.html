@@ -285,7 +285,7 @@ Then there are 5 type modifiers, which guarantee additional properties:<ul>
 <li><b>"z"</b> Zero-arg: this expression always consumes exactly 0 stack elements.</li>
 <li><b>"o"</b> One-arg: this expression always consumes exactly 1 stack element.</li>
 <li><b>"n"</b> Nonzero: no satisfaction for this expression requires a top stack element that is zero.</li>
-<li><b>"d"</b> Dissatisfiable: a canonical dissatisfaction exists for this expression that can be constructed by anyone.</li>
+<li><b>"d"</b> Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed.</li>
 <li><b>"u"</b> Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).</li>
 </ul>
 </p>
@@ -342,7 +342,7 @@ Miniscript makes it easy to verify these properties statically for all possible 
 <h4>Security properties</h4>
 <p>
 The type system above guarantees that the corresponding Bitcoin Scripts are:<ul>
-  <li><b>consensus and standardness complete</b>: Assuming the resource limits listed in the previous section are not violated, for every way that the spending conditions associated with the Miniscript can be met, a witness can be constructed that passes Bitcoin's consensus rules and common standardness rules.</li>
+  <li><b>consensus and standardness complete</b>: Assuming the resource limits listed in the previous section are not violated, for every set of met conditions that are permitted by the semantics, a witness can be constructed that passes Bitcoin's consensus rules and common standardness rules.</li>
   <li><b>consensus sound</b>: It is not possible to construct a witness that is consensus valid for a Script unless the spending conditions are met. Since standardness rules permit only a subset of consensus-valid satisfactions (by definition), this property also implies <b>standardness soundness</b>.
 </ul>
 </p>
@@ -380,7 +380,7 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <tr><td><code>hash256(h)</code></td><td>any 32-byte vector except the preimage</td><td>preimage</td></tr>
 <tr><td><code>hash160(h)</code></td><td>any 32-byte vector except the preimage</td><td>preimage</td></tr>
 <tr><td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>); <span class="text-muted">[dsat(<em>Y</em>) sat(<em>X</em>)]</span></td><td>sat(<em>Y</em>) sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
-<tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td>-</td><td>sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
+<tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td><span class="text-muted">[dsat(<em>Y</em>) sat(<em>X</em>)]</span></td><td>sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
 <tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td>dsat(<em>Y</em>) dsat(<em>X</em>); <span class="text-muted">[sat(<em>Y</em>) dsat(<em>X</em>)]</span>; <span class="text-muted">[dsat(<em>Y</em>) sat(<em>X</em>)]</span></td><td>sat(<em>Y</em>) sat(<em>X</em>)</td></tr>
 <tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>dsat(<em>Z</em>) sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>); <span class="text-muted">[sat(<em>Z</em>) sat(<em>X</em>)]</span></td></tr>
 <tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td>-</td><td>sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
@@ -413,7 +413,7 @@ A conservative simplification is made here, ignoring the existence of always-tru
 <li>The <code>1</code>s items listed above can be replaced with any other always-true expression.
 </ul>
 Since all these cases of simplified typing involve always-true expressions that can be avoided
-using strictly cheaper Miniscripts, we don't consider this to be a serious restriction.
+using strictly cheaper Miniscripts, we don't consider this to be a serious restriction. For Miniscripts excluding always-true expressions (except in <code>and_v(<em>X</em>,1)</code>), the typing rules match the definitions above.
 </p>
 
 <h4>Malleability</h4>
@@ -472,10 +472,9 @@ To produce an overall satisfaction, invoke the function on the toplevel expressi
 
 <p>
 The above can be used to show that no non-canonical solutions listed in the satisfaction table can occur inside non-malleable satisfactions.<ul>
-<li>The <code>or_b(<em>X</em>,<em>Z</em>)</code> non-canonical satisfaction is overcomplete, and thus can clearly not appear in non-malleable satisfactions.</li>
-<li>It can be shown that non-"d" expressions cannot be dissatisfied in valid witnesses, as for those, dissatisfaction implies aborting or propagating failure upwards, ultimately dissatisfying the top-level expression.</li>
-<li>"d" expressions are by the type system guaranteed to be dissatisfiable using dissatisfactions of its subexpressions which are themselves "d".
-    Since no dissatisfactions ever directly include a signature, every "d" expression must have a non-HASSIG dissatisfaction. Non-HASSIG solutions
+<li>Some of the non-canonical options (the <code>or_b</code>, <code>and_b</code>, and <code>thresh</code> ones) are overcomplete, and thus can clearly not appear in non-malleable satisfactions.</li>
+<li>It can be shown that non-"d" expressions cannot be dissatisfied in valid witnesses, as for those, dissatisfaction implies aborting or propagating failure upwards, ultimately dissatisfying the top-level expression. This rules out the usage of the non-canonical <code>and_v</code> dissatisfaction.</li>
+<li>"d" expressions are defined to be unconditionally dissatisfiable, which implies that for those a non-HASSIG dissatisfaction must exist. Non-HASSIS solutions
     are preferred over HASSIG ones, and when multiple non-HASSIG ones exist, none can be used. This lets us rule out the other non-canonical options in the table:<ul>
         <li><code>j:X</code> is always "d", its non-HASSIG dissatisfaction "0" always exists, and thus rules out any usage of "dsat(<em>X</em>)".
         <li>If <code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Z</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)".</li>
