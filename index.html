@@ -44,9 +44,9 @@ function miniscript_compile() {
         document.getElementById("analyze_ms").value = Module.UTF8ToString(msout);
         document.getElementById("analyze_out").innerHTML = "";
         document.getElementById("out").innerHTML =
-            "<p></p><p><b>Miniscript output:</b></p><p><code>" + htmlEscape(Module.UTF8ToString(msout)) + "</code></p>" +
-            "<p><b>Spending cost analysis</b></p><p>" + Module.UTF8ToString(costout) + "</p>" +
-            "<p><b>Resulting script structure</b></p><p><samp><pre>" + htmlEscape(Module.UTF8ToString(asmout)) + "</pre></samp></p>";
+            "<p><p><b>Miniscript output:</b><p><code>" + htmlEscape(Module.UTF8ToString(msout)) + "</code>" +
+            "<p><b>Spending cost analysis</b><p>" + Module.UTF8ToString(costout) + "" +
+            "<p><b>Resulting script structure</b><p><samp><pre>" + htmlEscape(Module.UTF8ToString(asmout)) + "</pre></samp>";
         Module._free(msout)
         Module._free(costout)
         Module._free(asmout)
@@ -61,8 +61,8 @@ function miniscript_analyze() {
         var asmout = Module._malloc(100000);
         em_miniscript_analyze(src, analyze_out, 50000, asmout, 100000);
         document.getElementById("analyze_out").innerHTML =
-            "<p></p><p><b>Analysis</b></p><p>" + Module.UTF8ToString(analyze_out) + "</p><p><small>Hover over the tree elements for more details</small></p>" +
-            "<p><b>Resulting script structure</b></p><p><samp><pre>" + htmlEscape(Module.UTF8ToString(asmout)) + "</pre></samp></p>";
+            "<p><p><b>Analysis</b><p>" + Module.UTF8ToString(analyze_out) + "<p><small>Hover over the tree elements for more details</small>" +
+            "<p><b>Resulting script structure</b><p><samp><pre>" + htmlEscape(Module.UTF8ToString(asmout)) + "</pre></samp>";
         Module._free(analyze_out)
         Module._free(asmout)
     });
@@ -77,7 +77,6 @@ function miniscript_analyze() {
 <div class="card-block">
 <p>
 <em>Miniscript</em> is a language for writing (a subset of) Bitcoin Scripts in a structured way, enabling analysis, composition, generic signing and more.
-</p>
 
 <p>
 Bitcoin Script is an unusual stack-based language with many edge cases, designed for implementing spending conditions consisting of various combinations of
@@ -89,29 +88,26 @@ signatures, hash locks, and time locks. Yet despite being limited in functionali
 <li>Given a script, be able to predict the cost of spending an output.</li>
 <li>Given a script, know whether any code path requires violating particular resource limitations like the ops limit.</li>
 </ul>
-</p>
 
 <p>
 Miniscript functions as a representation for scripts that makes these sort of operations possible. It has a structure that allows composition. It is very easy to 
 statically analyze for various properties (spending conditions, correctness, security properties, malleability, ...). It can be targeted by spending policy compilers
 (see further). Finally, compatible scripts easily can be converted to miniscript - avoiding the need for additional metadata for e.g. signing devices that support it.
-</p>
 
 <p>
 For now, Miniscript is really only designed for P2WSH and P2SH-P2WSH embedded scripts. Most of its constructions works fine in P2SH as well, but some of the (optional) security properties
 rely on Segwit-specific rules. Furthermore, the implemented policy compilers assume a Segwit-specific cost model.
-</p>
 
 <p>
 Miniscript was designed and implemented by Pieter Wuille, Andrew Poelstra, and Sanket Kanjalkar at Blockstream Research, but is the result of discussions with several other people.
-</p>
+
 
 <p>
 Source code links:<ul>
 <li><a href="https://github.com/sipa/miniscript">Website and C++ compiler code</a></li>
 <li><a href="https://github.com/sipa/miniscript/tree/master/bitcoin/script">Bitcoin Core compatible C++ implementation</a></li>
 <li><a href="https://github.com/apoelstra/rust-miniscript">Rust-miniscript implementation</a></li>
-</p>
+</ul>
 
 </div>
 </div>
@@ -120,12 +116,12 @@ Source code links:<ul>
 <h3 class="card-header">Policy to Miniscript compiler</h3>
 <div class="card-block">
 
-<p>Here you can see a demonstration of the Miniscript compiler. Write a spending policy following the instructions below, and observe how it affects the constructed Miniscript.</p>
+<p>Here you can see a demonstration of the Miniscript compiler. Write a spending policy following the instructions below, and observe how it affects the constructed Miniscript.
 <form>
   <div class="form-group">
     <label for="source">Policy</label>
     <textarea class="form-control" id="source" rows="1">and(pk(A),or(pk(B),or(9@pk(C),older(1000))))</textarea>
-    <small class="form-text test-muted">Supported expressions:
+    <div class="small form-text test-muted">Supported expressions:
     <ul>
     <li><samp>pk(<em>NAME</em>)</samp>: Require public key named <em>NAME</em> to sign. <em>NAME</em> can be any string up to 16 characters.</li>
     <li><samp>after(<em>NUM</em>)</samp>, <samp>older(<em>NUM</em>)</samp>: Require that the <samp>nLockTime</samp>/<samp>nSequence</samp> value is at least <em>NUM</em>. <em>NUM</em> cannot be 0.</li>
@@ -134,7 +130,7 @@ Source code links:<ul>
     <li><samp>and(<em>EXPR</em>,<em>EXPR</em>)</samp>: Require that both subexpressions are satisfied.</li>
     <li><samp>or([<em>N</em>@]<em>EXPR</em>,[<em>N</em>@]<em>EXPR</em>)</samp>: Require that one of the subexpressions is satisfied. The numbers N indicate the relative probability of each of the subexpressions.</li>
     <li><samp>thresh(<em>NUM</em>,<em>EXPR</em>,<em>EXPR</em>,...)</samp>: Require that NUM out of the following subexpressions are satisfied (all combinations are assumed to be equally likely).</li>
-    </ul></small>
+    </ul></div>
   </div>
   <button type="button" class="btn btn-primary" onclick="miniscript_compile();">Compile</button>
 </form>
@@ -298,7 +294,7 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 </div>
 The <code>and_n</code> fragment and <code>t:</code>, <code>l:</code>, and <code>u:</code> wrappers are syntactic sugar for other Miniscripts, as listed in the table above.
 In what follows, they will not be included anymore, as their properties can be derived by looking at their expansion.
-</p>
+
 
 <h4>Correctness properties</h4>
 
@@ -306,7 +302,7 @@ In what follows, they will not be included anymore, as their properties can be d
 Not every Miniscript expression can be composed with every other. Some return their result by putting zero or false on the stack; others distinguish by aborting or continuing.
 Some require subexpressions that consume an exactly known number of arguments, while others need a subexpression that has a nonzero top stack element to satisfy. To model all
 these properties, we define a correctness type system for Miniscript.
-</p>
+
 
 <p>
 Every miniscript expression has one of four basic types:<ul>
@@ -334,11 +330,11 @@ Every miniscript expression has one of four basic types:<ul>
   <li>Takes its input from one below the top of the stack.</li>
   <li>When satisfied, pushes a nonzero value (like B) on top of the stack, or one below the top.</li>
   <li>When dissatisfied, pushes 0 op top of the stack or one below the top.</li>
-  <li>Every "W" is either <code>s:B</code> (<samp>SWAP B</samp>) or <code>a:B</code> (<samp>TOALTSTACK B FROMALTSTACK</code>).</li>
+  <li>Every "W" is either <code>s:B</code> (<samp>SWAP B</samp>) or <code>a:B</code> (<samp>TOALTSTACK B FROMALTSTACK</samp>).</li>
   <li>For example <code>sc:pk(key)</code> = <samp>SWAP &lt;key&gt; CHECKSIG</samp>.</li>
 </ul></li>
 </ul>
-</p>
+
 
 <p>
 Then there are 5 type modifiers, which guarantee additional properties:<ul>
@@ -348,7 +344,7 @@ Then there are 5 type modifiers, which guarantee additional properties:<ul>
 <li><b>"d"</b> Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed.</li>
 <li><b>"u"</b> Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).</li>
 </ul>
-</p>
+
 
 <p>
 This tables lists the correctness requirements for each of the Miniscript expressions, and its type properties in function of those of their subexpressions:
@@ -372,7 +368,7 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Z</em> is V</td><td>V</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub></td></tr>
 <tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Z</em> is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>; d=d<sub>Z</sub>; u=u<sub>Z</sub></td></tr>
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>both are B, K, or V</td><td>same as X/Z</td><td>o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
-<tr><td><code>thresh(k,<em>X<sub>1</sub><em>,...,<em>X<sub>n</sub></em>)</code></td><td>1 &lt; k &lt; n; <em>X<sub>1</sub></em> is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
+<tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>1 &lt; k &lt; n; <em>X<sub>1</sub></em> is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
 <tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
 <tr><td><code>a:X</code></td><td><em>X</em> is B</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
 <tr><td><code>s:X</code></td><td><em>X</em> is Bo</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
@@ -384,7 +380,7 @@ This tables lists the correctness requirements for each of the Miniscript expres
 </tbody>
 </table>
 </div>
-</p>
+
 
 <h4>Resource limitations</h4>
 
@@ -399,7 +395,7 @@ Various types of Bitcoin Scripts have different resource limitations, either thr
 <li>Script satisfactions with a witness consisting of over 100 stack elements (excluding the script itself) are invalid by standardness (P2WSH, P2SH-P2WSH).</li>
 </ul>
 Miniscript makes it easy to verify these properties statically for all possible execution paths.
-</p>
+
 
 <h4>Security properties</h4>
 <p>
@@ -407,7 +403,7 @@ The type system above guarantees that the corresponding Bitcoin Scripts are:<ul>
   <li><b>consensus and standardness complete</b>: Assuming the resource limits listed in the previous section are not violated, for every set of met conditions that are permitted by the semantics, a witness can be constructed that passes Bitcoin's consensus rules and common standardness rules.</li>
   <li><b>consensus sound</b>: It is not possible to construct a witness that is consensus valid for a Script unless the spending conditions are met. Since standardness rules permit only a subset of consensus-valid satisfactions (by definition), this property also implies <b>standardness soundness</b>.
 </ul>
-</p>
+
 
 <p>
 The completeness property has been extensively tested for P2WSH by verifying large numbers of random satisfactions for random Miniscript expressions against Bitcoin Core's consensus and standardness implementation.
@@ -416,7 +412,7 @@ The completeness property has been extensively tested for P2WSH by verifying lar
 <p>In order for these properties to not just apply to script, but to an entire transaction, it's important that the witness commits to all data relevant for verification. In practice
 this means that scripts whose conditions can be met without any digital signature are insecure. For example, if an output can be spent by simply passing a certain <samp>nLockTime</samp>
 (an <code>after(n)</code> fragment in Miniscript) but without any digital signatures, an attacker can modify the <samp>nLockTime</samp> field in the spending transaction.
-</p>
+
 </div>
 </div>
 
@@ -461,11 +457,11 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 </tbody>
 </table>
 </div>
-</p>
+
 <p>
 The correctness properties in the previous section are based on the availability of satisfactions and dissatisfactions listed above. The requirements include a "d" for every
 subexpression whose dissatisfaction may be needed in building a satisfaction for the parent expression. The "d" properties themselves rely on the "d" properties of subexpressions.
-</p>
+
 
 <p>
 A conservative simplification is made here, ignoring the existence of always-true expressions like <code>1</code>. This makes the typing rules incorrect in the following cases:<ul>
@@ -478,12 +474,12 @@ A conservative simplification is made here, ignoring the existence of always-tru
 </ul>
 Since all these cases of inaccurate typing involve always-true expressions that can be avoided
 using strictly simpler/smaller Miniscripts, we don't consider this to be a serious restriction. For Miniscripts excluding always-true expressions (except in the <code>and_v(<em>X</em>,1)</code> code), the typing rules match the definitions above.
-</p>
+
 
 <h4>Malleability</h4>
 <p>
 While following the table above to construct satisfactions is sufficient for meeting the completeness and soundness properties, it does not guarantee non-malleability.
-</p>
+
 
 <p>
 Malleability is the ability for a third party (<em>not</em> a participant in the script) to modify an existing satisfaction into another valid satisfaction.
@@ -491,7 +487,7 @@ Since Segwit, malleating a transaction no longer breaks the validity of unconfir
 much weaker undesirable effects. If a witness can be stuffed with additional data, the transaction's feerate will go down, potentially to the point where its ability to
 propagate and get confirmed is impacted. Additionally, malleability can be exploited to add roundtrips to BIP152 block propagation, by trying to get different miners to mine different versions
 of the same transaction. Finally, malleability may interfere with the usage of hash locks as a mechanism for publishing preimages.
-</p>
+
 
 <p>
 Because of these reasons, Miniscript is actually designed to permit non-malleable signing. As this guarantee is restricted in non-obvious ways, let's first state the assumptions:<ul>
@@ -499,7 +495,7 @@ Because of these reasons, Miniscript is actually designed to permit non-malleabl
 <li>The attacker only has access to hash preimages that honest users have access to as well.</li>
 <li>The attacker gets to see exactly one satisfying witness of any transaction. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
 </ul>
-</p>
+
 
 <p>
 Malleable satisfactions or dissatisfactions appear whenever options are available to attackers distinct from the one taken by honest users. This can happen for multiple reasons:<ul>
@@ -507,7 +503,7 @@ Malleable satisfactions or dissatisfactions appear whenever options are availabl
 <li>Two ore more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the one available to him.</li>
 <li>The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. Those are called an overcomplete solutions.</li>
 </ul>
-</p>
+
 
 <h4>Non-malleable satisfaction algorithm</h4>
 
@@ -515,7 +511,7 @@ Malleable satisfactions or dissatisfactions appear whenever options are availabl
 Because we assume attackers never have access to private keys, we can treat any solution that includes a signature as one that is unavailable to attackers.
 For others, the worst case is that the attacker has access to every solution the honest users have, but no others: for preimages this is an explicit assumption, while timelock availability is determined
 by the <samp>nLockTime</samp> and <samp>nSequence</samp> fields in the transaction. As long as the overall satisfaction includes at least one signature, those values are fixed, and timelock availability is identical for attackers and honest users.
-</p>
+
 
 <p>
 In order to produce non-malleable satisfactions we make use of a function that returns the optimal satisfaction and dissatisfaction for a given expression (if any exist), or a special DONTUSE value, together with an optional HASSIG marker that tracks whether the solution contains at least one signature. To implement the function: <ul>
@@ -532,7 +528,7 @@ In order to produce non-malleable satisfactions we make use of a function that r
 <li>Otherwise, return the smallest solution (in terms of witness size) among the not-DONTUSE ones.
 </ul>
 To produce an overall satisfaction, invoke the function on the toplevel expression. If no valid satisfaction is returned, or it is DONTUSE, fail. Otherwise, if any timelocking is used in the script but the result does not have the HASSIG flag, also fail, as this represents a situation where an attacker could change the <samp>nLockTime</samp> or <samp>nSequence</samp> values to meet additional timelock conditions. Not to mention that solutions without signatures are generally insecure. If the satisfaction is both not DONTUSE and HASSIG, return it.
-</p>
+
 
 <p>
 The above can be used to show that no non-canonical solutions listed in the satisfaction table can occur inside non-malleable satisfactions.<ul>
@@ -546,7 +542,7 @@ The above can be used to show that no non-canonical solutions listed in the sati
         <li><code>thresh(k,...)</code> is always "d", a non-HASSIG dissatisfaction with just dissatisfactions must exist due to typing rules, and thus rules out usage of the other dissatisfactions. They are also overcomplete.</li>
     </ul>
 </ul>
-</p>
+
 
 <h4>Guaranteeing non-malleability</h4>
 
@@ -557,7 +553,7 @@ In order to do that, we add additional properties to the type system:<ul>
 <li><b>"f"</b> Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG). This conflicts with "d". </li>
 <li><b>"e"</b> Expressive: regardless of what conditions are met, exactly one dissatisfaction without signatures is available (predicting non-DONTUSE dissatisfactions). This implies "d".</li>
 </ul>
-</p>
+
 
 <p>
 The following table lists these additional properties, and the requirements for non-malleability.
@@ -579,10 +575,10 @@ The following table lists these additional properties, and the requirements for 
 <tr><td><code>and_v(<em>X</em>,<em>Y</em>)</code></td><td></td><td>s=s<sub>X</sub> or s<sub>Y</sub>; f=s<sub>X</sub> or f<sub>Y</sub></td></tr>
 <tr><td><code>and_b(<em>X</em>,<em>Y</em>)</code></td><td></td><td>s=s<sub>X</sub> or s<sub>Y</sub>; f=f<sub>X</sub>f<sub>Y</sub> or s<sub>X</sub>f<sub>X</sub> or s<sub>Y</sub>f<sub>Y</sub>; e=e<sub>X</sub>e<sub>Y</sub>s<sub>X</sub>s<sub>Y</sub></td></tr>
 <tr><td><code>or_b(<em>X</em>,<em>Z</em>)</code></td><td>e<sub>X</sub>e<sub>Z</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; e</td></tr>
-<tr><td><code>or_c(<em>X</em>,<em>Z</en>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f</td></tr>
-<tr><td><code>or_d(<em>X</em>,<em>Z</en>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>Z</sub>; e=e<sub>Z</sub></td></tr>
-<tr><td><code>or_i(<em>X</em>,<em>Z</en>)</code></td><td>s<sub>X</sub> or s<sub>Z</sub></td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>X</sub>f<sub>Z</sub>; e=e<sub>X</sub>f<sub>Z</sub> or e<sub>Z</sub>f<sub>X</sub></td></tr>
-<tr><td><code>thresh(k,<em>X<sub>1</sub><em>,...,<em>X<sub>n</sub></em>)</code></td><td>all are e; at most k are non-s</td><td>s=at most k-1 are non-s; e=all are s</td></tr>
+<tr><td><code>or_c(<em>X</em>,<em>Z</em>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f</td></tr>
+<tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>Z</sub>; e=e<sub>Z</sub></td></tr>
+<tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>s<sub>X</sub> or s<sub>Z</sub></td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>X</sub>f<sub>Z</sub>; e=e<sub>X</sub>f<sub>Z</sub> or e<sub>Z</sub>f<sub>X</sub></td></tr>
+<tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>all are e; at most k are non-s</td><td>s=at most k-1 are non-s; e=all are s</td></tr>
 <tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td></td><td>s; e</td></tr>
 <tr><td><code>a:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
 <tr><td><code>s:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
@@ -594,7 +590,7 @@ The following table lists these additional properties, and the requirements for 
 </tbody>
 </table>
 </div>
-</p>
+
 
 </div>
 </div>
@@ -622,7 +618,7 @@ The following table lists these additional properties, and the requirements for 
 
 <footer class="footer">
     <div class="container text-center">
-        <img height="144px" src="blockstream.png" width="288px">
+        <img height="144" src="blockstream.png" width="288" alt="Blockstream logo">
     </div>
 </footer>
 
