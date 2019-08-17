@@ -155,6 +155,7 @@ a "fragment(arguments,...)" notation, while wrappers are written using prefixes 
 by a colon. The colon is dropped between subsequent wrappers; e.g. <code>vc:pk(key)</code> is the <code>v:</code>
 wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fragment for a given key.
 
+<div class="table-responsive">
 <table class="table table-sm">
 <thead class="thead-light">
 <tr><th scope="col">Semantics</th><th scope="col">Miniscript fragment</th><th scope="col">Bitcoin Script</th></tr></thead>
@@ -294,6 +295,7 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 </tr>
 </tbody>
 </table>
+</div>
 The <code>and_n</code> fragment and <code>t:</code>, <code>l:</code>, and <code>u:</code> wrappers are syntactic sugar for other Miniscripts, as listed in the table above.
 In what follows, they will not be included anymore, as their properties can be derived by looking at their expansion.
 </p>
@@ -350,6 +352,7 @@ Then there are 5 type modifiers, which guarantee additional properties:<ul>
 
 <p>
 This tables lists the correctness requirements for each of the Miniscript expressions, and its type properties in function of those of their subexpressions:
+<div class="table-responsive">
 <table class="table table-sm">
 <thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Requires</th><th scope="col">Type</th><th scope="col">Properties</th></tr></thead>
 <tbody>
@@ -380,6 +383,7 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <tr><td><code>n:X</code></td><td><em>X</em> is B</td><td>B</td><td>z=z<sub>X</sub>; o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
 </tbody>
 </table>
+</div>
 </p>
 
 <h4>Resource limitations</h4>
@@ -424,6 +428,7 @@ this means that scripts whose conditions can be met without any digital signatur
 The following table shows all valid satisfactions and dissatisfactions for every Miniscript, using satisfactions and dissatisfactions of its subexpressions.
 Multiple possibilities are separated by semicolons. Some options are not actually necessary to produce correct witnesses, and are called <em>non-canonical</em> options. They
 are listed for completeness, but marked in <span class="text-muted">[grey]</span> below.
+<div class="table-responsive">
 <table class="table table-sm">
 <thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Dissatisfactions (dsat)</th><th scope="col">Satisfactions (sat)</th></thead>
 <tbody>
@@ -455,6 +460,7 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <tr><td><code>n:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 </tbody>
 </table>
+</div>
 </p>
 <p>
 The correctness properties in the previous section are based on the availability of satisfactions and dissatisfactions listed above. The requirements include a "d" for every
@@ -555,6 +561,7 @@ In order to do that, we add additional properties to the type system:<ul>
 
 <p>
 The following table lists these additional properties, and the requirements for non-malleability.
+<div class="table-respnsive">
 <table class="table table-sm">
 <thead class="thead-light"><tr><th scope="col">Miniscript</th><th scope="col">Requires</th><th scope="col">Properties</th></tr></thead>
 <tbody>
@@ -586,6 +593,7 @@ The following table lists these additional properties, and the requirements for 
 <tr><td><code>n:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
 </tbody>
 </table>
+</div>
 </p>
 
 </div>
