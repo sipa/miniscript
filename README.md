@@ -1,0 +1,1 @@
+Go to [the website](http://bitcoin.sipa.be/miniscript/).

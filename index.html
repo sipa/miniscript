@@ -101,6 +101,18 @@ statically analyze for various properties (spending conditions, correctness, sec
 For now, Miniscript is really only designed for P2WSH and P2SH-P2WSH embedded scripts. Most of its constructions works fine in P2SH as well, but some of the (optional) security properties
 rely on Segwit-specific rules. Furthermore, the implemented policy compilers assume a Segwit-specific cost model.
 </p>
+
+<p>
+Miniscript was designed and implemented by Pieter Wuille, Andrew Poelstra, and Sanket Kanjalkar at Blockstream Research, but is the result of discussions with several other people.
+</p>
+
+<p>
+Source code links:<ul>
+<li><a href="https://github.com/sipa/miniscript">Website and C++ compiler code</a></li>
+<li><a href="https://github.com/sipa/miniscript/tree/master/bitcoin">Bitcoin Core compatible C++ implementation</a></li>
+<li><a href="https://github.com/apoelstra/rust-miniscript">Rust-miniscript implementation</a></li>
+</p>
+
 </div>
 </div>
 
@@ -574,15 +586,13 @@ The following table lists these additional properties, and the requirements for 
 <tr><td><code>n:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
 </tbody>
 </table>
-Some examples from this table explained:<ul>
-</ul>
 </p>
 
 </div>
 </div>
 
 
-<div class="card mb-3 text-left">
+<div class="card text-left">
 <h3 class="card-header">Analyze a Miniscript</h3>
 <div class="card-block">
 
@@ -601,5 +611,12 @@ Some examples from this table explained:<ul>
 </div>
 
 </div>
+
+<footer class="footer">
+    <div class="container text-center">
+        <img height="144px" src="blockstream.png" width="288px">
+    </div>
+</footer>
+
 </body>
 </html>
