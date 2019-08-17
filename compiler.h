@@ -9,25 +9,40 @@
 
 #include <string>
 
-struct CompilerKey {
-    std::string name;
-
-};
-
 struct CompilerContext {
-    typedef CompilerKey Key;
+    typedef std::string Key;
 
-    std::string ToString(const Key& key) const { return key.name; }
+    std::string ToString(const Key& key) const { return key; }
 
     template<typename I>
-    bool FromString(I first, I last, Key& key) const { key.name = std::string(first, last); return true; }
+    bool FromString(I first, I last, Key& key) const {
+        if (std::distance(first, last) == 0 || std::distance(first, last) > 17) return false;
+        key = std::string(first, last);
+        return true;
+    }
+
+    std::vector<unsigned char> ToPKBytes(const Key& key) const {
+        std::vector<unsigned char> ret{2, 'P', 'K', 'b'};
+        ret.resize(33, 0);
+        std::copy(key.begin(), key.end(), ret.begin() + 4);
+        return ret;
+    }
+
+    std::vector<unsigned char> ToPKHBytes(const Key& key) const {
+        std::vector<unsigned char> ret{'P', 'K', 'h'};
+        ret.resize(20, 0);
+        std::copy(key.begin(), key.end(), ret.begin() + 3);
+        return ret;
+    }
 };
 
 extern const CompilerContext COMPILER_CTX;
 
-bool Compile(const std::string& policy, miniscript::NodeRef<CompilerKey>& ret, double& avgcost);
+bool Compile(const std::string& policy, miniscript::NodeRef<std::string>& ret, double& avgcost);
 
 std::string Expand(std::string str);
 std::string Abbreviate(std::string str);
+
+std::string Disassemble(const CScript& script);
 
 #endif

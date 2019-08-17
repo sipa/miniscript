@@ -14,7 +14,7 @@ static bool run(std::string&& line, int64_t count) {
     if (line.size() && line.back() == '\n') line.pop_back();
     if (line.size() == 0) return false;
 
-    miniscript::NodeRef<CompilerKey> ret;
+    miniscript::NodeRef<std::string> ret;
     double avgcost = 0;
     if (Compile(Expand(line), ret, avgcost)) {
         printf("X %17.10f %5i %s %s\n", ret->ScriptSize() + avgcost, (int)ret->ScriptSize(), Abbreviate(ret->ToString(COMPILER_CTX)).c_str(), line.c_str());

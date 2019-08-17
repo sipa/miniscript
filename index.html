@@ -405,15 +405,15 @@ subexpression whose dissatisfaction may be needed in building a satisfaction for
 
 <p>
 A conservative simplification is made here, ignoring the existence of always-true expressions like <code>1</code>. This makes the typing rules incorrect in the following cases:<ul>
-<li><code>or_b(<em>X</em>,1)</code> and <code>or_b(1,<em>X</em>)</code> are complete when <em>X</em> is. In that case, the condition is equivalent to 1 and is always met, and a satisfaction of the form "nsat(<em>X</em>)" exists.
+<li><code>or_b(<em>X</em>,1)</code> and <code>or_b(1,<em>X</em>)</code> are complete when <em>X</em> is dissatisfiable ("d"). In that case, the condition is equivalent to 1 and is always met, and a satisfaction of the form "nsat(<em>X</em>)" exists.
 <li><code>or_b(1,1)</code> is complete, as it is equivalent to 1 and "" is a valid satisfaction.</li>
 <li><code>and_b(<em>X</em>,1)</code> and <code>and_b(1,<em>X</em>)</code> are dissatisfiable ("d") when <em>X</em> is.
 <li><code>andor(1,1,<em>Z</em>)</code> is complete, as it is equivalent to 1 and "" is a valid satisfaction.</li>
 <li><code>andor(1,<em>Y</em>,0)</code> is complete when <em>Y</em> is; it also has the same type as <em>Y</em>, despite <code>0</code> always being a "B". This is also dissatisfiable when <em>Y</em> is.
 <li>The <code>1</code>s items listed above can be replaced with any other always-true expression.
 </ul>
-Since all these cases of simplified typing involve always-true expressions that can be avoided
-using strictly cheaper Miniscripts, we don't consider this to be a serious restriction. For Miniscripts excluding always-true expressions (except in <code>and_v(<em>X</em>,1)</code>), the typing rules match the definitions above.
+Since all these cases of inaccurate typing involve always-true expressions that can be avoided
+using strictly simpler/smaller Miniscripts, we don't consider this to be a serious restriction. For Miniscripts excluding always-true expressions (except in the <code>and_v(<em>X</em>,1)</code> code), the typing rules match the definitions above.
 </p>
 
 <h4>Malleability</h4>
@@ -474,8 +474,8 @@ To produce an overall satisfaction, invoke the function on the toplevel expressi
 The above can be used to show that no non-canonical solutions listed in the satisfaction table can occur inside non-malleable satisfactions.<ul>
 <li>Some of the non-canonical options (the <code>or_b</code>, <code>and_b</code>, and <code>thresh</code> ones) are overcomplete, and thus can clearly not appear in non-malleable satisfactions.</li>
 <li>It can be shown that non-"d" expressions cannot be dissatisfied in valid witnesses, as for those, dissatisfaction implies aborting or propagating failure upwards, ultimately dissatisfying the top-level expression. This rules out the usage of the non-canonical <code>and_v</code> dissatisfaction.</li>
-<li>"d" expressions are defined to be unconditionally dissatisfiable, which implies that for those a non-HASSIG dissatisfaction must exist. Non-HASSIS solutions
-    are preferred over HASSIG ones, and when multiple non-HASSIG ones exist, none can be used. This lets us rule out the other non-canonical options in the table:<ul>
+<li>"d" expressions are defined to be unconditionally dissatisfiable, which implies that for those a non-HASSIG dissatisfaction must exist. Non-HASSIG solutions
+    must be preferred over HASSIG ones, and when multiple non-HASSIG ones exist, none can be used. This lets us rule out the other non-canonical options in the table:<ul>
         <li><code>j:X</code> is always "d", its non-HASSIG dissatisfaction "0" always exists, and thus rules out any usage of "dsat(<em>X</em>)".
         <li>If <code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Z</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)".</li>
         <li>If <code>and_b(<em>X</em>,<em>Y</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Y</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)" and "sat(<em>Y</em>) dsat(<em>X</em>)". Those are also overcomplete. </li>
@@ -489,7 +489,7 @@ The above can be used to show that no non-canonical solutions listed in the sati
 <p>
 Now we have an algorithm that can find the optimal non-malleable satisfaction for any Miniscript, if it exists. But can we statically prove that such a solution always exists?
 In order to do that, we add additional properties to the type system:<ul>
-<li><b>"s"</b> Requires signature: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).</li>
+<li><b>"s"</b> Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).</li>
 <li><b>"f"</b> Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG). This conflicts with "d". </li>
 <li><b>"e"</b> Expressive: regardless of what conditions are met, exactly one dissatisfaction without signatures is available (predicting non-DONTUSE dissatisfactions). This implies "d".</li>
 </ul>

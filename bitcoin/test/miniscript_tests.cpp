@@ -193,9 +193,6 @@ struct TestKey {
     TestKey(int x) { assert(x >= 0 && x <= 25); c = x; }
 
     bool operator==(TestKey arg) const { return c == arg.c; }
-
-    std::vector<unsigned char> ToPKBytes() const { return PUBKEYS[c]; }
-    std::vector<unsigned char> ToPKHBytes() const { return PKHASHES[c]; }
 };
 
 enum class ChallengeType {
@@ -229,6 +226,9 @@ struct TestContext {
     std::set<Challenge> supported;
 
     std::string ToString(const TestKey& key) const { return {char('A' + key.c)}; }
+
+    std::vector<unsigned char> ToPKBytes(const TestKey& key) const { return PUBKEYS[key.c]; }
+    std::vector<unsigned char> ToPKHBytes(const TestKey& key) const { return PKHASHES[key.c]; }
 
     template<typename I>
     bool FromString(I first, I last, TestKey& key) const {
@@ -549,7 +549,7 @@ BOOST_AUTO_TEST_CASE(random_miniscript_tests)
         auto typ = InsecureRandRange(100) ? "B"_mst : "Bms"_mst; // require 1% strong, non-malleable
         auto node = RandomNode(typ, 1 + InsecureRandRange(90));
         auto str = node->ToString(CTX);
-        auto script = node->ToScript();
+        auto script = node->ToScript(CTX);
         // Check consistency between script size estimation and real size
         BOOST_CHECK(node->ScriptSize() == script.size());
         // Check consistency of "x" property with the script (relying on the fact that in this test no keys or hashes end with a byte matching any of the opcodes below).
@@ -566,10 +566,7 @@ BOOST_AUTO_TEST_CASE(random_miniscript_tests)
         BOOST_CHECK_MESSAGE(decoded, str);
         // Check that it matches the original (we can't use *decoded == *node because the miniscript representation may differ, but the script will always match)
         if (decoded) {
-            BOOST_CHECK(decoded->ToScript() == script);
-            if (!(decoded->GetType() == node->GetType())) {
-                fprintf(stderr, "OOPS %s vs %s\n", str.c_str(), decoded->ToString(CTX).c_str());
-            }
+            BOOST_CHECK(decoded->ToScript(CTX) == script);
             BOOST_CHECK(decoded->GetType() == node->GetType());
         }
 

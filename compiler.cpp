@@ -18,12 +18,12 @@ const CompilerContext COMPILER_CTX;
 
 namespace {
 
-using Node = miniscript::NodeRef<CompilerKey>;
+using Node = miniscript::NodeRef<std::string>;
 using NodeType = miniscript::NodeType;
 using miniscript::operator""_mst;
 
 template<typename... Args>
-Node MakeNode(Args&&... args) { return miniscript::MakeNodeRef<CompilerKey>(std::forward<Args>(args)...); }
+Node MakeNode(Args&&... args) { return miniscript::MakeNodeRef<std::string>(std::forward<Args>(args)...); }
 
 struct Policy {
     enum class Type {
@@ -44,7 +44,7 @@ struct Policy {
     Type node_type = Type::NONE;
     std::vector<Policy> sub;
     std::vector<unsigned char> data;
-    std::vector<CompilerKey> keys;
+    std::vector<std::string> keys;
     std::vector<uint32_t> prob;
     uint32_t k = 0;
 
@@ -59,10 +59,10 @@ struct Policy {
     explicit Policy(Type nt, std::vector<unsigned char>&& dat) : node_type(nt), data(std::move(dat)) {}
     explicit Policy(Type nt, std::vector<unsigned char>&& dat, uint32_t kv) : node_type(nt), data(std::move(dat)), k(kv) {}
     explicit Policy(Type nt, std::vector<Policy>&& subs) : node_type(nt), sub(std::move(subs)) {}
-    explicit Policy(Type nt, std::vector<CompilerKey>&& key) : node_type(nt), keys(std::move(key)) {}
+    explicit Policy(Type nt, std::vector<std::string>&& key) : node_type(nt), keys(std::move(key)) {}
     explicit Policy(Type nt, std::vector<Policy>&& subs, std::vector<uint32_t>&& probs) : node_type(nt), sub(std::move(subs)), prob(std::move(probs)) {}
     explicit Policy(Type nt, std::vector<Policy>&& subs, uint32_t kv) : node_type(nt), sub(std::move(subs)), k(kv) {}
-    explicit Policy(Type nt, std::vector<CompilerKey>&& key, uint32_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
+    explicit Policy(Type nt, std::vector<std::string>&& key, uint32_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
 
     bool operator()() const { return node_type != Type::NONE; }
 };
@@ -96,7 +96,7 @@ Policy ParseProb(Span<const char>& in, uint32_t& prob) {
 Policy Parse(Span<const char>& in) {
     auto expr = Expr(in);
     if (Func("pk", expr)) {
-        CompilerKey key;
+        std::string key;
         if (COMPILER_CTX.FromString(expr.begin(), expr.end(), key)) {
             return Policy(Policy::Type::PK, Vector(std::move(key)));
         }
@@ -188,7 +188,7 @@ struct Strat {
 
     Type node_type;
     std::vector<const Strat*> sub;
-    std::vector<CompilerKey> keys;
+    std::vector<std::string> keys;
     std::vector<unsigned char> data;
     int64_t k = 0;
     double prob;
@@ -198,11 +198,11 @@ struct Strat {
     explicit Strat(Type nt, std::vector<unsigned char> dat) : node_type(nt), data(std::move(dat)) {}
     explicit Strat(Type nt, std::vector<unsigned char> dat, int64_t kv) : node_type(nt), data(std::move(dat)), k(kv) {}
     explicit Strat(Type nt, std::vector<const Strat*> subs) : node_type(nt), sub(std::move(subs)) {}
-    explicit Strat(Type nt, std::vector<CompilerKey> key) : node_type(nt), keys(std::move(key)) {}
+    explicit Strat(Type nt, std::vector<std::string> key) : node_type(nt), keys(std::move(key)) {}
     explicit Strat(Type nt, std::vector<const Strat*> subs, double probs) : node_type(nt), sub(std::move(subs)), prob(probs) {}
     explicit Strat(Type nt, std::vector<const Strat*> subs, int64_t kv, double probs) : node_type(nt), sub(std::move(subs)), k(kv), prob(probs) {}
     explicit Strat(Type nt, std::vector<const Strat*> subs, int64_t kv) : node_type(nt), sub(std::move(subs)), k(kv) {}
-    explicit Strat(Type nt, std::vector<CompilerKey> key, int64_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
+    explicit Strat(Type nt, std::vector<std::string> key, int64_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
 };
 
 typedef std::vector<std::unique_ptr<Strat>> StratStore;
@@ -299,7 +299,7 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
                 if (!s) return {};
             }
             if (std::all_of(node.sub.begin(), node.sub.end(), [&](const Policy& x){ return x.node_type == Policy::Type::PK; })) {
-                std::vector<CompilerKey> keys;
+                std::vector<std::string> keys;
                 for (const Policy& x : node.sub) {
                     keys.push_back(x.keys[0]);
                 }
@@ -801,6 +801,67 @@ void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationK
     }
 }
 
+std::string Disassembler(CScript::const_iterator& it, CScript::const_iterator end, int indent = 0) {
+    std::string ret;
+    bool newline = true;
+    size_t last_newline = 0;
+    size_t last_space = 0;
+    while (it != end) {
+        opcodetype opcode;
+        std::vector<unsigned char> data;
+        auto it2 = it;
+        if (!GetScriptOp(it2, end, opcode, &data)) return ret + " [error]";
+        if (opcode == OP_ELSE || opcode == OP_ENDIF) break;
+        it = it2;
+        if (newline) {
+            for (int i = 0; i < indent; ++i) ret += "  ";
+        } else {
+            ret += ' ';
+            last_space = ret.size() - 1;
+        }
+        if (data.size() == 20) {
+            if (data == std::vector<unsigned char>(20, 0x88)) {
+                ret += "<h>";
+            } else if (data[0] == 'P' && data[1] == 'K' && data[2] == 'h') {
+                while (data.size() && data.back() == 0) data.pop_back();
+                ret += "<HASH160(" + std::string((const char*)data.data() + 3, data.size() - 3) + ")>";
+            }
+        } else if (data.size() == 32 && data == std::vector<unsigned char>(32, 0x99)) {
+            ret += "<H>";
+        } else if (data.size() == 33 && data[0] == 2 && data[1] == 'P' && data[2] == 'K' && data[3] == 'b') {
+            while (data.size() && data.back() == 0) data.pop_back();
+            ret += "<" + std::string((const char*)data.data() + 4, data.size() - 4) + ">";
+        } else if (data.size() > 0) {
+            ret += "<" + HexStr(data.begin(), data.end()) + ">";
+        } else {
+            ret += std::string(GetOpName(opcode));
+            if (opcode == OP_IF || opcode == OP_NOTIF) {
+                ret += '\n';
+                ret += Disassembler(it, end, indent + 1);
+                if (it != end && *it == OP_ELSE) {
+                    for (int i = 0; i < indent; ++i) ret += "  ";
+                    ret += std::string(GetOpName(opcodetype(*(it++)))) + '\n';
+                    ret += Disassembler(it, end, indent + 1);
+                }
+                if (it != end && *it == OP_ENDIF) {
+                    for (int i = 0; i < indent; ++i) ret += "  ";
+                    ret += std::string(GetOpName(opcodetype(*(it++)))) + '\n';
+                }
+                last_newline = ret.size();
+                newline = true;
+            }
+        }
+        if (!newline && ret.size() - last_newline > 80) {
+          ret[last_space] = '\n';
+          for (int i = 0; i < indent; ++i) ret.insert(last_space + 1, "  ");
+          last_newline = last_space + 1;
+        }
+        newline = (ret.size() == last_newline);
+    }
+    if (!newline) ret += '\n';
+    return ret;
+}
+
 /*
 std::string DebugNode(const Node& node) {
     switch (node->nodetype) {
@@ -847,7 +908,7 @@ void PrintCompilationResult(int level, const Result& res) {
 
 } // namespace
 
-bool Compile(const std::string& policy, miniscript::NodeRef<CompilerKey>& ret, double& avgcost) {
+bool Compile(const std::string& policy, miniscript::NodeRef<std::string>& ret, double& avgcost) {
     Policy pol = Parse(policy);
     if (!pol()) return false;
 
@@ -899,4 +960,9 @@ std::string Abbreviate(std::string str) {
         str.replace(pos, 42, "(h)");
     }
     return str;
+}
+
+std::string Disassemble(const CScript& script) {
+    auto it = script.begin();
+    return Disassembler(it, script.end());
 }

@@ -425,43 +425,45 @@ private:
     }
 
     //! Internal code for ToScript.
-    CScript MakeScript(bool verify = false) const {
+    template<typename Ctx>
+    CScript MakeScript(const Ctx& ctx, bool verify = false) const {
+        std::vector<unsigned char> bytes;
         switch (nodetype) {
-            case NodeType::PK: return CScript() << keys[0].ToPKBytes();
-            case NodeType::PK_H: return CScript() << OP_DUP << OP_HASH160 << keys[0].ToPKHBytes() << OP_EQUALVERIFY;
+            case NodeType::PK: return CScript() << ctx.ToPKBytes(keys[0]);
+            case NodeType::PK_H: return CScript() << OP_DUP << OP_HASH160 << ctx.ToPKHBytes(keys[0]) << OP_EQUALVERIFY;
             case NodeType::OLDER: return CScript() << k << OP_CHECKSEQUENCEVERIFY;
             case NodeType::AFTER: return CScript() << k << OP_CHECKLOCKTIMEVERIFY;
             case NodeType::SHA256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_SHA256 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
             case NodeType::RIPEMD160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_RIPEMD160 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
             case NodeType::HASH256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH256 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
             case NodeType::HASH160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH160 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-            case NodeType::WRAP_A: return (CScript() << OP_TOALTSTACK) + subs[0]->MakeScript() + (CScript() << OP_FROMALTSTACK);
-            case NodeType::WRAP_S: return (CScript() << OP_SWAP) + subs[0]->MakeScript(verify);
-            case NodeType::WRAP_C: return subs[0]->MakeScript() + CScript() << (verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
-            case NodeType::WRAP_D: return (CScript() << OP_DUP << OP_IF) + subs[0]->MakeScript() + (CScript() << OP_ENDIF);
-            case NodeType::WRAP_V: return subs[0]->MakeScript(true) + (subs[0]->GetType() << "x"_mst ? (CScript() << OP_VERIFY) : CScript());
-            case NodeType::WRAP_J: return (CScript() << OP_SIZE << OP_0NOTEQUAL << OP_IF) + subs[0]->MakeScript() + (CScript() << OP_ENDIF);
-            case NodeType::WRAP_N: return subs[0]->MakeScript() + CScript() << OP_0NOTEQUAL;
+            case NodeType::WRAP_A: return (CScript() << OP_TOALTSTACK) + subs[0]->MakeScript(ctx) + (CScript() << OP_FROMALTSTACK);
+            case NodeType::WRAP_S: return (CScript() << OP_SWAP) + subs[0]->MakeScript(ctx, verify);
+            case NodeType::WRAP_C: return subs[0]->MakeScript(ctx) + CScript() << (verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
+            case NodeType::WRAP_D: return (CScript() << OP_DUP << OP_IF) + subs[0]->MakeScript(ctx) + (CScript() << OP_ENDIF);
+            case NodeType::WRAP_V: return subs[0]->MakeScript(ctx, true) + (subs[0]->GetType() << "x"_mst ? (CScript() << OP_VERIFY) : CScript());
+            case NodeType::WRAP_J: return (CScript() << OP_SIZE << OP_0NOTEQUAL << OP_IF) + subs[0]->MakeScript(ctx) + (CScript() << OP_ENDIF);
+            case NodeType::WRAP_N: return subs[0]->MakeScript(ctx) + CScript() << OP_0NOTEQUAL;
             case NodeType::TRUE: return CScript() << OP_1;
             case NodeType::FALSE: return CScript() << OP_0;
-            case NodeType::AND_V: return subs[0]->MakeScript() + subs[1]->MakeScript(verify);
-            case NodeType::AND_B: return subs[0]->MakeScript() + subs[1]->MakeScript() + (CScript() << OP_BOOLAND);
-            case NodeType::OR_B: return subs[0]->MakeScript() + subs[1]->MakeScript() + (CScript() << OP_BOOLOR);
-            case NodeType::OR_D: return subs[0]->MakeScript() + (CScript() << OP_IFDUP << OP_NOTIF) + subs[1]->MakeScript() + (CScript() << OP_ENDIF);
-            case NodeType::OR_C: return subs[0]->MakeScript() + (CScript() << OP_NOTIF) + subs[1]->MakeScript() + (CScript() << OP_ENDIF);
-            case NodeType::OR_I: return (CScript() << OP_IF) + subs[0]->MakeScript() + (CScript() << OP_ELSE) + subs[1]->MakeScript() + (CScript() << OP_ENDIF);
-            case NodeType::ANDOR: return subs[0]->MakeScript() + (CScript() << OP_NOTIF) + subs[2]->MakeScript() + (CScript() << OP_ELSE) + subs[1]->MakeScript() + (CScript() << OP_ENDIF);
+            case NodeType::AND_V: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx, verify);
+            case NodeType::AND_B: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx) + (CScript() << OP_BOOLAND);
+            case NodeType::OR_B: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx) + (CScript() << OP_BOOLOR);
+            case NodeType::OR_D: return subs[0]->MakeScript(ctx) + (CScript() << OP_IFDUP << OP_NOTIF) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
+            case NodeType::OR_C: return subs[0]->MakeScript(ctx) + (CScript() << OP_NOTIF) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
+            case NodeType::OR_I: return (CScript() << OP_IF) + subs[0]->MakeScript(ctx) + (CScript() << OP_ELSE) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
+            case NodeType::ANDOR: return subs[0]->MakeScript(ctx) + (CScript() << OP_NOTIF) + subs[2]->MakeScript(ctx) + (CScript() << OP_ELSE) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
             case NodeType::THRESH_M: {
                 CScript script = CScript() << k;
                 for (const auto& key : keys) {
-                    script << key.ToPKBytes();
+                    script << ctx.ToPKBytes(key);
                 }
                 return script << keys.size() << (verify ? OP_CHECKMULTISIGVERIFY : OP_CHECKMULTISIG);
             }
             case NodeType::THRESH: {
-                CScript script = subs[0]->MakeScript();
+                CScript script = subs[0]->MakeScript(ctx);
                 for (size_t i = 1; i < subs.size(); ++i) {
-                    script = (script + subs[i]->MakeScript()) << OP_ADD;
+                    script = (script + subs[i]->MakeScript(ctx)) << OP_ADD;
                 }
                 return script << k << (verify ? OP_EQUALVERIFY : OP_EQUAL);
             }
@@ -663,7 +665,7 @@ private:
                 return InputResult(ZERO, InputStack(std::move(sig)).WithSig());
             }
             case NodeType::PK_H: {
-                std::vector<unsigned char> key = keys[0].ToPKBytes(), sig;
+                std::vector<unsigned char> key = ctx.ToPKBytes(keys[0]), sig;
                 if (!ctx.Sign(keys[0], sig)) return InputResult(ZERO + InputStack(std::move(key)), INVALID);
                 return InputResult(ZERO + InputStack(key), InputStack(std::move(sig)).WithSig() + InputStack(key));
             }
@@ -832,7 +834,8 @@ public:
     Type GetType() const { return typ; }
 
     //! Construct the script for this miniscript (including subexpressions).
-    CScript ToScript() const { return MakeScript(); }
+    template<typename Ctx>
+    CScript ToScript(const Ctx& ctx) const { return MakeScript(ctx); }
 
     //! Convert this miniscript to its textual descriptor notation.
     template<typename Ctx>
