@@ -21,32 +21,50 @@
 <body>
 <script src="miniscript.js"></script>
 <script>
-em_miniscript_compile = Module.cwrap('miniscript_compile', 'none', ['string', 'number', 'number', 'number', 'number']);
-em_miniscript_analyze = Module.cwrap('miniscript_analyze', 'none', ['string', 'number', 'number']);
+function htmlEscape(str) {
+    return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+}
+
+em_miniscript_compile = Module.cwrap('miniscript_compile', 'none', ['string', 'number', 'number', 'number', 'number', 'number', 'number']);
+em_miniscript_analyze = Module.cwrap('miniscript_analyze', 'none', ['string', 'number', 'number', 'number', 'number']);
 
 function miniscript_compile() {
-    document.getElementById("descout").value = "Compiling...";
-    document.getElementById("spendout").innerHTML = "Compiling...";
+    document.getElementById("out").innerHTML = "Compiling...";
     window.setTimeout(function() {
         src = document.getElementById("source").value;
-        var descout = Module._malloc(1000);
-        var spendout = Module._malloc(50000);
-        em_miniscript_compile(src, descout, 1000, spendout, 50000);
-        document.getElementById("descout").value = Module.UTF8ToString(descout);
-        document.getElementById("spendout").innerHTML = Module.UTF8ToString(spendout);
-        Module._free(descout)
-        Module._free(spendout)
+        var msout = Module._malloc(10000);
+        var costout = Module._malloc(500);
+        var asmout = Module._malloc(100000);
+        em_miniscript_compile(src, msout, 10000, costout, 500, asmout, 100000);
+        document.getElementById("analyze_ms").value = Module.UTF8ToString(msout);
+        document.getElementById("analyze_out").innerHTML = "";
+        document.getElementById("out").innerHTML =
+            "<p></p><p><b>Miniscript output:</b></p><p><code>" + htmlEscape(Module.UTF8ToString(msout)) + "</code></p>" +
+            "<p><b>Spending cost analysis</b></p><p>" + Module.UTF8ToString(costout) + "</p>" +
+            "<p><b>Resulting script structure</b></p><p><samp><pre>" + htmlEscape(Module.UTF8ToString(asmout)) + "</pre></samp></p>";
+        Module._free(msout)
+        Module._free(costout)
+        Module._free(asmout)
     });
 }
 
 function miniscript_analyze() {
-    document.getElementById("spendout").innerHTML = "Analyzing...";
+    document.getElementById("analyze_out").innerHTML = "Analyzing...";
     window.setTimeout(function() {
-        src = document.getElementById("descout").value;
-        var spendout = Module._malloc(50000);
-        em_miniscript_analyze(src, spendout, 50000);
-        document.getElementById("spendout").innerHTML = Module.UTF8ToString(spendout);
-        Module._free(spendout)
+        src = document.getElementById("analyze_ms").value;
+        var analyze_out = Module._malloc(50000);
+        var asmout = Module._malloc(100000);
+        em_miniscript_analyze(src, analyze_out, 50000, asmout, 100000);
+        document.getElementById("analyze_out").innerHTML =
+            "<p></p><p><b>Analysis</b></p><p>" + Module.UTF8ToString(analyze_out) + "</p><p><small>Hover over the tree elements for more details</small></p>" +
+            "<p><b>Resulting script structure</b></p><p><samp><pre>" + htmlEscape(Module.UTF8ToString(asmout)) + "</pre></samp></p>";
+        Module._free(analyze_out)
+        Module._free(asmout)
     });
 }
 
@@ -83,6 +101,34 @@ statically analyze for various properties (spending conditions, correctness, sec
 For now, Miniscript is really only designed for P2WSH and P2SH-P2WSH embedded scripts. Most of its constructions works fine in P2SH as well, but some of the (optional) security properties
 rely on Segwit-specific rules. Furthermore, the implemented policy compilers assume a Segwit-specific cost model.
 </p>
+</div>
+</div>
+
+<div class="card mb-3 text-left">
+<h3 class="card-header">Policy to Miniscript compiler</h3>
+<div class="card-block">
+
+<p>Here you can see a demonstration of the Miniscript compiler. Write a spending policy following the instructions below, and observe how it affects the constructed Miniscript.</p>
+<form>
+  <div class="form-group">
+    <label for="source">Policy</label>
+    <textarea class="form-control" id="source" rows="1">and(pk(A),or(pk(B),or(9@pk(C),older(1000))))</textarea>
+    <small class="form-text test-muted">Supported expressions:
+    <ul>
+    <li><samp>pk(<em>NAME</em>)</samp>: Require public key named <em>NAME</em> to sign. <em>NAME</em> can be any string up to 16 characters.</li>
+    <li><samp>after(<em>NUM</em>)</samp>, <samp>older(<em>NUM</em>)</samp>: Require that the <samp>nLockTime</samp>/<samp>nSequence</samp> value is at least <em>NUM</em>. <em>NUM</em> cannot be 0.</li>
+    <li><samp>sha256(<em>HEX</em>)</samp>, <samp>hash256(<em>HEX</em>)</samp>: Require that the preimage of 64-character <em>HEX</em> is revealed. The special value <samp>H</samp> can be used as <em>HEX</em>.</li>
+    <li><samp>ripemd160(<em>HEX</em>)</samp>, <samp>hash160(<em>HEX</em>)</samp>: Require that the preimage of 40-character <em>HEX</em> is revealed. The special value <samp>H</samp> can be used as <em>HEX</em>.</li>
+    <li><samp>and(<em>EXPR</em>,<em>EXPR</em>)</samp>: Require that both subexpressions are satisfied.</li>
+    <li><samp>or([<em>N</em>@]<em>EXPR</em>,[<em>N</em>@]<em>EXPR</em>)</samp>: Require that one of the subexpressions is satisfied. The numbers N indicate the relative probability of each of the subexpressions.</li>
+    <li><samp>thresh(<em>NUM</em>,<em>EXPR</em>,<em>EXPR</em>,...)</samp>: Require that NUM out of the following subexpressions are satisfied (all combinations are assumed to be equally likely).</li>
+    </ul></small>
+  </div>
+  <button type="button" class="btn btn-primary" onclick="miniscript_compile();">Compile</button>
+</form>
+
+<div id="out"></div>
+
 </div>
 </div>
 
@@ -537,40 +583,22 @@ Some examples from this table explained:<ul>
 
 
 <div class="card mb-3 text-left">
-<h3 class="card-header">Compiler demo</h3>
+<h3 class="card-header">Analyze a Miniscript</h3>
 <div class="card-block">
 
-<textarea rows="1" cols="100" id="source">
-and(pk(C),or(pk(C),or(9@pk(C),older(1000))))
-</textarea><br/>
-<button type="button" onclick="miniscript_compile();">Compile</button>
-Supported elements:
-<ul>
-<li><b>pk(HEX)</b>: Require public key HEX to sign.</li>
-<li><b>time(NUMBER)</b>: Require that a relative time NUMBER has passed since creating the output.</li>
-<li><b>hash(HEX)</b>: Require that the SHA256 preimage of HEX is revealed.</li>
-<li><b>and(EXPR,EXPR)</b>: Require that both subexpressions are satisfied.</li>
-<li><b>or([N@]EXPR,[N@]EXPR)</b>: Require that one of the subexpressions is satisfied. The numbers N indicate the relative probability of each of the subexpressions.</li>
-<li><b>thresh(NUM,EXPR,EXPR,...)</b>: Require that NUM out of the following subexpressions are satisfied.</li>
-</ul>
-Shorthands:
-<ul>
-<li><b>C</b>: A dummy compressed public key (usable as argument to pk or multi)</li>
-<li><b>U</b>: A dummy uncompressed public key (usable as argument to pk or multi)</li>
-<li><b>H</b>: A dummy hash (usable as argument to hash)</li>
-</ul>
+<form>
+  <div class="form-group">
+    <label for="analyze_ms">Miniscript</label>
+    <textarea class="form-control" id="analyze_ms" rows="1">and_v(vc:pk(K),c:pk(A))</textarea>
+    <small class="form-text test-muted">Provide a well-typed miniscript expression of type "B".</small>
+  </div>
+  <button type="button" class="btn btn-primary" onclick="miniscript_analyze();">Analyze</button>
+</form>
 
-<hr/>
-<b>Miniscript output</b><br/>
-<textarea rows="4" cols="100" id="descout"></textarea>
-<button type="button" onclick="miniscript_analyze();">Analyze</button>
+<div id="analyze_out"></div>
 
-<hr/>
-<b>Analysis</b><br/>
-<a id="spendout"></a>
 </div>
 </div>
-
 
 </div>
 </body>

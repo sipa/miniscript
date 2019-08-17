@@ -14,7 +14,7 @@ void Output(const std::string& str, char* out, int outlen) {
     out[maxlen] = 0;
 }
 
-std::string Props(const miniscript::NodeRef<CompilerKey>& node, std::string in) {
+std::string Props(const miniscript::NodeRef<std::string>& node, std::string in) {
     std::string ret = "<span title=\"type: ";
     if (node->GetType() == ""_mst) {
         ret += "[invalid]";
@@ -38,7 +38,7 @@ std::string Props(const miniscript::NodeRef<CompilerKey>& node, std::string in) 
     return std::move(ret) + "\">" + std::move(in) + "</span>";
 }
 
-std::string Analyze(const miniscript::NodeRef<CompilerKey>& node) {
+std::string Analyze(const miniscript::NodeRef<std::string>& node) {
     switch (node->nodetype) {
         case miniscript::NodeType::PK: return Props(node, "pk(" + COMPILER_CTX.ToString(node->keys[0]) + ")");
         case miniscript::NodeType::PK_H: return Props(node, "pk_h(" + COMPILER_CTX.ToString(node->keys[0]) + ")");
@@ -79,39 +79,46 @@ std::string Analyze(const miniscript::NodeRef<CompilerKey>& node) {
 
 extern "C" {
 
-void miniscript_compile(const char* desc, char* descout, int descoutlen, char* costout, int costoutlen) {
+void miniscript_compile(const char* desc, char* msout, int msoutlen, char* costout, int costoutlen, char* asmout, int asmoutlen) {
     try {
         std::string str(desc);
         str.erase(str.find_last_not_of(" \n\r\t") + 1);
-        miniscript::NodeRef<CompilerKey> ret;
+        miniscript::NodeRef<std::string> ret;
         double avgcost;
         if (!Compile(Expand(str), ret, avgcost)) {
-            Output("[compile error]", descout, descoutlen);
+            Output("[compile error]", msout, msoutlen);
             Output("[compile error]", costout, costoutlen);
+            Output("[compile error]", asmout, asmoutlen);
             return;
         }
-        Output(Abbreviate(ret->ToString(COMPILER_CTX)), descout, descoutlen);
-        std::string coststr = "Size: " + std::to_string(ret->ScriptSize()) + " bytes script + " + std::to_string(avgcost) + " bytes input = " + std::to_string(ret->ScriptSize() + avgcost) + " bytes<br/><ul><li>" + Analyze(ret) + "</li></lu>";
+        Output(Abbreviate(ret->ToString(COMPILER_CTX)), msout, msoutlen);
+        std::string coststr = "<ul><li>Script: " + std::to_string(ret->ScriptSize()) + " WU</li><li>Input:" + std::to_string(avgcost) + " WU</li><li>Total: " + std::to_string(ret->ScriptSize() + avgcost) + " WU</li></ul>";
         Output(coststr, costout, costoutlen);
+        Output(Disassemble(ret->ToScript(COMPILER_CTX)), asmout, asmoutlen);
     } catch (const std::exception& e) {
-        Output("[exception: " + std::string(e.what()) + "]", descout, descoutlen);
+        Output("[exception: " + std::string(e.what()) + "]", msout, msoutlen);
+        Output("", costout, costoutlen);
+        Output("", asmout, asmoutlen);
     }
 }
 
-void miniscript_analyze(const char* ms, char* costout, int costoutlen) {
+void miniscript_analyze(const char* ms, char* costout, int costoutlen, char* asmout, int asmoutlen) {
     try {
         std::string str(ms);
         str.erase(str.find_last_not_of(" \n\r\t") + 1);
-        miniscript::NodeRef<CompilerKey> ret;
+        miniscript::NodeRef<std::string> ret;
         ret = miniscript::FromString(Expand(str), COMPILER_CTX);
         if (!ret) {
             Output("[analysis error]", costout, costoutlen);
+            Output("[analysis error]", asmout, asmoutlen);
             return;
         }
-        std::string coststr = "Size: " + std::to_string(ret->ScriptSize()) + " bytes script<ul><li>" + Analyze(ret) + "</li>";
+        std::string coststr = "Size: " + std::to_string(ret->ScriptSize()) + " bytes script<ul><li>" + Analyze(ret) + "</li></ul>";
         Output(coststr, costout, costoutlen);
+        Output(Disassemble(ret->ToScript(COMPILER_CTX)), asmout, asmoutlen);
     } catch (const std::exception& e) {
         Output("[exception: " + std::string(e.what()) + "]", costout, costoutlen);
+        Output("", asmout, asmoutlen);
     }
 }
 

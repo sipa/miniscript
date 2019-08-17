@@ -820,13 +820,13 @@ std::string Disassembler(CScript::const_iterator& it, CScript::const_iterator en
             last_space = ret.size() - 1;
         }
         if (data.size() == 20) {
-            if (data == std::vector<unsigned char>(20, 0x88)) {
+            if (data == std::vector<unsigned char>(20, 0x99)) {
                 ret += "<h>";
             } else if (data[0] == 'P' && data[1] == 'K' && data[2] == 'h') {
                 while (data.size() && data.back() == 0) data.pop_back();
                 ret += "<HASH160(" + std::string((const char*)data.data() + 3, data.size() - 3) + ")>";
             }
-        } else if (data.size() == 32 && data == std::vector<unsigned char>(32, 0x99)) {
+        } else if (data.size() == 32 && data == std::vector<unsigned char>(32, 0x88)) {
             ret += "<H>";
         } else if (data.size() == 33 && data[0] == 2 && data[1] == 'P' && data[2] == 'K' && data[3] == 'b') {
             while (data.size() && data.back() == 0) data.pop_back();
@@ -936,28 +936,48 @@ bool Compile(const std::string& policy, miniscript::NodeRef<std::string>& ret, d
 
 std::string Expand(std::string str) {
     while (true) {
-        auto pos = str.find("(H)");
+        auto pos = str.find("sha256(H)");
         if (pos == std::string::npos) break;
-        str.replace(pos, 3, "(8888888888888888888888888888888888888888888888888888888888888888)");
+        str.replace(pos, 9, "sha256(8888888888888888888888888888888888888888888888888888888888888888)");
     }
     while (true) {
-        auto pos = str.find("(h)");
+        auto pos = str.find("hash256(H)");
         if (pos == std::string::npos) break;
-        str.replace(pos, 3, "(9999999999999999999999999999999999999999)");
+        str.replace(pos, 10, "hash256(8888888888888888888888888888888888888888888888888888888888888888)");
+    }
+    while (true) {
+        auto pos = str.find("ripemd160(H)");
+        if (pos == std::string::npos) break;
+        str.replace(pos, 12, "(9999999999999999999999999999999999999999)");
+    }
+    while (true) {
+        auto pos = str.find("hash160(H)");
+        if (pos == std::string::npos) break;
+        str.replace(pos, 10, "(9999999999999999999999999999999999999999)");
     }
     return str;
 }
 
 std::string Abbreviate(std::string str) {
     while (true) {
-        auto pos = str.find("(8888888888888888888888888888888888888888888888888888888888888888)");
+        auto pos = str.find("sha256(8888888888888888888888888888888888888888888888888888888888888888)");
         if (pos == std::string::npos) break;
-        str.replace(pos, 66, "(H)");
+        str.replace(pos, 72, "sha256(H)");
     }
     while (true) {
-        auto pos = str.find("(9999999999999999999999999999999999999999)");
+        auto pos = str.find("hash256(8888888888888888888888888888888888888888888888888888888888888888)");
         if (pos == std::string::npos) break;
-        str.replace(pos, 42, "(h)");
+        str.replace(pos, 73, "hash256(H)");
+    }
+    while (true) {
+        auto pos = str.find("ripemd160(9999999999999999999999999999999999999999)");
+        if (pos == std::string::npos) break;
+        str.replace(pos, 51, "ripemd160(H)");
+    }
+    while (true) {
+        auto pos = str.find("hash160(9999999999999999999999999999999999999999)");
+        if (pos == std::string::npos) break;
+        str.replace(pos, 49, "hash160(H)");
     }
     return str;
 }
