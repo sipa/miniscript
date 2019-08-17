@@ -81,8 +81,7 @@ namespace miniscript {
  *     dissatifsaction, and property 'f' for the unexecuted subexpressions in that case.
  *   - Conflicts with type 'V'.
  * - "f" Forced:
- *   - This is the opposite of property 'd' (and conflicts with 'd' and 'e').
- *   - This requires that no dissatisfaction for this expression is possible.
+ *   - Dissatisfactions (if any) for this expression always involve at least one signature.
  *   - Is always true for type 'V'.
  * - "s" Safe:
  *   - Satisfactions for this expression always involve at least one signature.
