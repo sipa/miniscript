@@ -103,11 +103,11 @@ Miniscript was designed and implemented by Pieter Wuille, Andrew Poelstra, and S
 
 
 <p>
-Source code links:<ul>
-<li><a href="https://github.com/sipa/miniscript">Website and C++ compiler code</a></li>
-<li><a href="https://github.com/sipa/miniscript/tree/master/bitcoin/script">Bitcoin Core compatible C++ implementation</a></li>
-<li><a href="https://github.com/apoelstra/rust-miniscript">Rust-miniscript implementation</a></li>
-</ul>
+Links:<ul>
+<li>This <a href="http://bitcoin.sipa.be/miniscript">website</a> and C++ compiler: <a href="https://github.com/sipa/miniscript">[code]</a></li>
+<li>Bitcoin Core compatible C++ implementation: <a href="https://github.com/sipa/miniscript/tree/master/bitcoin/script">[code]</a></li>
+<li>Rust-miniscript implementation: <a href="https://github.com/apoelstra/rust-miniscript">[code]</a></li>
+<li>Talk about (an early version of) Miniscript at <a href="https://cyber.stanford.edu/sbc19">SBC'19</a>: <a href="https://www.youtube.com/watch?v=XM1lzN4Zfks">[video]</a> <a href="http://diyhpl.us/wiki/transcripts/stanford-blockchain-conference/2019/miniscript/">[transcript]</a> <a href="https://prezi.com/view/KH7AXjnse7glXNoqCxPH/">[slides]</a></li>
 
 </div>
 </div>
@@ -136,6 +136,24 @@ Source code links:<ul>
 </form>
 
 <div id="out"></div>
+
+</div>
+</div>
+
+<div class="card text-left mb-3">
+<h3 class="card-header">Analyze a Miniscript</h3>
+<div class="card-block">
+
+<form>
+  <div class="form-group">
+    <label for="analyze_ms">Miniscript</label>
+    <textarea class="form-control" id="analyze_ms" rows="1">and_v(vc:pk(K),c:pk(A))</textarea>
+    <small class="form-text test-muted">Provide a well-typed miniscript expression of type "B".</small>
+  </div>
+  <button type="button" class="btn btn-primary" onclick="miniscript_analyze();">Analyze</button>
+</form>
+
+<div id="analyze_out"></div>
 
 </div>
 </div>
@@ -416,7 +434,7 @@ this means that scripts whose conditions can be met without any digital signatur
 </div>
 </div>
 
-<div class="card mb-3 text-left">
+<div class="card text-left">
 <h3 class="card-header">Satisfactions and malleability</h3>
 <div class="card-block">
 <h4>Basic satisfactions</h4>
@@ -515,7 +533,7 @@ by the <samp>nLockTime</samp> and <samp>nSequence</samp> fields in the transacti
 
 <p>
 In order to produce non-malleable satisfactions we make use of a function that returns the optimal satisfaction and dissatisfaction for a given expression (if any exist), or a special DONTUSE value, together with an optional HASSIG marker that tracks whether the solution contains at least one signature. To implement the function: <ul>
-<li>Invoke the function recursively for all subexpressions, obtaining all satisfactions/dissatisfactions for those.</li>
+<li>Invoke the function recursively for all subexpressions, obtaining all their satisfactions/dissatisfactions.</li>
 <li>Iterate over all the valid satisfactions/dissatisfactions in the table above (including the non-canonical ones), taking into account:<ul>
   <li>The dissatisfactions for <code>sha256</code>, <code>ripemd160</code>, <code>hash256</code>, and <code>hash160</code> are always malleable, so instead use DONTUSE there.</li>
   <li>The non-canonical options for <code>and_b</code>, <code>or_b</code>, and <code>thresh</code> are always overcomplete, so instead use DONTUSE there as well (with HASSIG flag if the original non-canonical solution had one).
@@ -533,7 +551,7 @@ To produce an overall satisfaction, invoke the function on the toplevel expressi
 <p>
 The above can be used to show that no non-canonical solutions listed in the satisfaction table can occur inside non-malleable satisfactions.<ul>
 <li>Some of the non-canonical options (the <code>or_b</code>, <code>and_b</code>, and <code>thresh</code> ones) are overcomplete, and thus can clearly not appear in non-malleable satisfactions.</li>
-<li>It can be shown that non-"d" expressions cannot be dissatisfied in valid witnesses, as for those, dissatisfaction implies aborting or propagating failure upwards, ultimately dissatisfying the top-level expression. This rules out the usage of the non-canonical <code>and_v</code> dissatisfaction.</li>
+<li>It can be shown that non-"d" expressions cannot be dissatisfied in valid witnesses, as their dissatisfaction implies aborting or propagating failure upwards, ultimately dissatisfying the top-level expression. This rules out the usage of the non-canonical <code>and_v</code> dissatisfaction.</li>
 <li>"d" expressions are defined to be unconditionally dissatisfiable, which implies that for those a non-HASSIG dissatisfaction must exist. Non-HASSIG solutions
     must be preferred over HASSIG ones, and when multiple non-HASSIG ones exist, none can be used. This lets us rule out the other non-canonical options in the table:<ul>
         <li><code>j:X</code> is always "d", its non-HASSIG dissatisfaction "0" always exists, and thus rules out any usage of "dsat(<em>X</em>)".
@@ -596,23 +614,6 @@ The following table lists these additional properties, and the requirements for 
 </div>
 
 
-<div class="card text-left">
-<h3 class="card-header">Analyze a Miniscript</h3>
-<div class="card-block">
-
-<form>
-  <div class="form-group">
-    <label for="analyze_ms">Miniscript</label>
-    <textarea class="form-control" id="analyze_ms" rows="1">and_v(vc:pk(K),c:pk(A))</textarea>
-    <small class="form-text test-muted">Provide a well-typed miniscript expression of type "B".</small>
-  </div>
-  <button type="button" class="btn btn-primary" onclick="miniscript_analyze();">Analyze</button>
-</form>
-
-<div id="analyze_out"></div>
-
-</div>
-</div>
 
 </div>
 
