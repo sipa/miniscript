@@ -82,17 +82,17 @@ function miniscript_analyze() {
 Bitcoin Script is an unusual stack-based language with many edge cases, designed for implementing spending conditions consisting of various combinations of
 signatures, hash locks, and time locks. Yet despite being limited in functionality it is still highly nontrivial to:<ul>
 <li>Given a combination of spending conditions, finding the most economical script to implement it.</li>
-<li>Given a two scripts, construct a script that implements a composition of their spending conditions (e.g. a multisig where one of the "keys" is another multisig).</li>
+<li>Given two scripts, construct a script that implements a composition of their spending conditions (e.g. a multisig where one of the "keys" is another multisig).</li>
 <li>Given a script, find out what spending conditions it permits.</li>
 <li>Given a script and access to a sufficient set of private keys, construct a general satisfying witness for it.</li>
 <li>Given a script, be able to predict the cost of spending an output.</li>
-<li>Given a script, know whether any code path requires violating particular resource limitations like the ops limit.</li>
+<li>Given a script, know whether particular resource limitations like the ops limit might be hit when spending.</li>
 </ul>
 
 <p>
 Miniscript functions as a representation for scripts that makes these sort of operations possible. It has a structure that allows composition. It is very easy to 
 statically analyze for various properties (spending conditions, correctness, security properties, malleability, ...). It can be targeted by spending policy compilers
-(see further). Finally, compatible scripts easily can be converted to miniscript - avoiding the need for additional metadata for e.g. signing devices that support it.
+(see further). Finally, compatible scripts can easily be converted to Miniscript  form - avoiding the need for additional metadata for e.g. signing devices that support it.
 
 <p>
 For now, Miniscript is really only designed for P2WSH and P2SH-P2WSH embedded scripts. Most of its constructions works fine in P2SH as well, but some of the (optional) security properties
@@ -100,7 +100,6 @@ rely on Segwit-specific rules. Furthermore, the implemented policy compilers ass
 
 <p>
 Miniscript was designed and implemented by Pieter Wuille, Andrew Poelstra, and Sanket Kanjalkar at Blockstream Research, but is the result of discussions with several other people.
-
 
 <p>
 Links:<ul>
@@ -116,20 +115,20 @@ Links:<ul>
 <h3 class="card-header">Policy to Miniscript compiler</h3>
 <div class="card-block">
 
-<p>Here you can see a demonstration of the Miniscript compiler. Write a spending policy following the instructions below, and observe how it affects the constructed Miniscript.
+<p>Here you can see a demonstration of the Miniscript compiler. Write a spending policy according to the instructions below, and observe how it affects the constructed Miniscript.
 <form>
   <div class="form-group">
     <label for="source">Policy</label>
     <textarea class="form-control" id="source" rows="1">and(pk(A),or(pk(B),or(9@pk(C),older(1000))))</textarea>
-    <div class="small form-text test-muted">Supported expressions:
+    <div class="small form-text test-muted">Supported policies:
     <ul>
     <li><samp>pk(<em>NAME</em>)</samp>: Require public key named <em>NAME</em> to sign. <em>NAME</em> can be any string up to 16 characters.</li>
     <li><samp>after(<em>NUM</em>)</samp>, <samp>older(<em>NUM</em>)</samp>: Require that the <samp>nLockTime</samp>/<samp>nSequence</samp> value is at least <em>NUM</em>. <em>NUM</em> cannot be 0.</li>
     <li><samp>sha256(<em>HEX</em>)</samp>, <samp>hash256(<em>HEX</em>)</samp>: Require that the preimage of 64-character <em>HEX</em> is revealed. The special value <samp>H</samp> can be used as <em>HEX</em>.</li>
     <li><samp>ripemd160(<em>HEX</em>)</samp>, <samp>hash160(<em>HEX</em>)</samp>: Require that the preimage of 40-character <em>HEX</em> is revealed. The special value <samp>H</samp> can be used as <em>HEX</em>.</li>
-    <li><samp>and(<em>EXPR</em>,<em>EXPR</em>)</samp>: Require that both subexpressions are satisfied.</li>
-    <li><samp>or([<em>N</em>@]<em>EXPR</em>,[<em>N</em>@]<em>EXPR</em>)</samp>: Require that one of the subexpressions is satisfied. The numbers N indicate the relative probability of each of the subexpressions.</li>
-    <li><samp>thresh(<em>NUM</em>,<em>EXPR</em>,<em>EXPR</em>,...)</samp>: Require that NUM out of the following subexpressions are satisfied (all combinations are assumed to be equally likely).</li>
+    <li><samp>and(<em>POL</em>,<em>POL</em>)</samp>: Require that both subpolicies are satisfied.</li>
+    <li><samp>or([<em>N</em>@]<em>POL</em>,[<em>N</em>@]<em>POL</em>)</samp>: Require that one of the subpolicies is satisfied. The numbers N indicate the relative probability of each of the subexpressions (so <samp>9@</samp> is 9 times more likely than the default).</li>
+    <li><samp>thresh(<em>NUM</em>,<em>POL</em>,<em>POL</em>,...)</samp>: Require that NUM out of the following subpolicies are met (all combinations are assumed to be equally likely).</li>
     </ul></div>
   </div>
   <button type="button" class="btn btn-primary" onclick="miniscript_compile();">Compile</button>
@@ -144,6 +143,7 @@ Links:<ul>
 <h3 class="card-header">Analyze a Miniscript</h3>
 <div class="card-block">
 
+<p>Here you can analyze the structure of a Miniscript expression and more.
 <form>
   <div class="form-group">
     <label for="analyze_ms">Miniscript</label>
@@ -199,7 +199,7 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
   <td><samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp></td>
 </tr>
 <tr>
-  <td>nLockTime &ge; n (and compaitlbe)</td>
+  <td>nLockTime &ge; n (and compatilbe)</td>
   <td><code>after(n)</code></td>
   <td><samp>&lt;n&gt; CHECKLOCKTIMEVERIFY</samp></td>
 </tr>
@@ -327,14 +327,14 @@ Every miniscript expression has one of four basic types:<ul>
 <li><b>"B"</b> Base expressions:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>When satisfied, pushes a nonzero value of up to 4 bytes onto the stack.</li>
-  <li>When dissatisfied, pushes a 0 onto the stack.</li>
+  <li>When dissatisfied, pushes a 0 onto the stack (if dissatisfaction without aborting is possible at all).</li>
   <li>This is used for most expressions, and required for the top level one.</li>
   <li>For example: <code>older(n)</code> = <samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp>.</li>
 </ul></li>
 <li><b>"V"</b> Verify expressions:<ul>
   <li>Takes its inputs from the top of the stack.</li>
   <li>When satisfactied, pushes nothing.</li>
-  <li>Cannot be dissatisfied (aborts execution instead).</li>
+  <li>Cannot be dissatisfied without aborting.</li>
   <li>A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.</li>
   <li>For example <code>vc:pk(key)</code> = <samp>&lt;key&gt; CHECKSIGVERIFY</samp>.</li>
 </ul></li>
@@ -358,7 +358,7 @@ Every miniscript expression has one of four basic types:<ul>
 Then there are 5 type modifiers, which guarantee additional properties:<ul>
 <li><b>"z"</b> Zero-arg: this expression always consumes exactly 0 stack elements.</li>
 <li><b>"o"</b> One-arg: this expression always consumes exactly 1 stack element.</li>
-<li><b>"n"</b> Nonzero: no satisfaction for this expression requires a top stack element that is zero.</li>
+<li><b>"n"</b> Nonzero: this expression always consumes at least 1 stack element, no satisfaction for this expression requires the top input stack to be zero.</li>
 <li><b>"d"</b> Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed.</li>
 <li><b>"u"</b> Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).</li>
 </ul>
@@ -569,7 +569,7 @@ Now we have an algorithm that can find the optimal non-malleable satisfaction fo
 In order to do that, we add additional properties to the type system:<ul>
 <li><b>"s"</b> Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).</li>
 <li><b>"f"</b> Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG). This conflicts with "d". </li>
-<li><b>"e"</b> Expressive: regardless of what conditions are met, exactly one dissatisfaction without signatures is available (predicting non-DONTUSE dissatisfactions). This implies "d".</li>
+<li><b>"e"</b> Expressive: an uncondition dissatisfaction must always be constructible (like "d"), but it also needs to be unique, and there cannot ever be any other dissatisfactions available except ones that require a signature.
 </ul>
 
 
