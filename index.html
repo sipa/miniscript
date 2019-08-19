@@ -562,7 +562,7 @@ Now we have an algorithm that can find the optimal non-malleable satisfaction fo
 In order to do that, we add additional properties to the type system:<ul>
 <li><b>"s"</b> Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).</li>
 <li><b>"f"</b> Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG). </li>
-<li><b>"e"</b> Expressive: this requires a dissatisfaction to exist unconditionally (like "d"), but it also needs to be unique, and all other dissatisfactions (if any) must require a signature.
+<li><b>"e"</b> Expressive: this requires a unique unconditional dissatisfaction to exist, and forces all conditional dissatisfactions (if any) to require a signature.
 </ul>
 
 
