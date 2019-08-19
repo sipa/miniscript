@@ -398,7 +398,7 @@ Various types of Bitcoin Scripts have different resource limitations, either thr
 <li>Script satisfactions with a serialized <samp>scriptSig</samp> over 1650 bytes are invalid by standardness (P2SH).</li>
 <li>Script satisfactions with a witness consisting of over 100 stack elements (excluding the script itself) are invalid by standardness (P2WSH, P2SH-P2WSH).</li>
 </ul>
-Miniscript makes it easy to verify that the ability to satisfy a script is not impacted by these limits. Not that this is distinct from verifying whether the limits are never
+Miniscript makes it easy to verify that the ability to satisfy a script is not impacted by these limits. Note that this is different from verifying whether the limits are never
 reachable at all (which is also possible). Consider for example an <code>or_b(<em>X</em>,<em>Y</em>)</code> where both <em>X</em> and <em>Y</em> require a number of large <code>thresh_m</code>s
 to be executed to satisfy. It may be the case that satisfying just one of <em>X</em> or <em>Y</em> does not exceed the ops limit, while satisfying both does. As it's never required to
 satisfy both, the limit does not prevent satisfaction.
