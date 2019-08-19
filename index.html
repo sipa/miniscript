@@ -314,6 +314,8 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 The <code>and_n</code> fragment and <code>t:</code>, <code>l:</code>, and <code>u:</code> wrappers are syntactic sugar for other Miniscripts, as listed in the table above.
 In what follows, they will not be included anymore, as their properties can be derived by looking at their expansion.
 
+<p>
+
 <h4>Correctness properties</h4>
 
 <p>
@@ -414,7 +416,7 @@ Various types of Bitcoin Scripts have different resource limitations, either thr
 </ul>
 Miniscript makes it easy to verify these properties statically for all possible execution paths.
 
-
+<p>
 <h4>Security properties</h4>
 <p>
 The type system above guarantees that the corresponding Bitcoin Scripts are:<ul>
@@ -493,7 +495,7 @@ A conservative simplification is made here, ignoring the existence of always-tru
 Since all these cases of inaccurate typing involve always-true expressions that can be avoided
 using strictly simpler/smaller Miniscripts, we don't consider this to be a serious restriction. For Miniscripts excluding always-true expressions (except in the <code>and_v(<em>X</em>,1)</code> code), the typing rules match the definitions above.
 
-
+<p>
 <h4>Malleability</h4>
 <p>
 While following the table above to construct satisfactions is sufficient for meeting the completeness and soundness properties, it does not guarantee non-malleability.
