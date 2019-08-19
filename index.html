@@ -92,7 +92,7 @@ signatures, hash locks, and time locks. Yet despite being limited in functionali
 <p>
 Miniscript functions as a representation for scripts that makes these sort of operations possible. It has a structure that allows composition. It is very easy to 
 statically analyze for various properties (spending conditions, correctness, security properties, malleability, ...). It can be targeted by spending policy compilers
-(see further). Finally, compatible scripts can easily be converted to Miniscript  form - avoiding the need for additional metadata for e.g. signing devices that support it.
+(see below). Finally, compatible scripts can easily be converted to Miniscript form - avoiding the need for additional metadata for e.g. signing devices that support it.
 
 <p>
 For now, Miniscript is really only designed for P2WSH and P2SH-P2WSH embedded scripts. Most of its constructions works fine in P2SH as well, but some of the (optional) security properties
@@ -319,52 +319,36 @@ In what follows, they will not be included anymore, as their properties can be d
 <h4>Correctness properties</h4>
 
 <p>
-Not every Miniscript expression can be composed with every other. Some return their result by putting zero or false on the stack; others distinguish by aborting or continuing.
+Not every Miniscript expression can be composed with every other. Some return their result by putting true or false on the stack; others can only abort or continue.
 Some require subexpressions that consume an exactly known number of arguments, while others need a subexpression that has a nonzero top stack element to satisfy. To model all
 these properties, we define a correctness type system for Miniscript.
 
 
 <p>
 Every miniscript expression has one of four basic types:<ul>
-<li><b>"B"</b> Base expressions:<ul>
-  <li>Takes its inputs from the top of the stack.</li>
-  <li>When satisfied, pushes a nonzero value of up to 4 bytes onto the stack.</li>
-  <li>When dissatisfied, pushes a 0 onto the stack (if dissatisfaction without aborting is possible at all).</li>
-  <li>This is used for most expressions, and required for the top level one.</li>
-  <li>For example: <code>older(n)</code> = <samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp>.</li>
-</ul></li>
-<li><b>"V"</b> Verify expressions:<ul>
-  <li>Takes its inputs from the top of the stack.</li>
-  <li>When satisfactied, pushes nothing.</li>
-  <li>Cannot be dissatisfied without aborting.</li>
-  <li>A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.</li>
-  <li>For example <code>vc:pk(key)</code> = <samp>&lt;key&gt; CHECKSIGVERIFY</samp>.</li>
-</ul></li>
-<li><b>"K"</b> Key expressions:<ul>
-  <li>Takes its inputs from the top of the stack.</li>
-  <li>Always pushes a public key onto the stack, for which a signature is to be provided to satisfy the expression.</li>
-  <li>Can be converted into a "B" using the <code>c:</code> wrapper (<samp>CHECKSIG</samp>).</li>
-  <li>For example <code>pk_h(key)</code> = <samp>DUP HASH160 &lt;Hash160(key)&gt; EQUALVERIFY</samp></li>
-</ul></li>
-<li><b>"W"</b> Wrapped expressions:<ul>
-  <li>Takes its input from one below the top of the stack.</li>
-  <li>When satisfied, pushes a nonzero value (like B) on top of the stack, or one below the top.</li>
-  <li>When dissatisfied, pushes 0 op top of the stack or one below the top.</li>
-  <li>Every "W" is either <code>s:B</code> (<samp>SWAP B</samp>) or <code>a:B</code> (<samp>TOALTSTACK B FROMALTSTACK</samp>).</li>
-  <li>For example <code>sc:pk(key)</code> = <samp>SWAP &lt;key&gt; CHECKSIG</samp>.</li>
-</ul></li>
+<li><b>"B"</b> Base expressions. These take their inputs from the top of the stack. When satisfied, they push a nonzero value of up to 4 bytes onto the stack.
+When dissatisfied, they push an exact 0 onto the stack (if dissatisfaction without aborting is possible at all).
+This type is used for most expressions, and required for the top level expression. An example is <code>older(n)</code> = <samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp>.</li>
+<li><b>"V"</b> Verify expressions. Like "B", these take their inputs from the top of the stack. Upon satisfaction however, they continue without pushing anything. They cannot be
+dissatisfied without aborting. A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.
+An example is <code>vc:pk(key)</code> = <samp>&lt;key&gt; CHECKSIGVERIFY</samp>.</li>
+<li><b>"K"</b> Key expressions. They again take their inputs from the top of the stack, but instead of verifying a condition directly they always push a public key onto the stack, for
+which a signature is still required to satisfy the expression. A "K" can be converted into a "B" using the <code>c:</code> wrapper (<samp>CHECKSIG</samp>).
+An example is <code>pk_h(key)</code> = <samp>DUP HASH160 &lt;Hash160(key)&gt; EQUALVERIFY</samp></li>
+<li><b>"W"</b> Wrapped expressions. They take their inputs from one below the top of the stack, and push a nonzero (in case of satisfaction) or zero (in case of dissatisfaction)
+either on top of the stack, or one below. So for example a 3-input "W" would take the stack "A B C D E F" and turn it into "A B F 0" or "A B 0 F" in case of dissatisfaction, and
+"A B F n" or "A B n F" in case of satisfaction (with n a nonzero value). Every "W" is either <code>s:B</code> (<samp>SWAP B</samp>) or <code>a:B</code> (<samp>TOALTSTACK B FROMALTSTACK</samp>).
+An example is <code>sc:pk(key)</code> = <samp>SWAP &lt;key&gt; CHECKSIG</samp>.</li>
 </ul>
-
 
 <p>
 Then there are 5 type modifiers, which guarantee additional properties:<ul>
 <li><b>"z"</b> Zero-arg: this expression always consumes exactly 0 stack elements.</li>
 <li><b>"o"</b> One-arg: this expression always consumes exactly 1 stack element.</li>
-<li><b>"n"</b> Nonzero: this expression always consumes at least 1 stack element, no satisfaction for this expression requires the top input stack to be zero.</li>
-<li><b>"d"</b> Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed.</li>
+<li><b>"n"</b> Nonzero: this expression always consumes at least 1 stack element, no satisfaction for this expression requires the top input stack element to be zero.</li>
+<li><b>"d"</b> Dissatisfiable: a dissatisfaction for this expression can unconditionally be constructed. This implies the dissatisfaction cannot include any signature or hash preimage, and cannot rely on timelocks being satisfied.</li>
 <li><b>"u"</b> Unit: when satisfied, this expression will put an exact 1 on the stack (as opposed to any nonzero value).</li>
 </ul>
-
 
 <p>
 This tables lists the correctness requirements for each of the Miniscript expressions, and its type properties in function of those of their subexpressions:
@@ -414,7 +398,10 @@ Various types of Bitcoin Scripts have different resource limitations, either thr
 <li>Script satisfactions with a serialized <samp>scriptSig</samp> over 1650 bytes are invalid by standardness (P2SH).</li>
 <li>Script satisfactions with a witness consisting of over 100 stack elements (excluding the script itself) are invalid by standardness (P2WSH, P2SH-P2WSH).</li>
 </ul>
-Miniscript makes it easy to verify these properties statically for all possible execution paths.
+Miniscript makes it easy to verify that the ability to satisfy a script is not impacted by these limits. Not that this is distinct from verifying whether the limits are never
+reachable at all (which is also possible). Consider for example an <code>or_b(<em>X</em>,<em>Y</em>)</code> where both <em>X</em> and <em>Y</em> require a number of large <code>thresh_m</code>s
+to be executed to satisfy. It may be the case that satisfying just one of <em>X</em> or <em>Y</em> does not exceed the ops limit, while satisfying both does. As it's never required to
+satisfy both, the limit does not prevent satisfaction.
 
 <p>
 <h4>Security properties</h4>
@@ -427,6 +414,7 @@ The type system above guarantees that the corresponding Bitcoin Scripts are:<ul>
 
 <p>
 The completeness property has been extensively tested for P2WSH by verifying large numbers of random satisfactions for random Miniscript expressions against Bitcoin Core's consensus and standardness implementation.
+The soundness can be reasoned about by considering all possible execution paths through each of the fragments' scripts.
 <p>
 
 <p>In order for these properties to not just apply to script, but to an entire transaction, it's important that the witness commits to all data relevant for verification. In practice
@@ -481,6 +469,8 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <p>
 The correctness properties in the previous section are based on the availability of satisfactions and dissatisfactions listed above. The requirements include a "d" for every
 subexpression whose dissatisfaction may be needed in building a satisfaction for the parent expression. The "d" properties themselves rely on the "d" properties of subexpressions.
+An interesting property is that in a well-typed Miniscript, dissatisfying a non-"d" subexpression always causes the overall script to fail, propagating
+the failure upwards to a point where it either causes the script to abort, or reach the top level.
 
 
 <p>
@@ -511,18 +501,19 @@ of the same transaction. Finally, malleability may interfere with the usage of h
 
 <p>
 Because of these reasons, Miniscript is actually designed to permit non-malleable signing. As this guarantee is restricted in non-obvious ways, let's first state the assumptions:<ul>
-<li>The attacker does not have access to any of the private keys of public keys that participate in the Script. Limiting the impact a rogue participant can have is a distinct attack model.</li>
-<li>The attacker only has access to hash preimages that honest users have access to as well.</li>
-<li>The attacker gets to see exactly one satisfying witness of any transaction. If he sees multiple, the protections defined here are not necessarily valid anymore.</li>
+<li>The attacker does not have access to any of the private keys of public keys that participate in the Script. Participants with private keys inherently have the ability to produce different satisfactions by creating multiple signatures. While it is also interesting to study the impact rogue participants can have, we treat it as a distinct problem.</li>
+<li>The attacker only has access to hash preimages that honest users have access to as well. This is a reasonable assumption because hash preimages are revealed once globally, and then available to everyone. On the other hand, making the assumption that attackers may have access to more preimages than honest users make a large portion of scripts impossible to satisfy in a non-malleable way.</li>
+<li>The attacker gets to see exactly one satisfying witness of any transaction. If he sees multiple, it becomes possible for the attacker to mix and match different satisfactions. This is very hard to reason about.</li>
+<li>We restrict this analysis to scripts where no public key is repeated. If signatures constructed for one part of the script can be bound to other checks in the same script, a variant of the mixing from the previous point becomes available that is equally hard to reason about. Furthermore this situation can be avoided by using separate keys.</li>
 </ul>
 
 
 <p>
-Malleable satisfactions or dissatisfactions appear whenever options are available to attackers distinct from the one taken by honest users. This can happen for multiple reasons:<ul>
+Malleable satisfactions or dissatisfactions appear whenever options are available to attackers distinct from the one taken by honest users. This can happen for multiple reasons:<ol>
 <li>Two or more options for a satisfaction or dissatisfaction are listed in the table above which are both available to attackers directly. Regardless of which option is used in the honest solution, the attacker can change the solution to the other one.</li>
 <li>Two ore more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the one available to him.</li>
 <li>The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. Those are called an overcomplete solutions.</li>
-</ul>
+</ol>
 
 
 <h4>Non-malleable satisfaction algorithm</h4>
@@ -537,15 +528,15 @@ by the <samp>nLockTime</samp> and <samp>nSequence</samp> fields in the transacti
 In order to produce non-malleable satisfactions we make use of a function that returns the optimal satisfaction and dissatisfaction for a given expression (if any exist), or a special DONTUSE value, together with an optional HASSIG marker that tracks whether the solution contains at least one signature. To implement the function: <ul>
 <li>Invoke the function recursively for all subexpressions, obtaining all their satisfactions/dissatisfactions.</li>
 <li>Iterate over all the valid satisfactions/dissatisfactions in the table above (including the non-canonical ones), taking into account:<ul>
-  <li>The dissatisfactions for <code>sha256</code>, <code>ripemd160</code>, <code>hash256</code>, and <code>hash160</code> are always malleable, so instead use DONTUSE there.</li>
-  <li>The non-canonical options for <code>and_b</code>, <code>or_b</code>, and <code>thresh</code> are always overcomplete, so instead use DONTUSE there as well (with HASSIG flag if the original non-canonical solution had one).
+  <li>The dissatisfactions for <code>sha256</code>, <code>ripemd160</code>, <code>hash256</code>, and <code>hash160</code> are always malleable (reason 1), so instead use DONTUSE there.</li>
+  <li>The non-canonical options for <code>and_b</code>, <code>or_b</code>, and <code>thresh</code> are always overcomplete (reason 3), so instead use DONTUSE there as well (with HASSIG flag if the original non-canonical solution had one).
   <li>The satisfactions for <code>pk</code>, <code>pk_h</code>, and <code>thresh_m</code> can be marked HASSIG.</li>
   <li>When constructing solutions by combining results for subexpressions, the result is DONTUSE if any of the constituent results is DONTUSE. Furthermore, the result gets the HASSIG tag if any of the constituents do.</li>
 </ul></li>
-<li>If among all valid solutions (including DONTUSE ones) more than one does not have the HASSIG marker, return DONTUSE, as this means there are multiple options for the attacker, so whatever we pick, the attacker could change it to the other option.</li>
-<li>If instead exactly one does not have the HASSIG marker, return that solution. It means there is exactly one option available to the attacker, so we have to pick it to prevent him from changing another solution to this one.</li>
+<li>If among all valid solutions (including DONTUSE ones) more than one does not have the HASSIG marker, return DONTUSE, as this is malleable because of reason 1.</li>
+<li>If instead exactly one does not have the HASSIG marker, return that solution because of reason 2.</li>
 <li>If all valid solutions have the HASSIG marker, but all of them are DONTUSE, return DONTUSE-HASSIG. The HASSIG marker is important because while this represents a choice between multiple options that would cause malleability if used, they are not available to the attacker, and we may be able to avoid them entirely still.
-<li>Otherwise, return the smallest solution (in terms of witness size) among the not-DONTUSE ones.
+<li>Otherwise, all not-DONTUSE options are valid, so return the smallest one (in terms of witness size).
 </ul>
 To produce an overall satisfaction, invoke the function on the toplevel expression. If no valid satisfaction is returned, or it is DONTUSE, fail. Otherwise, if any timelocking is used in the script but the result does not have the HASSIG flag, also fail, as this represents a situation where an attacker could change the <samp>nLockTime</samp> or <samp>nSequence</samp> values to meet additional timelock conditions. Not to mention that solutions without signatures are generally insecure. If the satisfaction is both not DONTUSE and HASSIG, return it.
 
@@ -553,9 +544,9 @@ To produce an overall satisfaction, invoke the function on the toplevel expressi
 <p>
 The above can be used to show that no non-canonical solutions listed in the satisfaction table can occur inside non-malleable satisfactions.<ul>
 <li>Some of the non-canonical options (the <code>or_b</code>, <code>and_b</code>, and <code>thresh</code> ones) are overcomplete, and thus can clearly not appear in non-malleable satisfactions.</li>
-<li>It can be shown that non-"d" expressions cannot be dissatisfied in valid witnesses, as their dissatisfaction implies aborting or propagating failure upwards, ultimately dissatisfying the top-level expression. This rules out the usage of the non-canonical <code>and_v</code> dissatisfaction.</li>
+<li>The fact that non-"d" expressions cannot be dissatisfied in valid witnesses rules out the usage of the non-canonical <code>and_v</code> dissatisfaction.</li>
 <li>"d" expressions are defined to be unconditionally dissatisfiable, which implies that for those a non-HASSIG dissatisfaction must exist. Non-HASSIG solutions
-    must be preferred over HASSIG ones, and when multiple non-HASSIG ones exist, none can be used. This lets us rule out the other non-canonical options in the table:<ul>
+    must be preferred over HASSIG ones (reason 2), and when multiple non-HASSIG ones exist, none can be used (reason 1). This lets us rule out the other non-canonical options in the table:<ul>
         <li><code>j:X</code> is always "d", its non-HASSIG dissatisfaction "0" always exists, and thus rules out any usage of "dsat(<em>X</em>)".
         <li>If <code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Z</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)".</li>
         <li>If <code>and_b(<em>X</em>,<em>Y</em>)</code> is "d", a non-HASSIG dissatisfaction "dsat(<em>Y</em>) dsat(<em>X</em>)" must exist, and thus rules out any usage of "dsat(<em>Y</em>) sat(<em>X</em>)" and "sat(<em>Y</em>) dsat(<em>X</em>)". Those are also overcomplete. </li>
@@ -570,8 +561,8 @@ The above can be used to show that no non-canonical solutions listed in the sati
 Now we have an algorithm that can find the optimal non-malleable satisfaction for any Miniscript, if it exists. But can we statically prove that such a solution always exists?
 In order to do that, we add additional properties to the type system:<ul>
 <li><b>"s"</b> Signed: satisfying this expression always requires a signature (predicting whether all satisfactions will be HASSIG).</li>
-<li><b>"f"</b> Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG). This conflicts with "d". </li>
-<li><b>"e"</b> Expressive: an uncondition dissatisfaction must always be constructible (like "d"), but it also needs to be unique, and there cannot ever be any other dissatisfactions available except ones that require a signature.
+<li><b>"f"</b> Forced: dissatisfying this expression always requires a signature (predicting whether all dissatisfactions will be HASSIG). </li>
+<li><b>"e"</b> Expressive: this requires a dissatisfaction to exist unconditionally (like "d"), but it also needs to be unique, and all other dissatisfactions (if any) must require a signature.
 </ul>
 
 
@@ -611,6 +602,18 @@ The following table lists these additional properties, and the requirements for 
 </table>
 </div>
 
+<p>
+Using the malleability type properties it is possible to determine statically whether a script can be nonmalleably satisfied under all circumstances.
+In many cases it is reasonable to only accept such guaranteed-nonmalleable scripts, as unexpected behavior can occur when using other scripts.
+
+<p>
+For example, when running the non-malleable satisfaction algorithm above, adding available preimages, or increasing the <samp>nLockTime</samp>/<samp>nSequence</samp> values
+actually may make it fail where it succeeded before. This is because a larger set of met conditions may mean an existing satisfaction does from nonmalleable to malleable.
+Restricting things to scripts that are guaranteed to be satisfiable in a non-malleable way avoids this problem.
+
+<p>
+When analysing Miniscripts for resource limits, restricting yourself to just non-malleable solutions (or even non-malleable scripts) also leads to tighter bounds,
+as all non-canonical satisfactions and dissatisfaction can be left out of consideration.
 
 </div>
 </div>
