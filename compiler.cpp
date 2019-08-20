@@ -147,16 +147,17 @@ Policy Parse(Span<const char>& in) {
             if (!sub.back()()) return Policy(Policy::Type::NONE);
         }
         return Policy(Policy::Type::AND, std::move(sub));
-    } else if (Func("thresh", expr) || Func("thres", expr)) {
+    } else if (Func("thresh", expr)) {
         auto arg = Expr(expr);
         uint32_t count = std::stoul(std::string(arg.begin(), arg.end()));
-        if (count < 1 || count > 16) return Policy(Policy::Type::NONE);
+        if (count < 1) return Policy(Policy::Type::NONE);
         std::vector<Policy> sub;
         while (expr.size()) {
             if (!Const(",", expr)) return Policy(Policy::Type::NONE);
             sub.emplace_back(Parse(expr));
             if (!sub.back()()) return Policy(Policy::Type::NONE);
         }
+        if (sub.size() > 100 || count > sub.size()) return Policy(Policy::Type::NONE);
         return Policy(Policy::Type::THRESH, std::move(sub), count);
     }
 
@@ -298,14 +299,25 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
             for (const auto& s : subs) {
                 if (!s) return {};
             }
-            if (std::all_of(node.sub.begin(), node.sub.end(), [&](const Policy& x){ return x.node_type == Policy::Type::PK; })) {
+            if (node.sub.size() <= 20 && std::all_of(node.sub.begin(), node.sub.end(), [&](const Policy& x){ return x.node_type == Policy::Type::PK; })) {
                 std::vector<std::string> keys;
                 for (const Policy& x : node.sub) {
                     keys.push_back(x.keys[0]);
                 }
                 strats.push_back(MakeStrat(store, Strat::Type::THRESH_M, std::move(keys), node.k));
             }
-            strats.push_back(MakeStrat(store, Strat::Type::THRESH, std::move(subs), node.k, (double)node.k / subs.size()));
+            if (node.k > 1 && node.k < node.sub.size()) {
+                strats.push_back(MakeStrat(store, Strat::Type::THRESH, subs, node.k, (double)node.k / subs.size()));
+            }
+            if (node.k == 1 || node.k == node.sub.size()) {
+                while (subs.size() > 1) {
+                    auto rep = MakeStrat(store, node.k == 1 ? Strat::Type::OR : Strat::Type::AND, Vector(*(subs.rbegin() + 1), subs.back()), 1.0 / subs.size());
+                    subs.pop_back();
+                    subs.pop_back();
+                    subs.push_back(MakeStrat(store, Strat::Type::CACHE, Vector(rep)));
+                }
+                strats.push_back(subs[0]);
+            }
             break;
         }
     }
