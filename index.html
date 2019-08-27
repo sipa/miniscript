@@ -192,7 +192,7 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 </tr>
 <tr>
   <td><code>pk_h(key)</code></td>
-  <td><samp>DUP HASH160 &lt;HASH160(key)&gt; EQUALVERFIFY</samp></td>
+  <td><samp>DUP HASH160 &lt;HASH160(key)&gt; EQUALVERIFY</samp></td>
 </tr>
 <tr>
   <td>nSequence &ge; n (and compatible)</td>
@@ -200,7 +200,7 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
   <td><samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp></td>
 </tr>
 <tr>
-  <td>nLockTime &ge; n (and compatilbe)</td>
+  <td>nLockTime &ge; n (and compatible)</td>
   <td><code>after(n)</code></td>
   <td><samp>&lt;n&gt; CHECKLOCKTIMEVERIFY</samp></td>
 </tr>
@@ -511,8 +511,8 @@ Because of these reasons, Miniscript is actually designed to permit non-malleabl
 <p>
 Malleable satisfactions or dissatisfactions appear whenever options are available to attackers distinct from the one taken by honest users. This can happen for multiple reasons:<ol>
 <li>Two or more options for a satisfaction or dissatisfaction are listed in the table above which are both available to attackers directly. Regardless of which option is used in the honest solution, the attacker can change the solution to the other one.</li>
-<li>Two ore more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the one available to him.</li>
-<li>The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. Those are called an overcomplete solutions.</li>
+<li>Two or more options for a satisfaction or dissatisfaction are listed in the table above, only one of which is available to attackers, but the honest solution uses another one. In that case, the attacker can modify the solution to pick the one available to him.</li>
+<li>The honest users pick a solution that contains a satisfaction which can be turned into a dissatisfaction without invalidating the overall witness. Those are called overcomplete solutions.</li>
 </ol>
 
 
@@ -613,7 +613,7 @@ Restricting things to scripts that are guaranteed to be satisfiable in a non-mal
 
 <p>
 When analysing Miniscripts for resource limits, restricting yourself to just non-malleable solutions (or even non-malleable scripts) also leads to tighter bounds,
-as all non-canonical satisfactions and dissatisfaction can be left out of consideration.
+as all non-canonical satisfactions and dissatisfactions can be left out of consideration.
 
 </div>
 </div>
