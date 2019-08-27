@@ -250,30 +250,30 @@ struct InputStack {
         }
         return a;
     }
-};
 
-inline InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
-    // If only one (or neither) is valid, pick the other one.
-    if (!a.valid) return b;
-    if (!b.valid) return a;
-    // If both are valid, they must be distinct.
-    assert(a.stack != b.stack);
-    if (nonmalleable) {
-        // If both options are weak, any result is fine; it just needs the malleable marker.
-        if (!a.has_sig && !b.has_sig) return a.Malleable();
-        // If one option is weak, we must pick that one.
-        if (!a.has_sig) return a;
-        if (!b.has_sig) return b;
-        // If both options are strong, prefer the canonical one.
-        if (b.non_canon) return a;
-        if (a.non_canon) return b;
-        // If both options are strong and canonical, prefer the nonmalleable one.
-        if (b.malleable) return a;
-        if (a.malleable) return b;
+    friend inline InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
+        // If only one (or neither) is valid, pick the other one.
+        if (!a.valid) return b;
+        if (!b.valid) return a;
+        // If both are valid, they must be distinct.
+        assert(a.stack != b.stack);
+        if (nonmalleable) {
+            // If both options are weak, any result is fine; it just needs the malleable marker.
+            if (!a.has_sig && !b.has_sig) return a.Malleable();
+            // If one option is weak, we must pick that one.
+            if (!a.has_sig) return a;
+            if (!b.has_sig) return b;
+            // If both options are strong, prefer the canonical one.
+            if (b.non_canon) return a;
+            if (a.non_canon) return b;
+            // If both options are strong and canonical, prefer the nonmalleable one.
+            if (b.malleable) return a;
+            if (a.malleable) return b;
+        }
+        // Otherwise just pick the smallest one.
+        return std::min(a, b);
     }
-    // Otherwise just pick the smallest one.
-    return std::min(a, b);
-}
+};
 
 struct InputResult {
     InputStack nsat, sat;
