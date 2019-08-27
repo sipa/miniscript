@@ -967,6 +967,11 @@ std::string Expand(std::string str) {
         if (pos == std::string::npos) break;
         str.replace(pos, 10, "(9999999999999999999999999999999999999999)");
     }
+    while (true) {
+        auto pos = str.find(" ");
+        if (pos == std::string::npos) break;
+        str.replace(pos, 1, "");
+    }
     return str;
 }
 
