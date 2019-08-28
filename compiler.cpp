@@ -67,8 +67,6 @@ struct Policy {
     bool operator()() const { return node_type != Type::NONE; }
 };
 
-bool operator==(const Span<const char>& a, const std::string& b) { return (size_t)a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin()); }
-
 std::vector<unsigned char> Hash(const Span<const char>& in, size_t len)
 {
     auto unhex = ParseHex(std::string(in.begin(), in.end()));
