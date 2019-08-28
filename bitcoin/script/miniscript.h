@@ -198,9 +198,6 @@ Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z);
 //! A helper sanitizer/checker for the output of CalcType.
 Type SanitizeType(Type x);
 
-
-} // namespace internal
-
 struct InputStack {
     bool valid = false;
     bool has_sig = false;
@@ -217,62 +214,22 @@ struct InputStack {
     explicit InputStack(bool val) : valid(val), size(valid ? 0 : std::numeric_limits<size_t>::max()) {}
     InputStack(std::vector<unsigned char> in) : valid(true), size(in.size() + 1), stack(Vector(std::move(in))) {}
 
-    InputStack& WithSig() {
-        has_sig = true;
-        return *this;
-    }
+    //! Mark this input stack as having a signature.
+    InputStack& WithSig();
 
-    InputStack& NonCanon() {
-        non_canon = true;
-        return *this;
-    }
+    //! Mark this input stack as non-canonical (known to not be necessary in non-malleable satisfactions).
+    InputStack& NonCanon();
 
-    InputStack& Malleable(bool x = true) {
-        malleable = x;
-        return *this;
-    }
+    //! Mark this input stack as malleable.
+    InputStack& Malleable(bool x = true);
 
-    bool operator<(const InputStack& b) const { return size < b.size; }
+    friend bool operator<(const InputStack& a, const InputStack& b);
 
-    friend InputStack operator+(InputStack a, InputStack b) {
-        if (!a.valid || !b.valid) {
-            a.valid = false;
-            a.stack.clear();
-            a.size = std::numeric_limits<size_t>::max();
-            a.has_sig = false;
-            a.malleable = false;
-        } else {
-            a.stack = Cat(std::move(a.stack), std::move(b.stack));
-            a.size += b.size;
-            a.has_sig |= b.has_sig;
-            a.malleable |= b.malleable;
-            a.non_canon |= b.non_canon;
-        }
-        return a;
-    }
+    //! Concatenate two input stacks.
+    friend InputStack operator+(InputStack a, InputStack b);
 
-    friend inline InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
-        // If only one (or neither) is valid, pick the other one.
-        if (!a.valid) return b;
-        if (!b.valid) return a;
-        // If both are valid, they must be distinct.
-        assert(a.stack != b.stack);
-        if (nonmalleable) {
-            // If both options are weak, any result is fine; it just needs the malleable marker.
-            if (!a.has_sig && !b.has_sig) return a.Malleable();
-            // If one option is weak, we must pick that one.
-            if (!a.has_sig) return a;
-            if (!b.has_sig) return b;
-            // If both options are strong, prefer the canonical one.
-            if (b.non_canon) return a;
-            if (a.non_canon) return b;
-            // If both options are strong and canonical, prefer the nonmalleable one.
-            if (b.malleable) return a;
-            if (a.malleable) return b;
-        }
-        // Otherwise just pick the smallest one.
-        return std::min(a, b);
-    }
+    //! Choose between two potential input stacks.
+    friend InputStack Choose(InputStack a, InputStack b, bool nonmalleable);
 };
 
 struct InputResult {
@@ -280,6 +237,8 @@ struct InputResult {
 
     InputResult(InputStack in_nsat, InputStack in_sat) : nsat(std::move(in_nsat)), sat(std::move(in_sat)) {}
 };
+
+} // namespace internal
 
 //! A node in a miniscript expression.
 template<typename Key>
@@ -298,7 +257,6 @@ struct Node {
 
     //! Subexpressions (for WRAP_*/AND_*/OR_*/ANDOR/THRESH)
     const std::vector<NodeRef<Key>> subs;
-
 
 private:
     //! Non-push opcodes in the corresponding script (static, non-sat, sat)
@@ -350,6 +308,8 @@ private:
 
     //! Compute the type for this miniscript.
     Type CalcType() const {
+        using namespace internal;
+
         // Sanity check on sigops
         if (GetOps() > 201) return ""_mst;
 
@@ -420,7 +380,7 @@ private:
         Type x = subs.size() > 0 ? subs[0]->GetType() : ""_mst;
         Type y = subs.size() > 1 ? subs[1]->GetType() : ""_mst;
         Type z = subs.size() > 2 ? subs[2]->GetType() : ""_mst;
-        return internal::SanitizeType(internal::CalcSimpleType(nodetype, x, y, z));
+        return SanitizeType(CalcSimpleType(nodetype, x, y, z));
     }
 
     //! Internal code for ToScript.
@@ -626,7 +586,7 @@ private:
     }
 
     template<typename Ctx>
-    InputResult ProduceInput(const Ctx& ctx, bool nonmal) const {
+    internal::InputResult ProduceInput(const Ctx& ctx, bool nonmal) const {
         auto ret = ProduceInputHelper(ctx, nonmal);
         // Do a consistency check between the satisfaction code and the type checker
         // (the actual satisfaction code in ProduceInputHelper does not use GetType)
@@ -649,13 +609,15 @@ private:
     }
 
     template<typename Ctx>
-    InputResult ProduceInputHelper(const Ctx& ctx, bool nonmal) const {
-        static const InputStack ZERO = InputStack(std::vector<unsigned char>());
-        static const InputStack ZERO32 = InputStack(std::vector<unsigned char>(32, 0)).Malleable();
-        static const InputStack ONE = InputStack(Vector((unsigned char)1));
-        static const InputStack EMPTY = InputStack(true);
-        static const InputStack MALLEABLE_EMPTY = InputStack(true).Malleable();
-        static const InputStack INVALID = InputStack(false);
+    internal::InputResult ProduceInputHelper(const Ctx& ctx, bool nonmal) const {
+        using namespace internal;
+
+        const auto ZERO = InputStack(std::vector<unsigned char>());
+        const auto ZERO32 = InputStack(std::vector<unsigned char>(32, 0)).Malleable();
+        const auto ONE = InputStack(Vector((unsigned char)1));
+        const auto EMPTY = InputStack(true);
+        const auto MALLEABLE_EMPTY = InputStack(true).Malleable();
+        const auto INVALID = InputStack(false);
 
         switch (nodetype) {
             case NodeType::PK: {
@@ -1253,8 +1215,9 @@ inline NodeRef<Key> DecodeWrapped(I& in, I last, const Ctx& ctx) {
 
 template<typename Ctx>
 inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& ctx) {
+    using namespace internal;
     Span<const char> span = MakeSpan(str);
-    auto ret = internal::Parse<typename Ctx::Key>(span, ctx);
+    auto ret = Parse<typename Ctx::Key>(span, ctx);
     if (!ret || span.size()) return {};
 //    if (!(ret->GetType() << "B"_mst)) return {};
     return ret;
@@ -1262,10 +1225,11 @@ inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& 
 
 template<typename Ctx>
 inline NodeRef<typename Ctx::Key> FromScript(const CScript& script, const Ctx& ctx) {
+    using namespace internal;
     std::vector<std::pair<opcodetype, std::vector<unsigned char>>> decomposed;
-    if (!internal::DecomposeScript(script, decomposed)) return {};
+    if (!DecomposeScript(script, decomposed)) return {};
     auto it = decomposed.begin();
-    auto ret = internal::DecodeMulti<typename Ctx::Key>(it, decomposed.end(), ctx);
+    auto ret = DecodeMulti<typename Ctx::Key>(it, decomposed.end(), ctx);
     if (!ret) return {};
     if (!(ret->GetType() << "B"_mst)) return {};
     if (it != decomposed.end()) return {};
