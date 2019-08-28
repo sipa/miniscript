@@ -31,7 +31,50 @@ Type SanitizeType(Type e) {
     return e;
 }
 
-Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z) {
+Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys) {
+    // Sanity check on sigops
+//    if (GetOps() > 201) return ""_mst;
+
+    // Sanity check on data
+    if (nodetype == NodeType::SHA256 || nodetype == NodeType::HASH256) {
+        assert(data_size == 32);
+    } else if (nodetype == NodeType::RIPEMD160 || nodetype == NodeType::HASH160) {
+        assert(data_size == 20);
+    } else {
+        assert(data_size == 0);
+    }
+    // Sanity check on k
+    if (nodetype == NodeType::OLDER || nodetype == NodeType::AFTER) {
+        assert(k >= 1 && k < 0x80000000UL);
+    } else if (nodetype == NodeType::THRESH_M) {
+        assert(k >= 1 && k <= n_keys);
+    } else if (nodetype == NodeType::THRESH) {
+        assert(k > 1 && k < n_subs);
+    } else {
+        assert(k == 0);
+    }
+    // Sanity check on subs
+    if (nodetype == NodeType::AND_V || nodetype == NodeType::AND_B || nodetype == NodeType::OR_B ||
+        nodetype == NodeType::OR_C || nodetype == NodeType::OR_I || nodetype == NodeType::OR_D) {
+        assert(n_subs == 2);
+    } else if (nodetype == NodeType::ANDOR) {
+        assert(n_subs == 3);
+    } else if (nodetype == NodeType::WRAP_A || nodetype == NodeType::WRAP_S || nodetype == NodeType::WRAP_C ||
+               nodetype == NodeType::WRAP_D || nodetype == NodeType::WRAP_V || nodetype == NodeType::WRAP_J ||
+               nodetype == NodeType::WRAP_N) {
+        assert(n_subs == 1);
+    } else if (nodetype != NodeType::THRESH) {
+        assert(n_subs == 0);
+    }
+    // Sanity check on keys
+    if (nodetype == NodeType::PK || nodetype == NodeType::PK_H) {
+        assert(n_keys == 1);
+    } else if (nodetype == NodeType::THRESH_M) {
+        assert(n_keys >= 1 && n_keys <= 20);
+    } else {
+        assert(n_keys == 0);
+    }
+
     // Below is the per-nodetype logic for computing the expression types.
     // It heavily relies on Type's << operator (where "X << a_mst" means
     // "X has all properties listed in a").
@@ -130,10 +173,62 @@ Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z) {
             (z & (x | y) & "s"_mst) | // s=s_z*(s_x+s_y)
             "x"_mst; // x
         case NodeType::THRESH_M: return "Bnudems"_mst;
-        case NodeType::THRESH: break;
+        case NodeType::THRESH: {
+            bool all_e = true;
+            bool all_m = true;
+            uint32_t args = 0;
+            uint32_t num_s = 0;
+            for (size_t i = 0; i < sub_types.size(); ++i) {
+                Type t = sub_types[i];
+                if (!(t << (i ? "Wdu"_mst : "Bdu"_mst))) return ""_mst; // Require Bdu, Wdu, Wdu, ...
+                if (!(t << "e"_mst)) all_e = false;
+                if (!(t << "m"_mst)) all_m = false;
+                if (t << "s"_mst) num_s += 1;
+                args += (t << "z"_mst) ? 0 : (t << "o"_mst) ? 1 : 2;
+            }
+            return "Bdu"_mst |
+                   "z"_mst.If(args == 0) | // z=all z
+                   "o"_mst.If(args == 1) | // o=all z except one o
+                   "e"_mst.If(all_e && num_s == n_subs) | // e=all e and all s
+                   "m"_mst.If(all_e && all_m && num_s >= n_subs - k) | // m=all e, >=(n-k) s
+                   "s"_mst.If(num_s >= n_subs - k + 1); // s= >=(n-k+1) s
+            }
     }
     assert(false);
     return ""_mst;
+}
+
+size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys) {
+    switch (nodetype) {
+        case NodeType::PK: return subsize + 34;
+        case NodeType::PK_H: return subsize + 3 + 21;
+        case NodeType::OLDER: return subsize + 1 + (CScript() << k).size();
+        case NodeType::AFTER: return subsize + 1 + (CScript() << k).size();
+        case NodeType::HASH256: return subsize + 4 + 2 + 33;
+        case NodeType::HASH160: return subsize + 4 + 2 + 21;
+        case NodeType::SHA256: return subsize + 4 + 2 + 33;
+        case NodeType::RIPEMD160: return subsize + 4 + 2 + 21;
+        case NodeType::WRAP_A: return subsize + 2;
+        case NodeType::WRAP_S: return subsize + 1;
+        case NodeType::WRAP_C: return subsize + 1;
+        case NodeType::WRAP_D: return subsize + 3;
+        case NodeType::WRAP_V: return subsize + (sub0typ << "x"_mst);
+        case NodeType::WRAP_J: return subsize + 4;
+        case NodeType::WRAP_N: return subsize + 1;
+        case NodeType::TRUE: return 1;
+        case NodeType::FALSE: return 1;
+        case NodeType::AND_V: return subsize;
+        case NodeType::AND_B: return subsize + 1;
+        case NodeType::OR_B: return subsize + 1;
+        case NodeType::OR_D: return subsize + 3;
+        case NodeType::OR_C: return subsize + 2;
+        case NodeType::OR_I: return subsize + 3;
+        case NodeType::ANDOR: return subsize + 3;
+        case NodeType::THRESH: return subsize + n_subs + 1;
+        case NodeType::THRESH_M: return subsize + 3 + (n_keys > 16) + (k > 16) + 34 * n_keys;
+    }
+    assert(false);
+    return 0;
 }
 
 InputStack& InputStack::WithSig() {

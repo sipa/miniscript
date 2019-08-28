@@ -194,49 +194,50 @@ enum class NodeType {
 
 namespace internal {
 
-//! Helper function for Node::CalcType for everything except `thresh` nodes.
-Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z);
+//! Helper function for Node::CalcType.
+Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys);
+
+//! Helper function for Node::CalcScriptLen.
+size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys);
 
 //! A helper sanitizer/checker for the output of CalcType.
 Type SanitizeType(Type x);
 
+//! An object representing a sequence of witness stack elements.
 struct InputStack {
+    //! Whether this stack is valid for its intended purpose (satisfaction or dissatisfaction of a Node).
     bool valid = false;
+    //! Whether this stack contains a digital signature.
     bool has_sig = false;
+    //! Whether this stack is malleable (can be turned into an equally valid other stack by a third party).
     bool malleable = false;
+    //! Whether this stack is non-canonical (using a construction known to be unnecessary for satisfaction).
     bool non_canon = false;
+    //! Serialized witness size.
     size_t size = 0;
+    //! Data elements.
     std::vector<std::vector<unsigned char>> stack;
-
-    InputStack(InputStack&& x) = default;
-    InputStack(const InputStack& x) = default;
-    InputStack& operator=(InputStack&& x) = default;
-    InputStack& operator=(const InputStack& x) = default;
-
-    explicit InputStack(bool val) : valid(val), size(valid ? 0 : std::numeric_limits<size_t>::max()) {}
+    //! Construct an empty stack (valid or invalid).
+    explicit InputStack(bool val) : valid(val), size(0) {}
+    //! Construct a valid single-element stack (with an element up to 75 bytes).
     InputStack(std::vector<unsigned char> in) : valid(true), size(in.size() + 1), stack(Vector(std::move(in))) {}
-
     //! Mark this input stack as having a signature.
     InputStack& WithSig();
-
     //! Mark this input stack as non-canonical (known to not be necessary in non-malleable satisfactions).
     InputStack& NonCanon();
-
     //! Mark this input stack as malleable.
     InputStack& Malleable(bool x = true);
-
+    //! Compare two InputStack objects.
     friend bool operator<(const InputStack& a, const InputStack& b);
-
     //! Concatenate two input stacks.
     friend InputStack operator+(InputStack a, InputStack b);
-
     //! Choose between two potential input stacks.
     friend InputStack Choose(InputStack a, InputStack b, bool nonmalleable);
 };
 
+//! A pair of a satisfaction and a dissatisfaction InputStack.
 struct InputResult {
     InputStack nsat, sat;
-
     InputResult(InputStack in_nsat, InputStack in_sat) : nsat(std::move(in_nsat)), sat(std::move(in_sat)) {}
 };
 
@@ -247,142 +248,48 @@ template<typename Key>
 struct Node {
     //! What node type this node is.
     const NodeType nodetype;
-
     //! The k parameter (time for OLDER/AFTER, threshold for THRESH(_M))
     const uint32_t k = 0;
-
     //! The keys used by this expression (only for PK/PK_H/THRESH_M)
     const std::vector<Key> keys;
-
     //! The data bytes in this expression (only for HASH160/HASH256/SHA256/RIPEMD10).
     const std::vector<unsigned char> data;
-
     //! Subexpressions (for WRAP_*/AND_*/OR_*/ANDOR/THRESH)
     const std::vector<NodeRef<Key>> subs;
 
 private:
     //! Non-push opcodes in the corresponding script (static, non-sat, sat)
     const int ops, nops, sops;
-
     //! Cached expression type (computed by CalcType and fed through SanitizeType).
     const Type typ;
-
     //! Cached script length (computed by CalcScriptLen).
     const size_t scriptlen;
 
     //! Compute the length of the script for this miniscript (including children).
     size_t CalcScriptLen() const {
-        size_t ret = 0;
+        size_t subsize = 0;
         for (const auto& sub : subs) {
-            ret += sub->ScriptSize();
+            subsize += sub->ScriptSize();
         }
-        switch (nodetype) {
-            case NodeType::PK: return ret + 34;
-            case NodeType::PK_H: return ret + 3 + 21;
-            case NodeType::OLDER: return ret + 1 + (CScript() << k).size();
-            case NodeType::AFTER: return ret + 1 + (CScript() << k).size();
-            case NodeType::HASH256: return ret + 4 + 2 + 33;
-            case NodeType::HASH160: return ret + 4 + 2 + 21;
-            case NodeType::SHA256: return ret + 4 + 2 + 33;
-            case NodeType::RIPEMD160: return ret + 4 + 2 + 21;
-            case NodeType::WRAP_A: return ret + 2;
-            case NodeType::WRAP_S: return ret + 1;
-            case NodeType::WRAP_C: return ret + 1;
-            case NodeType::WRAP_D: return ret + 3;
-            case NodeType::WRAP_V: return ret + (subs[0]->GetType() << "x"_mst);
-            case NodeType::WRAP_J: return ret + 4;
-            case NodeType::WRAP_N: return ret + 1;
-            case NodeType::TRUE: return 1;
-            case NodeType::FALSE: return 1;
-            case NodeType::AND_V: return ret;
-            case NodeType::AND_B: return ret + 1;
-            case NodeType::OR_B: return ret + 1;
-            case NodeType::OR_D: return ret + 3;
-            case NodeType::OR_C: return ret + 2;
-            case NodeType::OR_I: return ret + 3;
-            case NodeType::ANDOR: return ret + 3;
-            case NodeType::THRESH: return ret + subs.size() + 1;
-            case NodeType::THRESH_M: return ret + 3 + (keys.size() > 16) + (k > 16) + 34 * keys.size();
-        }
-        assert(false);
-        return 0;
+        Type sub0type = subs.size() > 0 ? subs[0]->GetType() : ""_mst;
+        return internal::ComputeScriptLen(nodetype, sub0type, subsize, k, subs.size(), keys.size());
     }
 
     //! Compute the type for this miniscript.
     Type CalcType() const {
         using namespace internal;
 
-        // Sanity check on sigops
-        if (GetOps() > 201) return ""_mst;
-
-        // Sanity check on data
-        if (nodetype == NodeType::SHA256 || nodetype == NodeType::HASH256) {
-            assert(data.size() == 32);
-        } else if (nodetype == NodeType::RIPEMD160 || nodetype == NodeType::HASH160) {
-            assert(data.size() == 20);
-        } else {
-            assert(data.size() == 0);
-        }
-        // Sanity check on k
-        if (nodetype == NodeType::OLDER || nodetype == NodeType::AFTER) {
-            assert(k >= 1 && k < 0x80000000UL);
-        } else if (nodetype == NodeType::THRESH_M) {
-            assert(k >= 1 && k <= keys.size());
-        } else if (nodetype == NodeType::THRESH) {
-            assert(k > 1 && k < subs.size());
-        } else {
-            assert(k == 0);
-        }
-        // Sanity check on subs
-        if (nodetype == NodeType::AND_V || nodetype == NodeType::AND_B || nodetype == NodeType::OR_B ||
-            nodetype == NodeType::OR_C || nodetype == NodeType::OR_I || nodetype == NodeType::OR_D) {
-            assert(subs.size() == 2);
-        } else if (nodetype == NodeType::ANDOR) {
-            assert(subs.size() == 3);
-        } else if (nodetype == NodeType::WRAP_A || nodetype == NodeType::WRAP_S || nodetype == NodeType::WRAP_C ||
-                   nodetype == NodeType::WRAP_D || nodetype == NodeType::WRAP_V || nodetype == NodeType::WRAP_J ||
-                   nodetype == NodeType::WRAP_N) {
-            assert(subs.size() == 1);
-        } else if (nodetype != NodeType::THRESH) {
-            assert(subs.size() == 0);
-        }
-        // Sanity check on keys
-        if (nodetype == NodeType::PK || nodetype == NodeType::PK_H) {
-            assert(keys.size() == 1);
-        } else if (nodetype == NodeType::THRESH_M) {
-            assert(keys.size() >= 1 && keys.size() <= 20);
-        } else {
-            assert(keys.size() == 0);
-        }
-
-        // THRESH has a variable number of subexpression; perform all typing logic here.
+        // THRESH has a variable number of subexpression
+        std::vector<Type> sub_types;
         if (nodetype == NodeType::THRESH) {
-            uint32_t n = subs.size();
-            bool all_e = true;
-            bool all_m = true;
-            uint32_t args = 0;
-            uint32_t num_s = 0;
-            for (uint32_t i = 0; i < n; ++i) {
-                Type t = subs[i]->GetType();
-                if (!(t << (i ? "Wdu"_mst : "Bdu"_mst))) return ""_mst; // Require Bdu, Wdu, Wdu, ...
-                if (!(t << "e"_mst)) all_e = false;
-                if (!(t << "m"_mst)) all_m = false;
-                if (t << "s"_mst) num_s += 1;
-                args += (t << "z"_mst) ? 0 : (t << "o"_mst) ? 1 : 2;
-            }
-            return "Bdu"_mst |
-                   "z"_mst.If(args == 0) | // z=all z
-                   "o"_mst.If(args == 1) | // o=all z except one o
-                   "e"_mst.If(all_e && num_s == n) | // e=all e and all s
-                   "m"_mst.If(all_e && all_m && num_s >= n - k) | // m=all e, >=(n-k) s
-                   "s"_mst.If(num_s >= n - k + 1); // s= >=(n-k+1) s
+            for (const auto& sub : subs) sub_types.push_back(sub->GetType());
         }
-
-        // All other nodes than THRESH can be computed just from the types of the subexpexpressions.
+        // All other nodes than THRESH can be computed just from the types of the 0-3 subexpexpressions.
         Type x = subs.size() > 0 ? subs[0]->GetType() : ""_mst;
         Type y = subs.size() > 1 ? subs[1]->GetType() : ""_mst;
         Type z = subs.size() > 2 ? subs[2]->GetType() : ""_mst;
-        return SanitizeType(CalcSimpleType(nodetype, x, y, z));
+
+        return SanitizeType(CalcSimpleType(nodetype, x, y, z, sub_types, k, data.size(), subs.size(), keys.size()));
     }
 
     //! Internal code for ToScript.
