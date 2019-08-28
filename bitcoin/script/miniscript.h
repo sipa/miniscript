@@ -953,11 +953,17 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
         if (hash.size() != 20) return {};
         return MakeNodeRef<Key>(NodeType::HASH160, std::move(hash));
     } else if (Func("after", expr)) {
-        unsigned long num = std::stoul(std::string(expr.begin(), expr.end()));
+        uint64_t num;
+        if (!ParseUInt64(std::string(expr.begin(), expr.end()), &num)) {
+            return {};
+        }
         if (num < 1 || num >= 0x80000000UL) return {};
         return MakeNodeRef<Key>(NodeType::AFTER, num);
     } else if (Func("older", expr)) {
-        unsigned long num = std::stoul(std::string(expr.begin(), expr.end()));
+        uint64_t num;
+        if (!ParseUInt64(std::string(expr.begin(), expr.end()), &num)) {
+            return {};
+        }
         if (num < 1 || num >= 0x80000000UL) return {};
         return MakeNodeRef<Key>(NodeType::OLDER, num);
     } else if (Func("and_n", expr)) {
@@ -976,7 +982,10 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
         return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(mid), std::move(right)));
     } else if (Func("thresh_m", expr)) {
         auto arg = Expr(expr);
-        uint32_t count = std::stoul(std::string(arg.begin(), arg.end()));
+        uint32_t count;
+        if (!ParseUInt32(std::string(arg.begin(), arg.end()), &count)) {
+            return {};
+        }
         std::vector<Key> keys;
         while (expr.size()) {
             if (!Const(",", expr)) return {};
@@ -990,7 +999,10 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
         return MakeNodeRef<Key>(NodeType::THRESH_M, std::move(keys), count);
     } else if (Func("thresh", expr)) {
         auto arg = Expr(expr);
-        uint32_t count = std::stoul(std::string(arg.begin(), arg.end()));
+        uint32_t count;
+        if (!ParseUInt32(std::string(arg.begin(), arg.end()), &count)) {
+            return {};
+        }
         std::vector<NodeRef<Key>> subs;
         while (expr.size()) {
             if (!Const(",", expr)) return {};
