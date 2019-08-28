@@ -8,6 +8,9 @@
 #include <vector>
 #include <utility>
 
+namespace vector {
+namespace internal {
+
 /** Compute the number of arguments passed. */
 inline constexpr unsigned NumArgs() { return 0; }
 template<typename Arg, typename... Args>
@@ -23,6 +26,9 @@ inline void PushBackMany(V& vec, Arg&& arg, Args&&... args)
     PushBackMany(vec, std::forward<Args>(args)...);
 }
 
+} // namespace internal
+} // namespace vector
+
 /** Construct a vector with the specified elements.
  *
  * This is preferable over the list initializing constructor of std::vector:
@@ -36,6 +42,7 @@ inline void PushBackMany(V& vec, Arg&& arg, Args&&... args)
 template<typename Arg, typename... Args>
 inline std::vector<typename std::remove_cv<typename std::remove_reference<Arg>::type>::type> Vector(Arg&& arg, Args&&... args)
 {
+    using namespace vector::internal;
     std::vector<typename std::remove_cv<typename std::remove_reference<Arg>::type>::type> ret;
     ret.reserve(1 + NumArgs(std::forward<Args>(args)...));
     ret.push_back(std::forward<Arg>(arg));
@@ -43,35 +50,26 @@ inline std::vector<typename std::remove_cv<typename std::remove_reference<Arg>::
     return ret;
 }
 
+/** Concatenate two vectors, moving elements. */
 template<typename V>
-inline V Cat(V&& v1, V&& v2)
+inline V Cat(V v1, V&& v2)
 {
     v1.reserve(v1.size() + v2.size());
     for (auto& arg : v2) {
         v1.push_back(std::move(arg));
     }
-    return std::move(v1); // Explicit move is necessary
+    return v1;
 }
 
+/** Concatenate two vectors. */
 template<typename V>
-inline V Cat(V&& v1, const V& v2)
+inline V Cat(V v1, const V& v2)
 {
     v1.reserve(v1.size() + v2.size());
-    for (auto& arg : v2) {
+    for (const auto& arg : v2) {
         v1.push_back(arg);
     }
-    return std::move(v1);
-}
-
-template<typename V>
-inline V Cat(const V& v1, const V& v2)
-{
-    V ret = v1;
-    ret.reserve(v1.size() + v2.size());
-    for (auto& arg : v2) {
-        ret.push_back(arg);
-    }
-    return ret;
+    return v1;
 }
 
 #endif
