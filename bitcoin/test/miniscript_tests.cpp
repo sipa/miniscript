@@ -331,33 +331,19 @@ bool Satisfiable(const NodeRef& ref) {
     switch (ref->nodetype) {
         case NodeType::FALSE:
             return false;
-        case NodeType::AND_B:
-        case NodeType::AND_V:
+        case NodeType::AND_B: case NodeType::AND_V:
             return Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1]);
-        case NodeType::OR_B:
-        case NodeType::OR_C:
-        case NodeType::OR_D:
-        case NodeType::OR_I:
+        case NodeType::OR_B: case NodeType::OR_C: case NodeType::OR_D: case NodeType::OR_I:
             return Satisfiable(ref->subs[0]) || Satisfiable(ref->subs[1]);
         case NodeType::ANDOR:
             return (Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1])) || Satisfiable(ref->subs[2]);
-        case NodeType::WRAP_A:
-        case NodeType::WRAP_C:
-        case NodeType::WRAP_S:
-        case NodeType::WRAP_D:
-        case NodeType::WRAP_V:
-        case NodeType::WRAP_J:
+        case NodeType::WRAP_A: case NodeType::WRAP_C: case NodeType::WRAP_S:
+        case NodeType::WRAP_D: case NodeType::WRAP_V: case NodeType::WRAP_J:
         case NodeType::WRAP_N:
             return Satisfiable(ref->subs[0]);
-        case NodeType::PK:
-        case NodeType::PK_H:
-        case NodeType::THRESH_M:
-        case NodeType::AFTER:
-        case NodeType::OLDER:
-        case NodeType::HASH256:
-        case NodeType::HASH160:
-        case NodeType::SHA256:
-        case NodeType::RIPEMD160:
+        case NodeType::PK: case NodeType::PK_H: case NodeType::THRESH_M:
+        case NodeType::AFTER: case NodeType::OLDER: case NodeType::HASH256:
+        case NodeType::HASH160: case NodeType::SHA256: case NodeType::RIPEMD160:
         case NodeType::TRUE:
             return true;
         case NodeType::THRESH:
@@ -374,7 +360,7 @@ NodeRef RandomNode(miniscript::Type typ, int complexity) {
     NodeRef ret;
     do {
         ret = GenNode(typ, complexity);
-    } while (!ret || !(ret->GetType() << typ));
+    } while (!ret || !(ret->GetType() << typ) || !ret->CheckOpsLimit());
     return ret;
 }
 
@@ -397,6 +383,8 @@ std::vector<NodeRef> MultiNode(int complexity, const std::vector<miniscript::Typ
     }
     return subs;
 }
+
+static const NodeRef INVALID;
 
 NodeRef GenNode(miniscript::Type typ, int complexity) {
     if (typ << "B"_mst) {

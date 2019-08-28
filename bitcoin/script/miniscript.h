@@ -241,6 +241,38 @@ struct InputResult {
     InputResult(InputStack in_nsat, InputStack in_sat) : nsat(std::move(in_nsat)), sat(std::move(in_sat)) {}
 };
 
+//! Class whose objects represent the maximum of a list of integers.
+template<typename I>
+struct MaxInt {
+    const bool valid;
+    const I value;
+
+    MaxInt() : valid(false), value(0) {}
+    MaxInt(I val) : valid(true), value(val) {}
+
+    friend MaxInt<I> operator+(const MaxInt<I>& a, const MaxInt<I>& b) {
+        if (!a.valid || !b.valid) return {};
+        return a.value + b.value;
+    }
+
+    friend MaxInt<I> Choose(const MaxInt<I>& a, const MaxInt<I>& b) {
+        if (!a.valid) return b;
+        if (!b.valid) return a;
+        return std::max(a.value, b.value);
+    }
+};
+
+struct Ops {
+    //! Non-push opcodes.
+    uint32_t stat;
+    //! Number of keys in possibly executed OP_CHECKMULTISIG(VERIFY)s to satisfy.
+    MaxInt<uint32_t> sat;
+    //! Number of keys in possibly executed OP_CHECKMULTISIG(VERIFY)s to dissatisfy.
+    MaxInt<uint32_t> dsat;
+
+    Ops(uint32_t in_stat, MaxInt<uint32_t> in_sat, MaxInt<uint32_t> in_dsat) : stat(in_stat), sat(in_sat), dsat(in_dsat) {};
+};
+
 } // namespace internal
 
 //! A node in a miniscript expression.
@@ -258,8 +290,8 @@ struct Node {
     const std::vector<NodeRef<Key>> subs;
 
 private:
-    //! Non-push opcodes in the corresponding script (static, non-sat, sat)
-    const int ops, nops, sops;
+    //! Cached ops counts.
+    const internal::Ops ops;
     //! Cached expression type (computed by CalcType and fed through SanitizeType).
     const Type typ;
     //! Cached script length (computed by CalcScriptLen).
@@ -405,93 +437,50 @@ private:
         return "";
     }
 
-    int CalcOps() const {
+    internal::Ops CalcOps() const {
         switch (nodetype) {
-            case NodeType::PK: return 0;
-            case NodeType::PK_H: return 3;
-            case NodeType::OLDER: return 1;
-            case NodeType::AFTER: return 1;
-            case NodeType::SHA256: return 4;
-            case NodeType::RIPEMD160: return 4;
-            case NodeType::HASH256: return 4;
-            case NodeType::HASH160: return 4;
-            case NodeType::AND_V: return subs[0]->ops + subs[1]->ops;
-            case NodeType::AND_B: return 1 + subs[0]->ops + subs[1]->ops;
-            case NodeType::OR_B: return 1 + subs[0]->ops + subs[1]->ops;
-            case NodeType::OR_D: return 3 + subs[0]->ops + subs[1]->ops;
-            case NodeType::OR_C: return 2 + subs[0]->ops + subs[1]->ops;
-            case NodeType::OR_I: return 3 + subs[0]->ops + subs[1]->ops;
-            case NodeType::ANDOR: return 3 + subs[0]->ops + subs[1]->ops + subs[2]->ops;
-            case NodeType::THRESH: return std::accumulate(subs.begin(), subs.end(), 0, [](int x, const NodeRef<Key>& a){return x + 1 + a->ops;});
-            case NodeType::THRESH_M: return 1;
-            case NodeType::WRAP_A: return 2 + subs[0]->ops;
-            case NodeType::WRAP_S: return 1 + subs[0]->ops;
-            case NodeType::WRAP_C: return 1 + subs[0]->ops;
-            case NodeType::WRAP_D: return 3 + subs[0]->ops;
-            case NodeType::WRAP_V: return subs[0]->ops + (subs[0]->GetType() << "x"_mst);
-            case NodeType::WRAP_J: return 4 + subs[0]->ops;
-            case NodeType::WRAP_N: return 1 + subs[0]->ops;
-            case NodeType::TRUE: return 0;
-            case NodeType::FALSE: return 0;
-        }
-        assert(false);
-        return 0;
-    }
-
-    int CalcSOps() const {
-        switch (nodetype) {
-            case NodeType::THRESH_M: return keys.size();
-            case NodeType::AND_V: return subs[0]->sops + subs[1]->sops;
-            case NodeType::AND_B: return subs[0]->sops + subs[1]->sops;
-            case NodeType::OR_B: return std::max(subs[0]->sops + subs[1]->nops, subs[1]->sops + subs[0]->nops);
-            case NodeType::OR_C: return std::max(subs[0]->sops, subs[1]->sops + subs[0]->nops);
-            case NodeType::OR_D: return std::max(subs[0]->sops, subs[1]->sops + subs[0]->nops);
-            case NodeType::OR_I: return std::max(subs[0]->sops, subs[1]->sops);
-            case NodeType::ANDOR: return std::max(subs[1]->sops + subs[0]->sops, subs[0]->nops + subs[2]->sops);
-            case NodeType::WRAP_A: case NodeType::WRAP_S: case NodeType::WRAP_C: case NodeType::WRAP_D:
-            case NodeType::WRAP_V: case NodeType::WRAP_J: case NodeType::WRAP_N:
-                return subs[0]->sops;
+            case NodeType::PK: return {0, 0, 0};
+            case NodeType::PK_H: return {3, 0, 0};
+            case NodeType::OLDER: return {1, 0, {}};
+            case NodeType::AFTER: return {1, 0, {}};
+            case NodeType::SHA256: return {4, 0, {}};
+            case NodeType::RIPEMD160: return {4, 0, {}};
+            case NodeType::HASH256: return {4, 0, {}};
+            case NodeType::HASH160: return {4, 0, {}};
+            case NodeType::AND_V: return {subs[0]->ops.stat + subs[1]->ops.stat, subs[0]->ops.sat + subs[1]->ops.sat, {}};
+            case NodeType::AND_B: return {1 + subs[0]->ops.stat + subs[1]->ops.stat, subs[0]->ops.sat + subs[1]->ops.sat, subs[0]->ops.dsat + subs[1]->ops.dsat};
+            case NodeType::OR_B: return {1 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat), subs[0]->ops.dsat + subs[1]->ops.dsat};
+            case NodeType::OR_D: return {3 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat), subs[0]->ops.dsat + subs[1]->ops.dsat};
+            case NodeType::OR_C: return {2 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat), {}};
+            case NodeType::OR_I: return {3 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat, subs[1]->ops.sat), Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
+            case NodeType::ANDOR: return {3 + subs[0]->ops.stat + subs[1]->ops.stat + subs[2]->ops.stat, Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat), subs[0]->ops.dsat + subs[2]->ops.dsat};
+            case NodeType::THRESH_M: return {1, (uint32_t)keys.size(), (uint32_t)keys.size()};
+            case NodeType::WRAP_A: return {2 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
+            case NodeType::WRAP_S: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
+            case NodeType::WRAP_C: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
+            case NodeType::WRAP_D: return {3 + subs[0]->ops.stat, subs[0]->ops.sat, 0};
+            case NodeType::WRAP_V: return {subs[0]->ops.stat + (subs[0]->GetType() << "x"_mst), subs[0]->ops.sat, {}};
+            case NodeType::WRAP_J: return {4 + subs[0]->ops.stat, subs[0]->ops.sat, 0};
+            case NodeType::WRAP_N: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
+            case NodeType::TRUE: return {0, 0, {}};
+            case NodeType::FALSE: return {0, {}, 0};
             case NodeType::THRESH: {
-                int ret = 0;
-                std::vector<int> diffs;
+                uint32_t stat = 0, dsat = 0;
+                int32_t sat_sum = 0;
+                std::vector<int32_t> diffs;
                 for (const auto& sub : subs) {
-                    ret += sub->nops;
-                    diffs.push_back(sub->sops - sub->nops);
+                    stat += sub->ops.stat + 1;
+                    dsat += sub->ops.dsat.value; // The type system requires "d" for thresh, so dsat must always be valid.
+                    if (sub->ops.sat.valid) diffs.push_back((int32_t)sub->ops.sat.value - sub->ops.dsat.value);
                 }
+                if (diffs.size() < k) return {stat, {}, dsat};
                 std::sort(diffs.begin(), diffs.end());
-                for (size_t i = subs.size() - k; i < subs.size(); ++i) ret += diffs[i];
-                return ret;
+                for (size_t i = diffs.size() - k; i < diffs.size(); ++i) sat_sum += diffs[i];
+                return {stat, sat_sum + dsat, dsat};
             }
-            case NodeType::TRUE: case NodeType::FALSE:
-            case NodeType::PK: case NodeType::PK_H: case NodeType::OLDER: case NodeType::AFTER:
-            case NodeType::SHA256: case NodeType::HASH256: case NodeType::RIPEMD160: case NodeType::HASH160:
-                return 0;
         }
         assert(false);
-        return 0;
-    }
-
-    int CalcNOps() const {
-        switch (nodetype) {
-            case NodeType::THRESH_M: return keys.size();
-            case NodeType::AND_V: return 0;
-            case NodeType::AND_B: return subs[0]->nops + subs[1]->nops;
-            case NodeType::OR_B: return subs[0]->nops + subs[1]->nops;
-            case NodeType::OR_C: return 0;
-            case NodeType::OR_D: return subs[0]->nops + subs[1]->nops;
-            case NodeType::OR_I: return std::max(subs[0]->GetType() << "f"_mst ? 0 : subs[0]->nops, subs[1]->GetType() << "f"_mst ? 0 : subs[1]->nops);
-            case NodeType::ANDOR: return subs[0]->nops + subs[2]->nops;
-            case NodeType::WRAP_A: case NodeType::WRAP_S: case NodeType::WRAP_C: case NodeType::WRAP_N:
-                return subs[0]->nops;
-            case NodeType::WRAP_D: case NodeType::WRAP_V: case NodeType::WRAP_J: return 0;
-            case NodeType::THRESH: return std::accumulate(subs.begin(), subs.end(), 0, [](int x, const NodeRef<Key>& a){return x + a->nops;});
-            case NodeType::TRUE: case NodeType::FALSE:
-            case NodeType::PK: case NodeType::PK_H: case NodeType::OLDER: case NodeType::AFTER:
-            case NodeType::SHA256: case NodeType::HASH256: case NodeType::RIPEMD160: case NodeType::HASH160:
-                return 0;
-        }
-        assert(false);
-        return 0;
+        return {0, {}, {}};
     }
 
     template<typename Ctx>
@@ -698,7 +687,10 @@ public:
     size_t ScriptSize() const { return scriptlen; }
 
     //! Return the number of non-push opcodes in this script.
-    int GetOps() const { return ops + sops; }
+    uint32_t GetOps() const { return ops.stat + ops.sat.value; }
+
+    //! Return the number of non-push opcodes in this script.
+    bool CheckOpsLimit() const { return GetOps() <= 201; }
 
     //! Return the expression type.
     Type GetType() const { return typ; }
@@ -736,12 +728,12 @@ public:
     }
 
     // Constructors with various argument combinations.
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), nops(CalcNOps()), sops(CalcSOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), nops(CalcNOps()), sops(CalcSOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), nops(CalcNOps()), sops(CalcSOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), nops(CalcNOps()), sops(CalcSOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), nops(CalcNOps()), sops(CalcSOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), nops(CalcNOps()), sops(CalcSOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
 };
 
 namespace internal {

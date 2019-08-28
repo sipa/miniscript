@@ -396,6 +396,7 @@ struct Compilation {
     void Add(const CostPair& pair, Node node) {
         auto new_typ = node->GetType();
         double cost = Cost(pair, node);
+        if (!node->CheckOpsLimit()) return;
         if (!(new_typ << "m"_mst)) return;
         if (cost > 10000) return;
         for (const Result& x : results) {
