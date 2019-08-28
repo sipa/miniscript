@@ -106,9 +106,11 @@ class Type {
 
     //! Internal constructed used by the ""_mst operator.
     explicit constexpr Type(uint16_t flags) : m_flags(flags) {}
-    friend constexpr Type operator"" _mst(const char* c, size_t l);
 
 public:
+    //! The only way to publicly construct a Type is using this literal operator.
+    friend constexpr Type operator"" _mst(const char* c, size_t l);
+
     //! Compute the type with the union of properties.
     constexpr Type operator|(Type x) const { return Type(m_flags | x.m_flags); }
 
@@ -128,8 +130,8 @@ public:
     constexpr Type If(bool x) const { return Type(x ? m_flags : 0); }
 };
 
-//! The only way to publicly construct a Type is using the ""_mst literal operator.
-constexpr Type operator"" _mst(const char* c, size_t l) {
+//! Literal operator to construct Type objects.
+inline constexpr Type operator""_mst(const char* c, size_t l) {
     return l == 0 ? Type(0) : operator"" _mst(c + 1, l - 1) | Type(
         *c == 'B' ? 1 << 0 : // Base type
         *c == 'V' ? 1 << 1 : // Verify type
