@@ -360,7 +360,7 @@ NodeRef RandomNode(miniscript::Type typ, int complexity) {
     NodeRef ret;
     do {
         ret = GenNode(typ, complexity);
-    } while (!ret || !(ret->GetType() << typ) || !ret->CheckOpsLimit());
+    } while (!ret || !(ret->GetType() << typ) || !ret->CheckOpsLimit() || ret->GetStackSize() > MAX_STANDARD_P2WSH_STACK_ITEMS);
     return ret;
 }
 
@@ -512,6 +512,7 @@ void Verify(const std::string& testcase, const NodeRef& node, const TestContext&
     // Use a test signature checker aware of which afters/olders we made valid.
     TestSignatureChecker checker(&ctx);
     ScriptError serror;
+    if (nonmal) BOOST_CHECK(stack.size() <= node->GetStackSize());
     if (!VerifyScript(CScript(), spk, &witness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror)) {
         if (nonmal || serror != SCRIPT_ERR_OP_COUNT) { // Only the nonmalleable satisfier is guaranteed to stay below the ops limit
             fprintf(stderr, "\nFAILURE: %s\n", testcase.c_str());

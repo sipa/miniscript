@@ -16,6 +16,8 @@
 
 const CompilerContext COMPILER_CTX;
 
+static const unsigned int MAX_STANDARD_P2WSH_STACK_ITEMS = 100;
+
 namespace {
 
 using Node = miniscript::NodeRef<std::string>;
@@ -395,6 +397,7 @@ struct Compilation {
         auto new_typ = node->GetType();
         double cost = Cost(pair, node);
         if (!node->CheckOpsLimit()) return;
+        if (node->GetStackSize() > MAX_STANDARD_P2WSH_STACK_ITEMS) return;
         if (!(new_typ << "m"_mst)) return;
         if (cost > 10000) return;
         for (const Result& x : results) {

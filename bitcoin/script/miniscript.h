@@ -301,6 +301,8 @@ struct Node {
 private:
     //! Cached ops counts.
     const internal::Ops ops;
+    //! Cached stack size bounds.
+    const internal::StackSize ss;
     //! Cached expression type (computed by CalcType and fed through SanitizeType).
     const Type typ;
     //! Cached script length (computed by CalcScriptLen).
@@ -490,6 +492,51 @@ private:
         }
         assert(false);
         return {0, {}, {}};
+    }
+
+    internal::StackSize CalcStackSize() const {
+        switch (nodetype) {
+            case NodeType::PK: return {1, 1};
+            case NodeType::PK_H: return {2, 2};
+            case NodeType::OLDER: return {0, {}};
+            case NodeType::AFTER: return {0, {}};
+            case NodeType::SHA256: return {1, {}};
+            case NodeType::RIPEMD160: return {1, {}};
+            case NodeType::HASH256: return {1, {}};
+            case NodeType::HASH160: return {1, {}};
+            case NodeType::ANDOR: return {Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat), subs[0]->ss.dsat + subs[2]->ss.dsat};
+            case NodeType::AND_V: return {subs[0]->ss.sat + subs[1]->ss.sat, {}};
+            case NodeType::AND_B: return {subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.dsat};
+            case NodeType::OR_B: return {Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat), subs[0]->ss.dsat + subs[1]->ss.dsat};
+            case NodeType::OR_C: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), {}};
+            case NodeType::OR_D: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), subs[0]->ss.dsat + subs[1]->ss.dsat};
+            case NodeType::OR_I: return {Choose(subs[0]->ss.sat + 1, subs[1]->ss.sat + 1), Choose(subs[0]->ss.dsat + 1, subs[1]->ss.dsat + 1)};
+            case NodeType::THRESH_M: return {(uint32_t)keys.size() + 1, (uint32_t)keys.size() + 1};
+            case NodeType::WRAP_A: return subs[0]->ss;
+            case NodeType::WRAP_S: return subs[0]->ss;
+            case NodeType::WRAP_C: return subs[0]->ss;
+            case NodeType::WRAP_D: return {1 + subs[0]->ss.sat, 1};
+            case NodeType::WRAP_V: return {subs[0]->ss.sat, {}};
+            case NodeType::WRAP_J: return {subs[0]->ss.sat, 1};
+            case NodeType::WRAP_N: return subs[0]->ss;
+            case NodeType::TRUE: return {0, {}};
+            case NodeType::FALSE: return {{}, 0};
+            case NodeType::THRESH: {
+                uint32_t dsat = 0;
+                int32_t sat_sum = 0;
+                std::vector<int32_t> diffs;
+                for (const auto& sub : subs) {
+                    dsat += sub->ss.dsat.value; // The type system requires "d" for thresh, so dsat must always be valid.
+                    if (sub->ss.sat.valid) diffs.push_back((int32_t)sub->ss.sat.value - sub->ss.dsat.value);
+                }
+                if (diffs.size() < k) return {{}, dsat};
+                std::sort(diffs.begin(), diffs.end());
+                for (size_t i = diffs.size() - k; i < diffs.size(); ++i) sat_sum += diffs[i];
+                return {sat_sum + dsat, dsat};
+            }
+        }
+        assert(false);
+        return {{}, {}};
     }
 
     template<typename Ctx>
@@ -695,11 +742,14 @@ public:
     //! Return the size of the script for this expression (faster than ToString().size()).
     size_t ScriptSize() const { return scriptlen; }
 
-    //! Return the number of non-push opcodes in this script.
+    //! Return the maximum number of ops needed to satisfy this script non-malleably.
     uint32_t GetOps() const { return ops.stat + ops.sat.value; }
 
-    //! Return the number of non-push opcodes in this script.
-    bool CheckOpsLimit() const { return GetOps() <= 201; }
+    //! Check the ops limit of this script.
+    bool CheckOpsLimit() const { return GetOps() <= MAX_OPS_PER_SCRIPT; }
+
+    //! Return the maximum number of stack elements needed to satisfy this script non-malleably.
+    uint32_t GetStackSize() const { return ss.sat.value; }
 
     //! Return the expression type.
     Type GetType() const { return typ; }
@@ -737,12 +787,12 @@ public:
     }
 
     // Constructors with various argument combinations.
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
 };
 
 namespace internal {

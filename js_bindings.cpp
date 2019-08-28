@@ -34,7 +34,8 @@ std::string Props(const miniscript::NodeRef<std::string>& node, std::string in) 
         if (node->GetType() << "s"_mst) ret += 's';
     }
     ret += "&#13;scriptlen: " + std::to_string(node->ScriptSize());
-    ret += "&#13;maxop: " + std::to_string(node->GetOps());
+    ret += "&#13;max ops: " + std::to_string(node->GetOps());
+    ret += "&#13;max stack size: " + std::to_string(node->GetStackSize());
     return std::move(ret) + "\">" + std::move(in) + "</span>";
 }
 
