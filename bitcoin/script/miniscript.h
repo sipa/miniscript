@@ -273,6 +273,15 @@ struct Ops {
     Ops(uint32_t in_stat, MaxInt<uint32_t> in_sat, MaxInt<uint32_t> in_dsat) : stat(in_stat), sat(in_sat), dsat(in_dsat) {};
 };
 
+struct StackSize {
+    //! Maximum stack size to satisfy;
+    MaxInt<uint32_t> sat;
+    //! Maximum stack size to dissatisfy;
+    MaxInt<uint32_t> dsat;
+
+    StackSize(MaxInt<uint32_t> in_sat, MaxInt<uint32_t> in_dsat) : sat(in_sat), dsat(in_dsat) {};
+};
+
 } // namespace internal
 
 //! A node in a miniscript expression.
