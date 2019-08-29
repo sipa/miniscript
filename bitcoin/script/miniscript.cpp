@@ -31,10 +31,7 @@ Type SanitizeType(Type e) {
     return e;
 }
 
-Type CalcSimpleType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys) {
-    // Sanity check on sigops
-//    if (GetOps() > 201) return ""_mst;
-
+Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys) {
     // Sanity check on data
     if (nodetype == NodeType::SHA256 || nodetype == NodeType::HASH256) {
         assert(data_size == 32);
