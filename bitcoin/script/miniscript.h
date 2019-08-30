@@ -128,6 +128,8 @@ public:
 
     //! The empty type if x is false, itself otherwise.
     constexpr Type If(bool x) const { return Type(x ? m_flags : 0); }
+
+    constexpr uint16_t Int() const { return m_flags; }
 };
 
 //! Literal operator to construct Type objects.
@@ -307,6 +309,32 @@ private:
     const Type typ;
     //! Cached script length (computed by CalcScriptLen).
     const size_t scriptlen;
+public:
+    const std::set<uint32_t> types;
+
+private:
+    std::set<uint32_t> CalcTypes() const {
+//        std::set<uint16_t> ret{(typ & "BKVWzonudfemsx"_mst).Int()};
+        std::set<uint32_t> ret;
+        uint32_t nt = (uint32_t)nodetype;
+        if (nodetype == NodeType::AND_V && subs[1]->nodetype == NodeType::TRUE) {
+            nt = (uint32_t)NodeType::THRESH_M + 1;
+        } else if (nodetype == NodeType::ANDOR && subs[2]->nodetype == NodeType::FALSE) {
+            nt = (uint32_t)NodeType::THRESH_M + 2;
+        } else if (nodetype == NodeType::OR_I && subs[0]->nodetype == NodeType::FALSE) {
+            nt = (uint32_t)NodeType::THRESH_M + 3;
+        } else if (nodetype == NodeType::OR_I && subs[1]->nodetype == NodeType::FALSE) {
+            nt = (uint32_t)NodeType::THRESH_M + 4;
+        }
+
+        ret.insert(nt * 64 + (typ & "BKVW"_mst).Int() * 2);
+        ret.insert((typ & "BKVWzondu"_mst).Int() + 1);
+        for (const auto& sub : subs) {
+//            ret.insert((uint32_t)nodetype * 32 + (uint32_t)sub->nodetype);
+            ret.insert(sub->types.begin(), sub->types.end());
+        }
+        return ret;
+    }
 
     //! Compute the length of the script for this miniscript (including children).
     size_t CalcScriptLen() const {
@@ -787,12 +815,12 @@ public:
     }
 
     // Constructors with various argument combinations.
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), types(CalcTypes()) {}
+    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), types(CalcTypes()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), types(CalcTypes()) {}
+    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), types(CalcTypes()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), types(CalcTypes()) {}
+    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), types(CalcTypes()) {}
 };
 
 namespace internal {
