@@ -225,7 +225,7 @@ struct TestContext {
 
     std::set<Challenge> supported;
 
-    std::string ToString(const TestKey& key) const { return {char('A' + key.c)}; }
+    bool ToString(const TestKey& key, std::string& ret) const { ret = char('A' + key.c); return true; }
 
     std::vector<unsigned char> ToPKBytes(const TestKey& key) const { return PUBKEYS[key.c]; }
     std::vector<unsigned char> ToPKHBytes(const TestKey& key) const { return PKHASHES[key.c]; }
@@ -537,7 +537,9 @@ BOOST_AUTO_TEST_CASE(random_miniscript_tests)
     for (int i = 0; i < 100000; ++i) {
         auto typ = InsecureRandRange(100) ? "B"_mst : "Bms"_mst; // require 1% strong, non-malleable
         auto node = RandomNode(typ, 1 + InsecureRandRange(90));
-        auto str = node->ToString(CTX);
+        std::string str;
+        bool str_ret = node->ToString(CTX, str);
+        BOOST_CHECK(str_ret);
         auto script = node->ToScript(CTX);
         // Check consistency between script size estimation and real size
         BOOST_CHECK(node->ScriptSize() == script.size());

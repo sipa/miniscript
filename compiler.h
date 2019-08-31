@@ -12,7 +12,7 @@
 struct CompilerContext {
     typedef std::string Key;
 
-    std::string ToString(const Key& key) const { return key; }
+    bool ToString(const Key& key, std::string& str) const { str = key; return true; }
 
     template<typename I>
     bool FromString(I first, I last, Key& key) const {

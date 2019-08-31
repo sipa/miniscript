@@ -385,22 +385,22 @@ private:
 
     //! Internal code for ToString.
     template<typename Ctx>
-    std::string MakeString(const Ctx& ctx, bool wrapped = false) const {
+    std::string MakeString(const Ctx& ctx, bool& success, bool wrapped = false) const {
         switch (nodetype) {
-            case NodeType::WRAP_A: return "a" + subs[0]->MakeString(ctx, true);
-            case NodeType::WRAP_S: return "s" + subs[0]->MakeString(ctx, true);
-            case NodeType::WRAP_C: return "c" + subs[0]->MakeString(ctx, true);
-            case NodeType::WRAP_D: return "d" + subs[0]->MakeString(ctx, true);
-            case NodeType::WRAP_V: return "v" + subs[0]->MakeString(ctx, true);
-            case NodeType::WRAP_J: return "j" + subs[0]->MakeString(ctx, true);
-            case NodeType::WRAP_N: return "n" + subs[0]->MakeString(ctx, true);
+            case NodeType::WRAP_A: return "a" + subs[0]->MakeString(ctx, success, true);
+            case NodeType::WRAP_S: return "s" + subs[0]->MakeString(ctx, success, true);
+            case NodeType::WRAP_C: return "c" + subs[0]->MakeString(ctx, success, true);
+            case NodeType::WRAP_D: return "d" + subs[0]->MakeString(ctx, success, true);
+            case NodeType::WRAP_V: return "v" + subs[0]->MakeString(ctx, success, true);
+            case NodeType::WRAP_J: return "j" + subs[0]->MakeString(ctx, success, true);
+            case NodeType::WRAP_N: return "n" + subs[0]->MakeString(ctx, success, true);
             case NodeType::AND_V:
                 // t:X is syntactic sugar for and_v(X,1).
-                if (subs[1]->nodetype == NodeType::TRUE) return "t" + subs[0]->MakeString(ctx, true);
+                if (subs[1]->nodetype == NodeType::TRUE) return "t" + subs[0]->MakeString(ctx, success, true);
                 break;
             case NodeType::OR_I:
-                if (subs[0]->nodetype == NodeType::FALSE) return "l" + subs[1]->MakeString(ctx, true);
-                if (subs[1]->nodetype == NodeType::FALSE) return "u" + subs[0]->MakeString(ctx, true);
+                if (subs[0]->nodetype == NodeType::FALSE) return "l" + subs[1]->MakeString(ctx, success, true);
+                if (subs[1]->nodetype == NodeType::FALSE) return "u" + subs[0]->MakeString(ctx, success, true);
                 break;
             default:
                 break;
@@ -409,8 +409,16 @@ private:
         std::string ret = wrapped ? ":" : "";
 
         switch (nodetype) {
-            case NodeType::PK: return std::move(ret) + "pk(" + ctx.ToString(keys[0]) + ")";
-            case NodeType::PK_H: return std::move(ret) + "pk_h(" + ctx.ToString(keys[0]) + ")";
+            case NodeType::PK: {
+                std::string key_str;
+                success = ctx.ToString(keys[0], key_str);
+                return std::move(ret) + "pk(" + std::move(key_str) + ")";
+            }
+            case NodeType::PK_H: {
+                std::string key_str;
+                success = ctx.ToString(keys[0], key_str);
+                return std::move(ret) + "pk_h(" + std::move(key_str) + ")";
+            }
             case NodeType::AFTER: return std::move(ret) + "after(" + std::to_string(k) + ")";
             case NodeType::OLDER: return std::move(ret) + "older(" + std::to_string(k) + ")";
             case NodeType::HASH256: return std::move(ret) + "hash256(" + HexStr(data.begin(), data.end()) + ")";
@@ -419,27 +427,29 @@ private:
             case NodeType::RIPEMD160: return std::move(ret) + "ripemd160(" + HexStr(data.begin(), data.end()) + ")";
             case NodeType::TRUE: return std::move(ret) + "1";
             case NodeType::FALSE: return std::move(ret) + "0";
-            case NodeType::AND_V: return std::move(ret) + "and_v(" + subs[0]->MakeString(ctx) + "," + subs[1]->MakeString(ctx) + ")";
-            case NodeType::AND_B: return std::move(ret) + "and_b(" + subs[0]->MakeString(ctx) + "," + subs[1]->MakeString(ctx) + ")";
-            case NodeType::OR_B: return std::move(ret) + "or_b(" + subs[0]->MakeString(ctx) + "," + subs[1]->MakeString(ctx) + ")";
-            case NodeType::OR_D: return std::move(ret) + "or_d(" + subs[0]->MakeString(ctx) + "," + subs[1]->MakeString(ctx) + ")";
-            case NodeType::OR_C: return std::move(ret) + "or_c(" + subs[0]->MakeString(ctx) + "," + subs[1]->MakeString(ctx) + ")";
-            case NodeType::OR_I: return std::move(ret) + "or_i(" + subs[0]->MakeString(ctx) + "," + subs[1]->MakeString(ctx) + ")";
+            case NodeType::AND_V: return std::move(ret) + "and_v(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
+            case NodeType::AND_B: return std::move(ret) + "and_b(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
+            case NodeType::OR_B: return std::move(ret) + "or_b(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
+            case NodeType::OR_D: return std::move(ret) + "or_d(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
+            case NodeType::OR_C: return std::move(ret) + "or_c(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
+            case NodeType::OR_I: return std::move(ret) + "or_i(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
             case NodeType::ANDOR:
                 // and_n(X,Y) is syntactic sugar for andor(X,Y,0).
-                if (subs[2]->nodetype == NodeType::FALSE) return std::move(ret) + "and_n(" + subs[0]->MakeString(ctx) + "," + subs[1]->MakeString(ctx) + ")";
-                return std::move(ret) + "andor(" + subs[0]->MakeString(ctx) + "," + subs[1]->MakeString(ctx) + "," + subs[2]->MakeString(ctx) + ")";
+                if (subs[2]->nodetype == NodeType::FALSE) return std::move(ret) + "and_n(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
+                return std::move(ret) + "andor(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + "," + subs[2]->MakeString(ctx, success) + ")";
             case NodeType::THRESH_M: {
                 auto str = std::move(ret) + "thresh_m(" + std::to_string(k);
                 for (const auto& key : keys) {
-                    str += "," + ctx.ToString(key);
+                    std::string key_str;
+                    success &= ctx.ToString(key, key_str);
+                    str += "," + std::move(key_str);
                 }
                 return std::move(str) + ")";
             }
             case NodeType::THRESH: {
                 auto str = std::move(ret) + "thresh(" + std::to_string(k);
                 for (const auto& sub : subs) {
-                    str += "," + sub->MakeString(ctx);
+                    str += "," + sub->MakeString(ctx, success);
                 }
                 return std::move(str) + ")";
             }
@@ -760,7 +770,12 @@ public:
 
     //! Convert this miniscript to its textual descriptor notation.
     template<typename Ctx>
-    std::string ToString(const Ctx& ctx) const { return MakeString(ctx); }
+    bool ToString(const Ctx& ctx, std::string& out) const {
+        bool ret = true;
+        out = MakeString(ctx, ret);
+        if (!ret) out = "";
+        return ret;
+    }
 
     template<typename Ctx>
     bool Satisfy(const Ctx& ctx, std::vector<std::vector<unsigned char>>& stack, bool nonmalleable = true) const {
