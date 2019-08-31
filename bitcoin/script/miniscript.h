@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include <policy/policy.h>
 #include <script/script.h>
 #include <span.h>
 #include <util/spanparsing.h>
@@ -755,14 +756,26 @@ public:
     //! Return the maximum number of ops needed to satisfy this script non-malleably.
     uint32_t GetOps() const { return ops.stat + ops.sat.value; }
 
-    //! Check the ops limit of this script.
+    //! Check the ops limit of this script against the consensus limit.
     bool CheckOpsLimit() const { return GetOps() <= MAX_OPS_PER_SCRIPT; }
 
     //! Return the maximum number of stack elements needed to satisfy this script non-malleably.
     uint32_t GetStackSize() const { return ss.sat.value; }
 
+    //! Check the maximum stack size for this script against the policy limit.
+    bool CheckStackSize() const { return GetStackSize() <= MAX_STANDARD_P2WSH_STACK_ITEMS; }
+
     //! Return the expression type.
     Type GetType() const { return typ; }
+
+    //! Check whether this node is valid as a script on its own.
+    bool ValidTopLevel() const { return GetType() << "B"_mst; }
+
+    //! Check whether this script can always be satisfied in a non-malleable way.
+    bool IsNonMalleable() const { return GetType() << "m"_mst; }
+
+    //! Check whether this script always needs a signature.
+    bool NeedsSignature() const { return GetType() << "s"_mst; }
 
     //! Construct the script for this miniscript (including subexpressions).
     template<typename Ctx>
@@ -1194,7 +1207,6 @@ inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& 
     Span<const char> span = MakeSpan(str);
     auto ret = Parse<typename Ctx::Key>(span, ctx);
     if (!ret || span.size()) return {};
-//    if (!(ret->GetType() << "B"_mst)) return {};
     return ret;
 }
 
@@ -1206,7 +1218,6 @@ inline NodeRef<typename Ctx::Key> FromScript(const CScript& script, const Ctx& c
     auto it = decomposed.begin();
     auto ret = DecodeMulti<typename Ctx::Key>(it, decomposed.end(), ctx);
     if (!ret) return {};
-    if (!(ret->GetType() << "B"_mst)) return {};
     if (it != decomposed.end()) return {};
     return ret;
 }
