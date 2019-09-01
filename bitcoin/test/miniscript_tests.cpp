@@ -534,8 +534,8 @@ BOOST_FIXTURE_TEST_SUITE(miniscript_tests, BasicTestingSetup)
 
 BOOST_AUTO_TEST_CASE(random_miniscript_tests)
 {
-    for (int i = 0; i < 100000; ++i) {
-        auto typ = InsecureRandRange(100) ? "B"_mst : "Bms"_mst; // require 1% strong, non-malleable
+    for (int i = 0; i < 1000; ++i) {
+        auto typ = InsecureRandRange(20) ? "B"_mst : "Bms"_mst; // require 5% strong, non-malleable
         auto node = RandomNode(typ, 1 + InsecureRandRange(90));
         std::string str;
         bool str_ret = node->ToString(CTX, str);
@@ -564,43 +564,45 @@ BOOST_AUTO_TEST_CASE(random_miniscript_tests)
         std::set<Challenge> challenges;
         FindChallenges(node, challenges);
         std::vector<Challenge> challist(challenges.begin(), challenges.end());
-        Shuffle(challist.begin(), challist.end(), g_insecure_rand_ctx);
-        TestContext ctx;
-        bool prev_mal_success = false, prev_nonmal_success = false;
-        // Go over all challenges involved in this miniscript in random order; the first iteration does not add anything.
-        for (int add = -1; add < (int)challist.size(); ++add) {
-            if (add >= 0) {
-                ctx.supported.insert(challist[add]);
+        for (int iter = 0; iter < 3; ++iter) {
+            Shuffle(challist.begin(), challist.end(), g_insecure_rand_ctx);
+            TestContext ctx;
+            bool prev_mal_success = false, prev_nonmal_success = false;
+            // Go over all challenges involved in this miniscript in random order; the first iteration does not add anything.
+            for (int add = -1; add < (int)challist.size(); ++add) {
+                if (add >= 0) {
+                    ctx.supported.insert(challist[add]);
+                }
+                std::vector<std::vector<unsigned char>> stack;
+                bool mal_success = false;
+                if (node->Satisfy(ctx, stack, false)) {
+                    Verify(str, node, ctx, stack, script, false);
+                    mal_success = true;
+                }
+                bool nonmal_success = false;
+                if (node->Satisfy(ctx, stack, true)) {
+                    Verify(str, node, ctx, std::move(stack), std::move(script), true);
+                    nonmal_success = true;
+                }
+                // If a nonmalleable solution exists, a solution whatsoever must also exist.
+                BOOST_CHECK(mal_success >= nonmal_success);
+                // If a miniscript is nonmalleable/strong, and a solution exists, a non-malleable solution must also exist.
+                if (node->GetType() << "ms"_mst) {
+                    BOOST_CHECK_EQUAL(nonmal_success, mal_success);
+                }
+                // Adding more satisfied conditions can never remove our ability to produce a satisfaction.
+                BOOST_CHECK(mal_success >= prev_mal_success);
+                prev_mal_success = mal_success;
+                // For nonmalleable solutions this is only true if the added condition is PK; for other conditions, it may make an valid satisfaction become malleable
+                if (add >= 0 && challist[add].first == ChallengeType::PK) {
+                    BOOST_CHECK(nonmal_success >= prev_nonmal_success);
+                    assert(nonmal_success >= prev_nonmal_success);
+                }
+                prev_nonmal_success = nonmal_success;
             }
-            std::vector<std::vector<unsigned char>> stack;
-            bool mal_success = false;
-            if (node->Satisfy(ctx, stack, false)) {
-                Verify(str, node, ctx, stack, script, false);
-                mal_success = true;
-            }
-            bool nonmal_success = false;
-            if (node->Satisfy(ctx, stack, true)) {
-                Verify(str, node, ctx, std::move(stack), std::move(script), true);
-                nonmal_success = true;
-            }
-            // If a nonmalleable solution exists, a solution whatsoever must also exist.
-            BOOST_CHECK(mal_success >= nonmal_success);
-            // If a miniscript is nonmalleable/strong, and a solution exists, a non-malleable solution must also exist.
-            if (node->GetType() << "ms"_mst) {
-                BOOST_CHECK_EQUAL(nonmal_success, mal_success);
-            }
-            // Adding more satisfied conditions can never remove our ability to produce a satisfaction.
-            BOOST_CHECK(mal_success >= prev_mal_success);
-            prev_mal_success = mal_success;
-            // For nonmalleable solutions this is only true if the added condition is PK; for other conditions, it may make an valid satisfaction become malleable
-            if (add >= 0 && challist[add].first == ChallengeType::PK) {
-                BOOST_CHECK(nonmal_success >= prev_nonmal_success);
-                assert(nonmal_success >= prev_nonmal_success);
-            }
-            prev_nonmal_success = nonmal_success;
+            // If the miniscript was satisfiable at all, a satisfaction must be found after all conditions are added.
+            BOOST_CHECK_EQUAL(prev_mal_success, Satisfiable(node));
         }
-        // If the miniscript was satisfiable at all, a satisfaction must be found after all conditions are added.
-        BOOST_CHECK_EQUAL(prev_mal_success, Satisfiable(node));
     }
 }
 
