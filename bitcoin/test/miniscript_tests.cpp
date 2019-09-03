@@ -602,4 +602,72 @@ BOOST_AUTO_TEST_CASE(random_miniscript_tests)
     }
 }
 
+/*
++std::string RandomKey() {
++    const auto& key = g_testdata->pubkeys[InsecureRandRange(32)];
++    return HexStr(key.begin(), key.end());
++}
++
++std::string RandomMultisig() {
++    int n = 1 + InsecureRandRange(3);
++    int k = 1 + InsecureRandRange(n);
++    std::string ret = "thresh_m(" + std::to_string(k);
++    for (int i = 0; i < k; ++i) {
++        ret += ",";
++        ret += RandomKey();
++    }
++    ret += ")";
++    return ret;
++}
++
++std::string RandomHash() {
++    int i = InsecureRandRange(8);
++    switch (InsecureRandRange(4)) {
++    case 0: return "sha256(" + HexStr(g_testdata->sha256[i].begin(), g_testdata->sha256[i].end()) + ")";
++    case 1: return "hash256(" + HexStr(g_testdata->hash256[i].begin(), g_testdata->hash256[i].end()) + ")";
++    case 2: return "ripemd160(" + HexStr(g_testdata->ripemd160[i].begin(), g_testdata->ripemd160[i].end()) + ")";
++    case 3: return "hash160(" + HexStr(g_testdata->hash160[i].begin(), g_testdata->hash160[i].end()) + ")";
++    }
++    assert(false);
++    return "";
++}
++
++std::string RandomTime() {
++    static const std::vector<std::string> CHOICE{"older(1)", "older(16)", "older(144)", "older(2016)", "older(50000)", "older(4194305)", "older(4196667)", "older(4252898)","after(1)", "after(500000)", "after(499999999)", "after(1231488000)", "after(1567547623)"};
++    return CHOICE[InsecureRandRange(CHOICE.size())];
++}
++
++void Generate(void) {
++    printf("%s\n",strprintf("lltvln:%s\n", RandomTime()).c_str());
++    printf("%s\n",strprintf("uuj:and_v(v:%s,%s)", RandomMultisig(), RandomTime()).c_str());
++    printf("%s\n",strprintf("or_b(un:%s,al:%s)", RandomMultisig(), RandomTime()).c_str());
++    printf("%s\n",strprintf("j:and_v(vdv:%s,%s)", RandomTime(), RandomTime()).c_str());
++    printf("%s\n",strprintf("t:and_v(vu:%s,v:%s)", RandomHash(), RandomHash()).c_str());
++    printf("%s\n",strprintf("t:andor(%s,v:%s,v:%s)", RandomMultisig(), RandomTime(), RandomHash()).c_str());
++    printf("%s\n",strprintf("or_d(%s,or_b(%s,su:%s))", RandomMultisig(), RandomMultisig(), RandomTime()).c_str());
++    printf("%s\n",strprintf("or_d(%s,and_n(un:%s,%s))", RandomHash(), RandomTime(), RandomTime()).c_str());
++    printf("%s\n",strprintf("and_v(or_i(v:%s,v:%s),%s)", RandomMultisig(), RandomMultisig(), RandomHash()).c_str());
++    printf("%s\n",strprintf("j:and_b(%s,s:or_i(%s,%s))", RandomMultisig(), RandomTime(), RandomTime()).c_str());
++    printf("%s\n",strprintf("and_b(%s,s:or_d(%s,n:%s))", RandomTime(), RandomHash(), RandomTime()).c_str());
++    printf("%s\n",strprintf("j:and_v(v:%s,or_d(%s,%s))", RandomHash(), RandomHash(), RandomTime()).c_str());
++    printf("%s\n",strprintf("and_b(%s,a:and_b(%s,a:%s))", RandomHash(), RandomHash(), RandomTime()).c_str());
++    printf("%s\n",strprintf("thresh(2,%s,a:%s,ac:pk(%s))", RandomMultisig(), RandomMultisig(), RandomKey()).c_str());
++    printf("%s\n",strprintf("and_n(%s,t:or_i(v:%s,v:%s))", RandomHash(), RandomTime(), RandomTime()).c_str());
++    printf("%s\n",strprintf("or_d(d:and_v(v:%s,v:%s),%s)", RandomTime(), RandomTime(), RandomHash()).c_str());
++    printf("%s\n",strprintf("c:and_v(or_c(%s,v:%s),pk(%s))", RandomHash(), RandomMultisig(), RandomKey()).c_str());
++    printf("%s\n",strprintf("c:and_v(or_c(%s,v:%s),pk(%s))", RandomMultisig(), RandomHash(), RandomKey()).c_str());
++    printf("%s\n",strprintf("and_v(andor(%s,v:%s,v:%s),%s)", RandomHash(), RandomHash(), RandomTime(), RandomTime()).c_str());
++    printf("%s\n",strprintf("andor(%s,j:and_v(v:%s,%s),%s)", RandomHash(), RandomHash(), RandomTime(), RandomHash()).c_str());
++    printf("%s\n",strprintf("or_i(c:and_v(v:%s,pk(%s)),%s)", RandomTime(), RandomKey(), RandomHash()).c_str());
++    printf("%s\n",strprintf("thresh(2,c:pk_h(%s),s:%s,a:%s)", RandomKey(), RandomHash(), RandomHash()).c_str());
++    printf("%s\n",strprintf("and_n(%s,uc:and_v(v:%s,pk(%s)))", RandomHash(), RandomTime(), RandomKey()).c_str());
++    printf("%s\n",strprintf("and_n(c:pk(%s),and_b(l:%s,a:%s))", RandomKey(), RandomTime(), RandomTime()).c_str());
++    printf("%s\n",strprintf("c:or_i(and_v(v:%s,pk_h(%s)),pk_h(%s))", RandomTime(), RandomKey(), RandomKey()).c_str());
++    printf("%s\n",strprintf("or_d(c:pk_h(%s),andor(c:pk(%s),%s,%s))", RandomKey(), RandomKey(), RandomTime(), RandomTime()).c_str());
++    printf("%s\n",strprintf("c:andor(%s,pk_h(%s),and_v(v:%s,pk_h(%s)))", RandomHash(), RandomKey(), RandomHash(), RandomKey()).c_str());
++    printf("%s\n",strprintf("c:andor(u:%s,pk_h(%s),or_i(pk_h(%s),pk_h(%s)))", RandomHash(), RandomKey(), RandomKey(), RandomKey()).c_str());
++    printf("%s\n",strprintf("c:or_i(andor(c:pk_h(%s),pk_h(%s),pk_h(%s)),pk(%s))", RandomKey(), RandomKey(), RandomKey(), RandomKey()).c_str());
++}
+*/
+
 BOOST_AUTO_TEST_SUITE_END()
