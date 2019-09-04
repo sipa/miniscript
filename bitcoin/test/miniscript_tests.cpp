@@ -242,7 +242,7 @@ using miniscript::operator""_mst;
 //! Determine whether a Miniscript node is satisfiable at all (and thus isn't equivalent to just "false").
 bool Satisfiable(const NodeRef& ref) {
     switch (ref->nodetype) {
-        case NodeType::FALSE:
+        case NodeType::JUST_0:
             return false;
         case NodeType::AND_B: case NodeType::AND_V:
             return Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1]);
@@ -257,7 +257,7 @@ bool Satisfiable(const NodeRef& ref) {
         case NodeType::PK: case NodeType::PK_H: case NodeType::THRESH_M:
         case NodeType::AFTER: case NodeType::OLDER: case NodeType::HASH256:
         case NodeType::HASH160: case NodeType::SHA256: case NodeType::RIPEMD160:
-        case NodeType::TRUE:
+        case NodeType::JUST_1:
             return true;
         case NodeType::THRESH:
             return std::accumulate(ref->subs.begin(), ref->subs.end(), (size_t)0, [](size_t acc, const NodeRef& ref){return acc + Satisfiable(ref);}) >= ref->k;
@@ -305,7 +305,7 @@ NodeRef GenNode(miniscript::Type typ, int complexity) {
         // Generate a "B" node.
         if (complexity == 1) {
             switch (InsecureRandBits(2)) {
-                case 0: return MakeNodeRef(InsecureRandBool() ? NodeType::FALSE : NodeType::TRUE);
+                case 0: return MakeNodeRef(InsecureRandBool() ? NodeType::JUST_0 : NodeType::JUST_1);
                 case 1: return MakeNodeRef(InsecureRandBool() ? NodeType::OLDER : NodeType::AFTER, 1 + InsecureRandRange((1ULL << (1 + InsecureRandRange(31))) - 1));
                 case 2: {
                     int hashtype = InsecureRandBits(2);
@@ -328,12 +328,12 @@ NodeRef GenNode(miniscript::Type typ, int complexity) {
             case 1: return MakeNodeRef(NodeType::WRAP_D, MultiNode(complexity - 1, Vector("V"_mst)));
             case 2: return MakeNodeRef(NodeType::WRAP_J, MultiNode(complexity - 1, Vector("B"_mst)));
             case 3: return MakeNodeRef(NodeType::WRAP_N, MultiNode(complexity - 1, Vector("B"_mst)));
-            case 4: return MakeNodeRef(NodeType::OR_I, Cat(MultiNode(complexity - 1, Vector("B"_mst)), Vector(MakeNodeRef(NodeType::FALSE))));
-            case 5: return MakeNodeRef(NodeType::OR_I, Cat(Vector(MakeNodeRef(NodeType::FALSE)), MultiNode(complexity - 1, Vector("B"_mst))));
-            case 6: return MakeNodeRef(NodeType::AND_V, Cat(MultiNode(complexity - 1, Vector("V"_mst)), Vector(MakeNodeRef(NodeType::TRUE))));
+            case 4: return MakeNodeRef(NodeType::OR_I, Cat(MultiNode(complexity - 1, Vector("B"_mst)), Vector(MakeNodeRef(NodeType::JUST_0))));
+            case 5: return MakeNodeRef(NodeType::OR_I, Cat(Vector(MakeNodeRef(NodeType::JUST_0)), MultiNode(complexity - 1, Vector("B"_mst))));
+            case 6: return MakeNodeRef(NodeType::AND_V, Cat(MultiNode(complexity - 1, Vector("V"_mst)), Vector(MakeNodeRef(NodeType::JUST_1))));
             // Complexity >= 3
             case 7: return MakeNodeRef(NodeType::AND_V, MultiNode(complexity - 1, Vector("V"_mst, "B"_mst)));
-            case 8: return MakeNodeRef(NodeType::ANDOR, Cat(MultiNode(complexity - 1, Vector("B"_mst, "B"_mst)), Vector(MakeNodeRef(NodeType::FALSE))));
+            case 8: return MakeNodeRef(NodeType::ANDOR, Cat(MultiNode(complexity - 1, Vector("B"_mst, "B"_mst)), Vector(MakeNodeRef(NodeType::JUST_0))));
             case 9: return MakeNodeRef(NodeType::AND_B, MultiNode(complexity - 1, Vector("B"_mst, "W"_mst)));
             case 10: return MakeNodeRef(NodeType::OR_B, MultiNode(complexity - 1, Vector("B"_mst, "W"_mst)));
             case 11: return MakeNodeRef(NodeType::OR_D, MultiNode(complexity - 1, Vector("B"_mst, "B"_mst)));

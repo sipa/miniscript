@@ -84,8 +84,8 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
         case NodeType::RIPEMD160: return "Bonudm"_mst;
         case NodeType::HASH256: return "Bonudm"_mst;
         case NodeType::HASH160: return "Bonudm"_mst;
-        case NodeType::TRUE: return "Bzufmx"_mst;
-        case NodeType::FALSE: return "Bzudemsx"_mst;
+        case NodeType::JUST_1: return "Bzufmx"_mst;
+        case NodeType::JUST_0: return "Bzudemsx"_mst;
         case NodeType::WRAP_A: return
             "W"_mst.If(x << "B"_mst) | // W=B_x
             (x & "udfems"_mst) | // u=u_x, d=d_x, f=f_x, e=e_x, m=m_x, s=s_x
@@ -212,8 +212,8 @@ size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_
         case NodeType::WRAP_V: return subsize + (sub0typ << "x"_mst);
         case NodeType::WRAP_J: return subsize + 4;
         case NodeType::WRAP_N: return subsize + 1;
-        case NodeType::TRUE: return 1;
-        case NodeType::FALSE: return 1;
+        case NodeType::JUST_1: return 1;
+        case NodeType::JUST_0: return 1;
         case NodeType::AND_V: return subsize;
         case NodeType::AND_B: return subsize + 1;
         case NodeType::OR_B: return subsize + 1;

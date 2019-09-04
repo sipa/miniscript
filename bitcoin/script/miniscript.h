@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef _BITCOIN_SCRIPT_MINISCRIPT_H_
-#define _BITCOIN_SCRIPT_MINISCRIPT_H_ 1
+#ifndef BITCOIN_SCRIPT_MINISCRIPT_H
+#define BITCOIN_SCRIPT_MINISCRIPT_H
 
 #include <algorithm>
 #include <numeric>
@@ -161,8 +161,8 @@ NodeRef<Key> MakeNodeRef(Args&&... args) { return std::make_shared<const Node<Ke
 
 //! The different node types in miniscript.
 enum class NodeType {
-    FALSE,     //!< OP_0
-    TRUE,      //!< OP_1
+    JUST_0,     //!< OP_0
+    JUST_1,    //!< OP_1
     PK,        //!< [key]
     PK_H,      //!< OP_DUP OP_HASH160 [keyhash] OP_EQUALVERFIFY
     OLDER,     //!< [n] OP_CHECKSEQUENCEVERIFY
@@ -356,8 +356,8 @@ private:
             case NodeType::WRAP_V: return subs[0]->MakeScript(ctx, true) + (subs[0]->GetType() << "x"_mst ? (CScript() << OP_VERIFY) : CScript());
             case NodeType::WRAP_J: return (CScript() << OP_SIZE << OP_0NOTEQUAL << OP_IF) + subs[0]->MakeScript(ctx) + (CScript() << OP_ENDIF);
             case NodeType::WRAP_N: return subs[0]->MakeScript(ctx) + CScript() << OP_0NOTEQUAL;
-            case NodeType::TRUE: return CScript() << OP_1;
-            case NodeType::FALSE: return CScript() << OP_0;
+            case NodeType::JUST_1: return CScript() << OP_1;
+            case NodeType::JUST_0: return CScript() << OP_0;
             case NodeType::AND_V: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx, verify);
             case NodeType::AND_B: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx) + (CScript() << OP_BOOLAND);
             case NodeType::OR_B: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx) + (CScript() << OP_BOOLOR);
@@ -397,11 +397,11 @@ private:
             case NodeType::WRAP_N: return "n" + subs[0]->MakeString(ctx, success, true);
             case NodeType::AND_V:
                 // t:X is syntactic sugar for and_v(X,1).
-                if (subs[1]->nodetype == NodeType::TRUE) return "t" + subs[0]->MakeString(ctx, success, true);
+                if (subs[1]->nodetype == NodeType::JUST_1) return "t" + subs[0]->MakeString(ctx, success, true);
                 break;
             case NodeType::OR_I:
-                if (subs[0]->nodetype == NodeType::FALSE) return "l" + subs[1]->MakeString(ctx, success, true);
-                if (subs[1]->nodetype == NodeType::FALSE) return "u" + subs[0]->MakeString(ctx, success, true);
+                if (subs[0]->nodetype == NodeType::JUST_0) return "l" + subs[1]->MakeString(ctx, success, true);
+                if (subs[1]->nodetype == NodeType::JUST_0) return "u" + subs[0]->MakeString(ctx, success, true);
                 break;
             default:
                 break;
@@ -426,8 +426,8 @@ private:
             case NodeType::HASH160: return std::move(ret) + "hash160(" + HexStr(data.begin(), data.end()) + ")";
             case NodeType::SHA256: return std::move(ret) + "sha256(" + HexStr(data.begin(), data.end()) + ")";
             case NodeType::RIPEMD160: return std::move(ret) + "ripemd160(" + HexStr(data.begin(), data.end()) + ")";
-            case NodeType::TRUE: return std::move(ret) + "1";
-            case NodeType::FALSE: return std::move(ret) + "0";
+            case NodeType::JUST_1: return std::move(ret) + "1";
+            case NodeType::JUST_0: return std::move(ret) + "0";
             case NodeType::AND_V: return std::move(ret) + "and_v(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
             case NodeType::AND_B: return std::move(ret) + "and_b(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
             case NodeType::OR_B: return std::move(ret) + "or_b(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
@@ -436,7 +436,7 @@ private:
             case NodeType::OR_I: return std::move(ret) + "or_i(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
             case NodeType::ANDOR:
                 // and_n(X,Y) is syntactic sugar for andor(X,Y,0).
-                if (subs[2]->nodetype == NodeType::FALSE) return std::move(ret) + "and_n(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
+                if (subs[2]->nodetype == NodeType::JUST_0) return std::move(ret) + "and_n(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
                 return std::move(ret) + "andor(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + "," + subs[2]->MakeString(ctx, success) + ")";
             case NodeType::THRESH_M: {
                 auto str = std::move(ret) + "thresh_m(" + std::to_string(k);
@@ -484,8 +484,8 @@ private:
             case NodeType::WRAP_V: return {subs[0]->ops.stat + (subs[0]->GetType() << "x"_mst), subs[0]->ops.sat, {}};
             case NodeType::WRAP_J: return {4 + subs[0]->ops.stat, subs[0]->ops.sat, 0};
             case NodeType::WRAP_N: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
-            case NodeType::TRUE: return {0, 0, {}};
-            case NodeType::FALSE: return {0, {}, 0};
+            case NodeType::JUST_1: return {0, 0, {}};
+            case NodeType::JUST_0: return {0, {}, 0};
             case NodeType::THRESH: {
                 uint32_t stat = 0, dsat = 0;
                 int32_t sat_sum = 0;
@@ -530,8 +530,8 @@ private:
             case NodeType::WRAP_V: return {subs[0]->ss.sat, {}};
             case NodeType::WRAP_J: return {subs[0]->ss.sat, 1};
             case NodeType::WRAP_N: return subs[0]->ss;
-            case NodeType::TRUE: return {0, {}};
-            case NodeType::FALSE: return {{}, 0};
+            case NodeType::JUST_1: return {0, {}};
+            case NodeType::JUST_0: return {{}, 0};
             case NodeType::THRESH: {
                 uint32_t dsat = 0;
                 int32_t sat_sum = 0;
@@ -688,8 +688,8 @@ private:
                 auto x = subs[0]->ProduceInput(ctx, nonmal);
                 return InputResult(INVALID, x.sat);
             }
-            case NodeType::FALSE: return InputResult(EMPTY, INVALID);
-            case NodeType::TRUE: return InputResult(INVALID, EMPTY);
+            case NodeType::JUST_0: return InputResult(EMPTY, INVALID);
+            case NodeType::JUST_1: return InputResult(INVALID, EMPTY);
             case NodeType::THRESH: {
                 std::vector<InputResult> sub;
                 std::vector<bool> choice(subs.size(), false);
@@ -857,11 +857,11 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
                 } else if (expr[j] == 'v') {
                     sub = MakeNodeRef<Key>(NodeType::WRAP_V, Vector(std::move(sub)));
                 } else if (expr[j] == 't') {
-                    sub = MakeNodeRef<Key>(NodeType::AND_V, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::TRUE)));
+                    sub = MakeNodeRef<Key>(NodeType::AND_V, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::JUST_1)));
                 } else if (expr[j] == 'u') {
-                    sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::FALSE)));
+                    sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::JUST_0)));
                 } else if (expr[j] == 'l') {
-                    sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(MakeNodeRef<Key>(NodeType::FALSE), std::move(sub)));
+                    sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(MakeNodeRef<Key>(NodeType::JUST_0), std::move(sub)));
                 } else {
                     return {};
                 }
@@ -873,9 +873,9 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
     // Parse the other node types
     NodeType nodetype;
     if (expr == Span<const char>("0", 1)) {
-        return MakeNodeRef<Key>(NodeType::FALSE);
+        return MakeNodeRef<Key>(NodeType::JUST_0);
     } else if (expr == Span<const char>("1", 1)) {
-        return MakeNodeRef<Key>(NodeType::TRUE);
+        return MakeNodeRef<Key>(NodeType::JUST_1);
     } else if (Func("pk", expr)) {
         Key key;
         if (ctx.FromString(expr.begin(), expr.end(), key)) {
@@ -889,9 +889,9 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
         }
         return {};
     } else if (expr == MakeSpan("0")) {
-        return MakeNodeRef<Key>(NodeType::FALSE);
+        return MakeNodeRef<Key>(NodeType::JUST_0);
     } else if (expr == MakeSpan("1")) {
-        return MakeNodeRef<Key>(NodeType::TRUE);
+        return MakeNodeRef<Key>(NodeType::JUST_1);
     } else if (Func("sha256", expr)) {
         auto hash = ParseHex(std::string(expr.begin(), expr.end()));
         if (hash.size() != 32) return {};
@@ -909,19 +909,21 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
         if (hash.size() != 20) return {};
         return MakeNodeRef<Key>(NodeType::HASH160, std::move(hash));
     } else if (Func("after", expr)) {
-        unsigned long num = std::stoul(std::string(expr.begin(), expr.end()));
-        if (num < 1 || num >= 0x80000000UL) return {};
+        int64_t num;
+        if (!ParseInt64(std::string(expr.begin(), expr.end()), &num)) return {};
+        if (num < 1 || num >= 0x80000000L) return {};
         return MakeNodeRef<Key>(NodeType::AFTER, num);
     } else if (Func("older", expr)) {
-        unsigned long num = std::stoul(std::string(expr.begin(), expr.end()));
-        if (num < 1 || num >= 0x80000000UL) return {};
+        int64_t num;
+        if (!ParseInt64(std::string(expr.begin(), expr.end()), &num)) return {};
+        if (num < 1 || num >= 0x80000000L) return {};
         return MakeNodeRef<Key>(NodeType::OLDER, num);
     } else if (Func("and_n", expr)) {
         auto left = Parse<Key>(expr, ctx);
         if (!left || !Const(",", expr)) return {};
         auto right = Parse<Key>(expr, ctx);
         if (!right || expr.size()) return {};
-        return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(right), MakeNodeRef<Key>(NodeType::FALSE)));
+        return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(right), MakeNodeRef<Key>(NodeType::JUST_0)));
     } else if (Func("andor", expr)) {
         auto left = Parse<Key>(expr, ctx);
         if (!left || !Const(",", expr)) return {};
@@ -932,7 +934,8 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
         return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(mid), std::move(right)));
     } else if (Func("thresh_m", expr)) {
         auto arg = Expr(expr);
-        uint32_t count = std::stoul(std::string(arg.begin(), arg.end()));
+        int64_t count;
+        if (!ParseInt64(std::string(arg.begin(), arg.end()), &count)) return {};
         std::vector<Key> keys;
         while (expr.size()) {
             if (!Const(",", expr)) return {};
@@ -942,11 +945,12 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
             keys.push_back(std::move(key));
         }
         if (keys.size() < 1 || keys.size() > 20) return {};
-        if (count < 1 || count > keys.size()) return {};
+        if (count < 1 || count > (int64_t)keys.size()) return {};
         return MakeNodeRef<Key>(NodeType::THRESH_M, std::move(keys), count);
     } else if (Func("thresh", expr)) {
         auto arg = Expr(expr);
-        uint32_t count = std::stoul(std::string(arg.begin(), arg.end()));
+        int64_t count;
+        if (!ParseInt64(std::string(arg.begin(), arg.end()), &count)) return {};
         std::vector<NodeRef<Key>> subs;
         while (expr.size()) {
             if (!Const(",", expr)) return {};
@@ -954,7 +958,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
             if (!sub) return {};
             subs.push_back(std::move(sub));
         }
-        if (count <= 1 || count >= subs.size()) return {};
+        if (count <= 1 || count >= (int64_t)subs.size()) return {};
         return MakeNodeRef<Key>(NodeType::THRESH, std::move(subs), count);
     } else if (Func("and_v", expr)) {
         nodetype = NodeType::AND_V;
@@ -1004,11 +1008,11 @@ inline NodeRef<Key> DecodeSingle(I& in, I last, const Ctx& ctx) {
 
     if (last > in && in[0].first == OP_1) {
         ++in;
-        return MakeNodeRef<Key>(NodeType::TRUE);
+        return MakeNodeRef<Key>(NodeType::JUST_1);
     }
     if (last > in && in[0].first == OP_0) {
         ++in;
-        return MakeNodeRef<Key>(NodeType::FALSE);
+        return MakeNodeRef<Key>(NodeType::JUST_0);
     }
     if (last > in && in[0].second.size() == 33) {
         Key key;
@@ -1230,4 +1234,4 @@ inline NodeRef<typename Ctx::Key> FromScript(const CScript& script, const Ctx& c
 
 } // namespace miniscript
 
-#endif
+#endif // BITCOIN_SCRIPT_MINISCRIPT_H
