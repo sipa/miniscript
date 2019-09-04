@@ -335,4 +335,3 @@ bool ParseScriptNumber(const std::pair<opcodetype, std::vector<unsigned char>>& 
 
 } // namespace internal
 } // namespace miniscript
-

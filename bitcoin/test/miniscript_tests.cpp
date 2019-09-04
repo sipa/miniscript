@@ -6,14 +6,15 @@
 #include <string>
 #include <vector>
 
-#include <uint256.h>
-#include <pubkey.h>
-#include <core_io.h>
-
 #include <test/setup_common.h>
 #include <boost/test/unit_test.hpp>
 
-#include <policy/policy.h>
+#include <core_io.h>
+#include <hash.h>
+#include <pubkey.h>
+#include <uint256.h>
+#include <crypto/ripemd160.h>
+#include <crypto/sha256.h>
 #include <script/interpreter.h>
 #include <script/miniscript.h>
 #include <script/standard.h>
@@ -21,180 +22,74 @@
 
 namespace {
 
-//! 26 private keys generated such that both pk and pkh for PRIVKEYS[i] end in byte i.
-static const std::vector<std::vector<unsigned char>> PRIVKEYS = {
-    ParseHex("000000000000000000000000000000000000000000000000000000000004d44c"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000009f0c"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000002224e"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000002fcf3"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000000ae0c"),
-    ParseHex("00000000000000000000000000000000000000000000000000000000000095aa"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000000d9e6"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000001427e"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000018f37"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000001aeca"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000014c0d"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000001d6d"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000002f91b"),
-    ParseHex("00000000000000000000000000000000000000000000000000000000000027a2"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000011dae"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000002568f"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000017aae"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000001e20"),
-    ParseHex("00000000000000000000000000000000000000000000000000000000000150bb"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000001aab8"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000003f08"),
-    ParseHex("000000000000000000000000000000000000000000000000000000000000ddd6"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000010d53"),
-    ParseHex("0000000000000000000000000000000000000000000000000000000000002163"),
-    ParseHex("00000000000000000000000000000000000000000000000000000000000255a7"),
-    ParseHex("00000000000000000000000000000000000000000000000000000000000083fe")
+/** TestData groups various kinds of precomputed data necessary in this test. */
+struct TestData {
+    //! The only public keys used in this test.
+    std::vector<CPubKey> pubkeys;
+    //! A map from the public keys to their CKeyIDs (faster than hashing every time).
+    std::map<CPubKey, CKeyID> pkhashes;
+    std::map<CKeyID, CPubKey> pkmap;
+    std::map<CPubKey, std::vector<unsigned char>> signatures;
+
+    // Various precomputed hashes
+    std::vector<std::vector<unsigned char>> sha256;
+    std::vector<std::vector<unsigned char>> ripemd160;
+    std::vector<std::vector<unsigned char>> hash256;
+    std::vector<std::vector<unsigned char>> hash160;
+    std::map<std::vector<unsigned char>, std::vector<unsigned char>> sha256_preimages;
+    std::map<std::vector<unsigned char>, std::vector<unsigned char>> ripemd160_preimages;
+    std::map<std::vector<unsigned char>, std::vector<unsigned char>> hash256_preimages;
+    std::map<std::vector<unsigned char>, std::vector<unsigned char>> hash160_preimages;
+
+    TestData()
+    {
+        // All our signatures sign (and are required to sign) this constant message.
+        auto const MESSAGE_HASH = uint256S("f5cd94e18b6fe77dd7aca9e35c2b0c9cbd86356c80a71065");
+        // We generate 255 public keys and 255 hashes of each type.
+        for (int i = 1; i <= 255; ++i) {
+            // This 32-byte array functions as both private key data and hash preimage (31 zero bytes plus any nonzero byte).
+            unsigned char keydata[32] = {0};
+            keydata[31] = i;
+
+            // Compute CPubkey and CKeyID
+            CKey key;
+            key.Set(keydata, keydata + 32, true);
+            CPubKey pubkey = key.GetPubKey();
+            CKeyID keyid = pubkey.GetID();
+            pubkeys.push_back(pubkey);
+            pkhashes.emplace(pubkey, keyid);
+            pkmap.emplace(keyid, pubkey);
+
+            // Compute ECDSA signatures on MESSAGE_HASH with the private keys.
+            std::vector<unsigned char> sig;
+            BOOST_CHECK(key.Sign(MESSAGE_HASH, sig));
+            sig.push_back(1); // sighash byte
+            signatures.emplace(pubkey, sig);
+
+            // Compute various hashes
+            std::vector<unsigned char> hash;
+            hash.resize(32);
+            CSHA256().Write(keydata, 32).Finalize(hash.data());
+            sha256.push_back(hash);
+            sha256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            CHash256().Write(keydata, 32).Finalize(hash.data());
+            hash256.push_back(hash);
+            hash256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            hash.resize(20);
+            CRIPEMD160().Write(keydata, 32).Finalize(hash.data());
+            ripemd160.push_back(hash);
+            ripemd160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            CHash160().Write(keydata, 32).Finalize(hash.data());
+            hash160.push_back(hash);
+            hash160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+        }
+    }
 };
 
-//! Public keys corresponding to PRIVKEYS.
-static const std::vector<std::vector<unsigned char>> PUBKEYS = {
-    ParseHex("020fa064d7de6aca2fbe72250b048a7f20895498b53afe523c36d8919aabec4800"),
-    ParseHex("02c16e26ec9c0de1124f010f8e82e3523438b107d69adef14d673146d6bbe1e401"),
-    ParseHex("03c8aca3f54c909a624a3cb115af42a0fe6f6db9f6e9160f4c48a27ecca8591a02"),
-    ParseHex("025dd8fa8f56a63e3a9e095b1d0f27afcb86d16f472447480685168847e22c0f03"),
-    ParseHex("02649a4bd15861c3636bece34bf0ee0771bb663a53b7d5fc54f68e527f84379504"),
-    ParseHex("03742c5ffa9aad0233455eb1d3b27b97f69757ae9848e68ff04d7ac16d2a05dd05"),
-    ParseHex("03efe739680033fe7d2db9ab2cf7b4e4561863add1003244f645b5ab660275cc06"),
-    ParseHex("03137f0d0e368bb6386f122771c47f797152fae0cf8a932eca2efc9e1363939407"),
-    ParseHex("02fc0951ea9fb3ed6b5838daaca1d35b072e0b02f6eeb8e2e63cb44d4185a64e08"),
-    ParseHex("037754e0b7b562b9ed1a4fdedad404a3463f06fa161b83c0c3f1c2b47a1b11e309"),
-    ParseHex("022c88846f8cd26c20903a5bda70f07b576edb9b8e55ccb4aa31fe9a46d68e780a"),
-    ParseHex("0248778fa9520b12a412d74b4765ad37a2695e37d64070d53c1e09cbd24c9f140b"),
-    ParseHex("024f00660236ffd87144bc59b4e7c366dbe9e2adad6367d252c62d5b2f0e883f0c"),
-    ParseHex("02b3a199fa015d2e397e42866e0419f17bdf5aa8ce960d4465abb32e773470250d"),
-    ParseHex("023bbdffd73ff93225b2d2a829810d7b730c307f734113301c25b45604eee6b10e"),
-    ParseHex("0327cbdc135c39f49955c44974350d005f725c9c5ff17080699007a3acbb07780f"),
-    ParseHex("03c59488b4e0c393ba14e835455a77b93da4199429f98706804146a4f1a390cb10"),
-    ParseHex("0248c74a768734fc6d3fccf7d1d4c1fa5973df97e5edd8d16b0b5d282400635b11"),
-    ParseHex("02c39f2336c8e3a6c873a7c2411da61faec9cce263e67238d26ac144ec29006712"),
-    ParseHex("0241638efc46b474e049678db72b8490d0ecfcc1394327a81e0108f070fe376213"),
-    ParseHex("0265eab0df3753c3dd341abec0ce44b5b4ae64bdfedc6985245e07f555db32a714"),
-    ParseHex("0263489be36e6c5106e952865a0e9e461e033d515b457f540c95e3123e7f838615"),
-    ParseHex("03681d414b1e04f26facbe5d3c2ebc066b0d94a66787d50819c859db74326c0916"),
-    ParseHex("03d0d0f8b79a04ac8eb6e010fa3608926f3b5bd886f84c361a8e1d9dd4b01ff717"),
-    ParseHex("03ac11d6ef54ba9548853d938a639b6a6748ca6b3932092976b5d6524c5e665c18"),
-    ParseHex("0332c93a8614cbbeeff69f2eb07fb15bff47f9a428f2f370e19a0523da2c488519")
-};
+//! Global TestData object
+std::unique_ptr<const TestData> g_testdata;
 
-//! Public key hashes corresponding to PRIVKEYS.
-static const std::vector<std::vector<unsigned char>> PKHASHES = {
-    ParseHex("2cef22ef5bc1c3c4310be12c86dc73f3b71c0100"),
-    ParseHex("80cd15c4307362f6838657ff907c1136d77eb901"),
-    ParseHex("e888d9bdb00a69ab52a995b72511d99de1cf7b02"),
-    ParseHex("9b152f20298b5316919c43ded59d510b2a27dd03"),
-    ParseHex("83c259d35c518208163cf977f44fb9ff765cde04"),
-    ParseHex("314b8f101f8498b6822a8280ef4579930186c605"),
-    ParseHex("eabc8a3274c04a3baf94e1704b1ecf5c41146d06"),
-    ParseHex("ce528865b485cc0cd6cda9f25164c6be98791a07"),
-    ParseHex("579886c525eb40808208f683366f60b1337c9708"),
-    ParseHex("4eea2899b935dd2e8b01a8cddb26cb8cfc79d609"),
-    ParseHex("c95b5887651068e6b5eec58c503aa4772c24870a"),
-    ParseHex("3a31a4b2f7d405cb0691a47d20341932f85b2f0b"),
-    ParseHex("72d54ea8b446b8b7eb0e752e670f504ee5bc660c"),
-    ParseHex("b602a8b35bdd7090c36603144842b5add202dd0d"),
-    ParseHex("931bd0dcfa899dde3f926cb2aed9c9cef64fba0e"),
-    ParseHex("a76f1f8912318d964230e3af64daa279fd30c20f"),
-    ParseHex("bd3ac708cf8ccb1f5df99c46fc3aa2f86703e610"),
-    ParseHex("d9c90f00cd507062adfce16fbfe3f8813beb5a11"),
-    ParseHex("42acb8072eba47a1bd30576d3ebc113042ef6e12"),
-    ParseHex("02e858cd586d8d6e00d8df551dc2f1e5dacc1813"),
-    ParseHex("ff9289e70af0442e8cda845c63a513cca3868b14"),
-    ParseHex("010389480bafd54be9fa8b662031ae276a66c815"),
-    ParseHex("0652d73a2d20be994a07dbb7019547701f661716"),
-    ParseHex("dfa528bd7637a3572a849e172f8b6db287400617"),
-    ParseHex("359aa5e7e1bc54bfb6b21edc0b7de2b52bd63718"),
-    ParseHex("48688d7e321ed607792ef3d585e96d6185eda619")
-};
-
-//! ECDSA signatures on message 7 and PRIVKEYS as keys, ground such that the last byte matches the position.
-static const std::vector<std::vector<unsigned char>> SIGS = {
-    ParseHex("3045022100a5b64a9b3124d6c15629be6d93b5eab4f778ff252fedcb07f83e25b9f0931186022049964495ffd035948a3649ea8159cd6c0c66b9da05b19a34682cee3221effc00"),
-    ParseHex("3043021f23d52e17e6a3605782f4d133a980be1ebbd99d58b7187b9da4f8c50f15888202207fb78bbe18cc2fb0e4aef267e37d87b818a5eaaf7102861a9d2a01b70f604601"),
-    ParseHex("3045022100aa11b254ebcd33a2f1b86fdb4f0062e36c6f2bcd6d0cae6e048495d9f1f207cc0220578fb8b9ea106033e697e9fc093752c411754b8d54ca1f938096fd185519f002"),
-    ParseHex("304402200a76941921df51a1d2d96da91791ea5138a75a9a6cbd824f855648e397d9c99702205cab5bc9858e6b8bc2d9177b6b726005733671c3a6685a2bfd9e4d9fc3160c03"),
-    ParseHex("304402203347711ce2292bd3c610fb4dc406ccb841de164fb57f49f06fffb09d11a5926702202272de78e1bc96312d30f24a23231628e7e5d0fee5cc38e7616a64070d085104"),
-    ParseHex("30440220257e07ac6ed035dec4d523e3637f911bb73aef591a09a264d018b82857bda34e02204cee5e2b8b45a6fd4e6f5328d2723ec2e040490f2647764f29fd587489fbe205"),
-    ParseHex("3044022039a45e267f0872038bbaa855bafc2ad083bdb9eab05d50b587ee581c555017b8022043dfe7ac541708fec3d166e8ff5a15c484df55f6b74ca836b12a6533bc643d06"),
-    ParseHex("3044022078653ba0bedc1ad061f06fd66b5aa6bfe56eaaba72205aaebd0e2df6294166cc022014c96758174453f4546175f29e0e8721a81b5252a344c7625f90c00ee23dda07"),
-    ParseHex("304402202977382848852c8691a7c74b8b637bd5095f6e3041b1e27cb19457098f884e53022029770b67bf129118e470b93cd0269ea4f4638ea8acc0627d52aed938625d9408"),
-    ParseHex("3045022100ebd15cf861473d85231501c6c68efe1a90cf30992323ae42ea1462b0490e04bf02200cb0f1553d35c4df9932df3f29c1194d692bb8a65ffb974a65017dd3b15e8209"),
-    ParseHex("3044022070dcd9a4fd6f47408b9c06c387186466e5f2f42349e50e7ee146ec315d6a35e602202d0a48ba9da7fb599c4ecac0bd5c7560f16546dc9a1b4f9de5b1c490b6b15e0a"),
-    ParseHex("3045022100ffb01b079b881c78e4e3a6549b1a0564f1877eb92a22d01a0efbfcbf043f783b02207cadbd7c9c257d91a6aca4ac21e2787b4b1843b6f9a984c84659dbe31bf0e60b"),
-    ParseHex("304402202bd0c2fc7d94b9fbb6e500d5799e08fb0c274c9d5a4c463b734509afeca219ba02202cf4cea3c18a977beecfba2757c3f09a643e9c62b1a63c9de506320116e9b60c"),
-    ParseHex("3045022100b09ebc0668cb9552d935252adfcbcd27277f1ec1d034277f2a83ead36fee8c13022020a060eac7dabee9305631b0e95f9466948d20f5aa1ec41d2c722b29a516640d"),
-    ParseHex("3045022100f1acfd0ccbe7979ac7bfdd03254b21e79018c0bffa5101c1af82f5a81a0aec3f02202df8e5ac76970afd294ff5b4a2bcf1db86ca456431406cb9f38dc0ebabf6b60e"),
-    ParseHex("304502210096937123831320343162bbef0563f5706faf81f653ba7038dec8ebd25583fb9002202a62cc29bbc745333132bb03901dcc3a9b148617ee1b530dca852899137a060f"),
-    ParseHex("304402206f2be00b52ed430141becf8d3057b92d5401eb01c44ce2868be16d5017429007022011efbb1de520358acbf964735a4621db7a932a8c6a829fd65ef0a12ac3613010"),
-    ParseHex("3044022060f07848069ad918687acaf90086370c66b04baa6ee53763e76624deef1ab03302205560869f76293557ffa26bc040e95d7a88101c6fa01bb9420ee53d8a42d09f11"),
-    ParseHex("3044022006cad0d27bb5777efedcde481ff7b208b74a77e42afcf5f1cab57525a33baeb402200d2c02949d89836e0795853a4a8800d4c531a329eec1964ed1ecf7b6d00e0712"),
-    ParseHex("3045022100ba01c4f59f3788d9e09217d0e8cca20f9f51451a216d64e913bbac85934991a702203898e6ca9a8eb46c26fa299cea7acd52f51d849a5deffa1fe19bbf2e6c922313"),
-    ParseHex("3045022100b319cd340da44dbaf33363da9a97fc8958c4cb0407b09631144b04186de9507d0220755100641791ca9103e84aaf10be9a88007bbd143f5348e56dd0501a7209ac14"),
-    ParseHex("304502210096d2bcda82a592eb533d95616038a267f43ec88f9a8ef4c62629df764a2f2fb80220728e852c1c34288c182dd6e0c0790b906b397337fb892366182289ca9d5e4815"),
-    ParseHex("3044022034efd682a2688e224cea777127b20b5cc488c0a68ad2bd20ed0d30694537c614022044979a33f56890e7d7fc69a3d9ef2ec4c6e84844d7dc1a487f20636d9359af16"),
-    ParseHex("304402207dc0f48445d7c65bcee7c441ac6040d0af9481a176754d05c836a8031343c62702205e07aac67acc0f8519100c536dcade6af48d4f2b94fe6e8d971e1f63ccda0117"),
-    ParseHex("3045022100c100f8e760539ed4ddaa8fa37e84833331d3bfe8990622822ea54e9f21ed26cb0220475ed3f3bd513a87d5c713ae0330f38b5aed38859a0c26e6d255057188189818"),
-    ParseHex("3045022100982b9947c862ac5454b9daffcfd8112854918b34cdf5791b14e1e0ba4eea13f502204f1fbeccdd9b45770933857e9e8bf2d531a05dc6237c203c94d14b210c607119")
-};
-
-//! SHA256 hashes for all \x01s, all \x02, ...
-static const std::vector<std::vector<unsigned char>> SHA256 = {
-    ParseHex("72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793"),
-    ParseHex("75877bb41d393b5fb8455ce60ecd8dda001d06316496b14dfa7f895656eeca4a"),
-    ParseHex("648aa5c579fb30f38af744d97d6ec840c7a91277a499a0d780f3e7314eca090b"),
-    ParseHex("9f4fb68f3e1dac82202f9aa581ce0bbf1f765df0e9ac3c8c57e20f685abab8ed"),
-    ParseHex("f849d67325facf04177bc663b2dc544051831c589ef581d412f2eba44834e77c"),
-    ParseHex("e802086ad6a1e16b78352ad7296d2aabd835b1b16dbe951e1135b97c68e29d81"),
-    ParseHex("4bb06f8e4e3a7715d201d573d0aa423762e55dabd61a2c02278fa56cc6d294e0")
-};
-
-//! RIPEMD160 hashes for all \x00s, all \x01, ...
-static const std::vector<std::vector<unsigned char>> RIPEMD160 = {
-    ParseHex("422d0010f16ae8539c53eb57a912890244a9eb5a"),
-    ParseHex("e8742ef70e66dd34014e45b847d923eee48b2403"),
-    ParseHex("7dd7f871ad14950c1933f65611df24e9ae02433f"),
-    ParseHex("467a5fcc05787ffa9ba8d20a5ff732e2af97fcf4"),
-    ParseHex("184f0bc2046b560ad6b6b6180726d023a2ff3987"),
-    ParseHex("d8e89e39976db5cb67eee655cf264dee79fe2831"),
-    ParseHex("8a82f7562a7b7c9beca3ae2a43ce1080b2457039")
-};
-
-//! HASH256 hashes for all \x00s, all \x01, ...
-static const std::vector<std::vector<unsigned char>> HASH256 = {
-    ParseHex("a0d4a0b8484643488c45836275bdcf2ca1bf542239aa6ba72bbc5a5951cfb044"),
-    ParseHex("328674a5f838f6987ead31003978b5ed607ccc5ed2aa73677f861d4d4e567cfc"),
-    ParseHex("f517c428914b046c432b1d1927ac580d60e8b70d328c84c1b8c43231d8871721"),
-    ParseHex("dd7d672fd9b45a8398cc7500aa119b9be8d0216adbf85c7fca919773aee4ccea"),
-    ParseHex("be3246b46eb9c831ad5d1827c115be0c8fd6502e81156b695a522df5a6e4e99c"),
-    ParseHex("ec0559ed29d75015de872db78428bb8110c45cb1fffaee3baa35f5f66b6b4bc1"),
-    ParseHex("eb60bdee05596734335a93786236c2df6642b9f2730ff30e5242e6d4c1f3fec1")
-};
-
-//! HASH160 hashes for all \x00s, all \x01, ...
-static const std::vector<std::vector<unsigned char>> HASH160 = {
-    ParseHex("4b6b2e5444c2639cc0fb7bcea5afba3f3cdce239"),
-    ParseHex("b43e1b38138a41b37f7cd9a1d274bc63e3a9b5d1"),
-    ParseHex("8a486ff2e31d6158bf39e2608864d63fefd09d5b"),
-    ParseHex("18bc1a114ccf9c052d3d23e28d3b0a9d12274342"),
-    ParseHex("2002cc93ebefbb1b73f0af055dcc27a0b504ad76"),
-    ParseHex("6bb11f2db4784a6232da9fcbd178324a2779865a"),
-    ParseHex("b566a3eecce809896361988823cd2f423fe800e7")
-};
-
-//! A simple Key abstraction for testing Miniscript. Each key is represented using a single uppercase letter.
-struct TestKey {
-    int c;
-
-    TestKey() : c(0) {};
-    TestKey(int x) { assert(x >= 0 && x <= 25); c = x; }
-
-    bool operator==(TestKey arg) const { return c == arg.c; }
-};
-
+//! A classification of leaf conditions in miniscripts (excluding true/false).
 enum class ChallengeType {
     SHA256,
     RIPEMD160,
@@ -205,56 +100,63 @@ enum class ChallengeType {
     PK
 };
 
-int FindHash(const std::vector<unsigned char>& hash, ChallengeType chtyp) {
-    const std::vector<std::vector<unsigned char>>& table = chtyp == ChallengeType::SHA256 ? SHA256 : chtyp == ChallengeType::RIPEMD160 ? RIPEMD160 : chtyp == ChallengeType::HASH256 ? HASH256 : HASH160;
+/* With each leaf condition we associate a challenge number.
+ * For hashes it's just the first 4 bytes of the hash. For pubkeys, it's the last 4 bytes.
+ */
+uint32_t ChallengeNumber(const CPubKey& pubkey) { return ReadLE32(pubkey.data() + 29); }
+uint32_t ChallengeNumber(const std::vector<unsigned char>& hash) { return ReadLE32(hash.data()); }
 
-    for (size_t i = 0; i < table.size(); ++i) {
-        assert(hash.size() == table[i].size());
-        if (std::equal(hash.begin(), hash.end(), table[i].begin())) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-
+//! A Challenge is a combination of type of leaf condition and its challenge number.
 typedef std::pair<ChallengeType, uint32_t> Challenge;
 
-struct TestContext {
-    typedef TestKey Key;
+/** A class encapulating conversion routing for CPubKey. */
+struct KeyConverter {
+    typedef CPubKey Key;
 
-    std::set<Challenge> supported;
+    //! Public keys in text form are their usual hex notation (no xpubs, ...).
+    bool ToString(const CPubKey& key, std::string& ret) const { ret = HexStr(key.begin(), key.end()); return true; }
 
-    bool ToString(const TestKey& key, std::string& ret) const { ret = char('A' + key.c); return true; }
+    //! Convert a public key to bytes.
+    std::vector<unsigned char> ToPKBytes(const CPubKey& key) const { return {key.begin(), key.end()}; }
 
-    std::vector<unsigned char> ToPKBytes(const TestKey& key) const { return PUBKEYS[key.c]; }
-    std::vector<unsigned char> ToPKHBytes(const TestKey& key) const { return PKHASHES[key.c]; }
+    //! Convert a public key to its Hash160 bytes (precomputed).
+    std::vector<unsigned char> ToPKHBytes(const CPubKey& key) const
+    {
+        auto it = g_testdata->pkhashes.find(key);
+        assert(it != g_testdata->pkhashes.end());
+        return {it->second.begin(), it->second.end()};
+    }
 
+    //! Parse a public key from a range of hex characters.
     template<typename I>
-    bool FromString(I first, I last, TestKey& key) const {
-        if (last - first != 1) return false;
-        if (*first < 'A' || *first > 'Z') return false;
-        key = TestKey(*first - 'A');
-        return true;
+    bool FromString(I first, I last, CPubKey& key) const {
+        auto bytes = ParseHex(std::string(first, last));
+        key.Set(bytes.begin(), bytes.end());
+        return key.IsValid();
     }
 
     template<typename I>
-    bool FromPKBytes(I first, I last, TestKey& key) const {
-        assert(last - first == 33);
-        if (last[-1] > 25) return false;
-        if (!std::equal(first, last, PUBKEYS[last[-1]].begin())) return false;
-        key = TestKey(last[-1]);
-        return true;
+    bool FromPKBytes(I first, I last, CPubKey& key) const {
+        key.Set(first, last);
+        return key.IsValid();
     }
 
     template<typename I>
-    bool FromPKHBytes(I first, I last, TestKey& key) const {
+    bool FromPKHBytes(I first, I last, CPubKey& key) const {
         assert(last - first == 20);
-        if (last[-1] > 25) return false;
-        if (!std::equal(first, last, PKHASHES[last[-1]].begin())) return false;
-        key = TestKey(last[-1]);
+        CKeyID keyid;
+        std::copy(first, last, keyid.begin());
+        auto it = g_testdata->pkmap.find(keyid);
+        assert(it != g_testdata->pkmap.end());
+        key = it->second;
         return true;
     }
+};
+
+/** A class that encapsulates all signing/hash revealing operations. */
+struct Satisfier : public KeyConverter {
+    //! Which keys/timelocks/hash preimages are available.
+    std::set<Challenge> supported;
 
     //! Implement simplified CLTV logic: stack value must exactly match an entry in `supported`.
     bool CheckAfter(uint32_t value) const {
@@ -266,67 +168,78 @@ struct TestContext {
         return supported.count(Challenge(ChallengeType::OLDER, value));
     }
 
-    bool Sign(const TestKey& key, std::vector<unsigned char>& sig) const {
-        if (supported.count(Challenge(ChallengeType::PK, key.c))) {
-            sig = Cat(SIGS[key.c], Vector(uint8_t(1))); // Add sighash byte because why not.
+    //! Produce a signature for the given key.
+    bool Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
+        if (supported.count(Challenge(ChallengeType::PK, ChallengeNumber(key)))) {
+            auto it = g_testdata->signatures.find(key);
+            if (it == g_testdata->signatures.end()) return false;
+            sig = it->second;
             return true;
         }
         return false;
     }
 
+    //! Helper function for the various hash based satisfactions.
     bool SatHash(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage, ChallengeType chtype) const {
-        int idx = FindHash(hash, chtype);
-        if (supported.count(Challenge(chtype, idx))) {
-            preimage = std::vector<unsigned char>(32, idx + 1);
-            return true;
-        }
-        return false;
+        if (!supported.count(Challenge(chtype, ChallengeNumber(hash)))) return false;
+        const auto& m =
+            chtype == ChallengeType::SHA256 ? g_testdata->sha256_preimages :
+            chtype == ChallengeType::HASH256 ? g_testdata->hash256_preimages :
+            chtype == ChallengeType::RIPEMD160 ? g_testdata->ripemd160_preimages :
+            g_testdata->hash160_preimages;
+        auto it = m.find(hash);
+        if (it == m.end()) return false;
+        preimage = it->second;
+        return true;
     }
 
+    // Functions that produce the preimage for hashes of various types.
     bool SatSHA256(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::SHA256); }
     bool SatRIPEMD160(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::RIPEMD160); }
     bool SatHASH256(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::HASH256); }
     bool SatHASH160(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::HASH160); }
 };
 
+/** Mocking signature/timelock checker.
+ *
+ * It holds a pointer to a Satisfier object, to determine which timelocks are supposed to be available.
+ */
 class TestSignatureChecker : public BaseSignatureChecker {
-    const TestContext *ctx;
+    const Satisfier *ctx;
 
 public:
-    TestSignatureChecker(const TestContext *in_ctx) : ctx(in_ctx) {}
+    TestSignatureChecker(const Satisfier *in_ctx) : ctx(in_ctx) {}
 
     bool CheckSig(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& scriptcode, SigVersion sigversion) const override {
-        if (sig.size() < 2) return false;
-        int idx = *(sig.end() - 2);
-        if (idx < 0 || idx > 25) return false;
-        if (sig.size() != SIGS[idx].size() + 1) return false;
-        if (!std::equal(sig.begin(), sig.end() - 1, SIGS[idx].begin())) return false;
-        if (idx != *(pubkey.end() - 1)) return false;
-        if (pubkey.size() != PUBKEYS[idx].size()) return false;
-        if (!std::equal(pubkey.begin(), pubkey.end(), PUBKEYS[idx].begin())) return false;
-        return true;
+        CPubKey pk(pubkey);
+        if (!pk.IsValid()) return false;
+        // Instead of actually running signature validation, check if the signature matches the precomputed one for this key.
+        auto it = g_testdata->signatures.find(pk);
+        if (it == g_testdata->signatures.end()) return false;
+        return sig == it->second;
     }
 
     bool CheckLockTime(const CScriptNum& locktime) const override {
+        // Delegate to Satisfier.
         return ctx->CheckAfter(locktime.GetInt64());
     }
 
     bool CheckSequence(const CScriptNum& sequence) const override {
+        // Delegate to Satisfier.
         return ctx->CheckOlder(sequence.GetInt64());
     }
 };
 
-static const TestContext CTX;
+//! Singleton instance of KeyConverter.
+const KeyConverter CONVERTER;
 
-
-using Node = miniscript::Node<TestKey>;
+// Helper types and functions that use miniscript instantiated for CPubKey.
 using NodeType = miniscript::NodeType;
-using NodeRef = miniscript::NodeRef<TestKey>;
-
-template<typename... Args>
-NodeRef MakeNodeRef(Args&&... args) { return miniscript::MakeNodeRef<TestKey>(std::forward<Args>(args)...); }
+using NodeRef = miniscript::NodeRef<CPubKey>;
+template<typename... Args> NodeRef MakeNodeRef(Args&&... args) { return miniscript::MakeNodeRef<CPubKey>(std::forward<Args>(args)...); }
 using miniscript::operator""_mst;
 
+//! Determine whether a Miniscript node is satisfiable at all (and thus isn't equivalent to just "false").
 bool Satisfiable(const NodeRef& ref) {
     switch (ref->nodetype) {
         case NodeType::FALSE:
@@ -355,15 +268,17 @@ bool Satisfiable(const NodeRef& ref) {
 
 NodeRef GenNode(miniscript::Type typ, int complexity);
 
+//! Generate a random valid miniscript node of the given type and complexity.
 NodeRef RandomNode(miniscript::Type typ, int complexity) {
     assert(complexity > 0);
     NodeRef ret;
     do {
         ret = GenNode(typ, complexity);
-    } while (!ret || !(ret->GetType() << typ) || !ret->CheckOpsLimit() || ret->GetStackSize() > MAX_STANDARD_P2WSH_STACK_ITEMS);
+    } while (!ret || !ret->IsValid() || !(ret->GetType() << typ));
     return ret;
 }
 
+//! Generate a vector of valid miniscript nodes of the given types, and a specified complexity of their sum.
 std::vector<NodeRef> MultiNode(int complexity, const std::vector<miniscript::Type>& types)
 {
     int nodes = types.size();
@@ -384,22 +299,22 @@ std::vector<NodeRef> MultiNode(int complexity, const std::vector<miniscript::Typ
     return subs;
 }
 
-static const NodeRef INVALID;
-
+//! Generate a random (but occasionally invalid) miniscript node of the given type and complexity.
 NodeRef GenNode(miniscript::Type typ, int complexity) {
     if (typ << "B"_mst) {
+        // Generate a "B" node.
         if (complexity == 1) {
             switch (InsecureRandBits(2)) {
                 case 0: return MakeNodeRef(InsecureRandBool() ? NodeType::FALSE : NodeType::TRUE);
                 case 1: return MakeNodeRef(InsecureRandBool() ? NodeType::OLDER : NodeType::AFTER, 1 + InsecureRandRange((1ULL << (1 + InsecureRandRange(31))) - 1));
                 case 2: {
                     int hashtype = InsecureRandBits(2);
-                    int index = InsecureRandRange(7);
+                    int index = InsecureRandRange(255);
                     switch (hashtype) {
-                        case 0: return MakeNodeRef(NodeType::SHA256, SHA256[index]);
-                        case 1: return MakeNodeRef(NodeType::RIPEMD160, RIPEMD160[index]);
-                        case 2: return MakeNodeRef(NodeType::HASH256, HASH256[index]);
-                        case 3: return MakeNodeRef(NodeType::HASH160, HASH160[index]);
+                        case 0: return MakeNodeRef(NodeType::SHA256, g_testdata->sha256[index]);
+                        case 1: return MakeNodeRef(NodeType::RIPEMD160, g_testdata->ripemd160[index]);
+                        case 2: return MakeNodeRef(NodeType::HASH256, g_testdata->hash256[index]);
+                        case 3: return MakeNodeRef(NodeType::HASH160, g_testdata->hash160[index]);
                     }
                     break;
                 }
@@ -427,8 +342,8 @@ NodeRef GenNode(miniscript::Type typ, int complexity) {
                 if (complexity != 3) return {};
                 int nkeys = 1 + (InsecureRandRange(15) * InsecureRandRange(25)) / 17;
                 int sigs = 1 + InsecureRandRange(nkeys);
-                std::vector<TestKey> keys;
-                for (int i = 0; i < nkeys; ++i) keys.push_back(TestKey(InsecureRandRange(26)));
+                std::vector<CPubKey> keys;
+                for (int i = 0; i < nkeys; ++i) keys.push_back(g_testdata->pubkeys[InsecureRandRange(255)]);
                 return MakeNodeRef(NodeType::THRESH_M, std::move(keys), sigs);
             }
             // Complexity >= 4
@@ -440,6 +355,7 @@ NodeRef GenNode(miniscript::Type typ, int complexity) {
             }
         }
     } else if (typ << "V"_mst) {
+        // Generate a "V" node.
         switch (InsecureRandRange(1 + (complexity >= 3) * 3 + (complexity >= 4))) {
             // Complexity >= 1
             case 0: return MakeNodeRef(NodeType::WRAP_V, MultiNode(complexity, Vector("B"_mst)));
@@ -451,17 +367,19 @@ NodeRef GenNode(miniscript::Type typ, int complexity) {
             case 4: return MakeNodeRef(NodeType::ANDOR, MultiNode(complexity - 1, Vector("B"_mst, "V"_mst, "V"_mst)));
         }
     } else if (typ << "W"_mst) {
+        // Generate a "W" node by wrapping a "B" node.
         auto sub = RandomNode("B"_mst, complexity);
         if (sub->GetType() << "o"_mst) {
             if (InsecureRandBool()) return MakeNodeRef(NodeType::WRAP_S, Vector(std::move(sub)));
         }
         return MakeNodeRef(NodeType::WRAP_A, Vector(std::move(sub)));
     } else if (typ << "K"_mst) {
+        // Generate a "K" node.
         if (complexity == 1 || complexity == 2) {
             if (InsecureRandBool()) {
-                return MakeNodeRef(NodeType::PK, Vector(TestKey(InsecureRandRange(26))));
+                return MakeNodeRef(NodeType::PK, Vector(g_testdata->pubkeys[InsecureRandRange(255)]));
             } else {
-                return MakeNodeRef(NodeType::PK_H, Vector(TestKey(InsecureRandRange(26))));
+                return MakeNodeRef(NodeType::PK_H, Vector(g_testdata->pubkeys[InsecureRandRange(255)]));
             }
         }
         switch (InsecureRandRange(2 + (complexity >= 4))) {
@@ -476,33 +394,35 @@ NodeRef GenNode(miniscript::Type typ, int complexity) {
     return {};
 }
 
-void FindChallenges(const NodeRef& ref, std::set<Challenge>& chal) {
+
+/** Compute all challenges (pubkeys, hashes, timelocks) that occur in a given Miniscript. */
+std::set<Challenge> FindChallenges(const NodeRef& ref) {
+    std::set<Challenge> chal;
     for (const auto& key : ref->keys) {
-        chal.emplace(ChallengeType::PK, key.c);
-    }
-    for (const auto& sub : ref->subs) {
-        FindChallenges(sub, chal);
+        chal.emplace(ChallengeType::PK, ChallengeNumber(key));
     }
     if (ref->nodetype == miniscript::NodeType::OLDER) {
         chal.emplace(ChallengeType::OLDER, ref->k);
     } else if (ref->nodetype == miniscript::NodeType::AFTER) {
         chal.emplace(ChallengeType::AFTER, ref->k);
     } else if (ref->nodetype == miniscript::NodeType::SHA256) {
-        int idx = FindHash(ref->data, ChallengeType::SHA256);
-        if (idx != -1) chal.emplace(ChallengeType::SHA256, idx);
+        chal.emplace(ChallengeType::SHA256, ChallengeNumber(ref->data));
     } else if (ref->nodetype == miniscript::NodeType::RIPEMD160) {
-        int idx = FindHash(ref->data, ChallengeType::RIPEMD160);
-        if (idx != -1) chal.emplace(ChallengeType::RIPEMD160, idx);
+        chal.emplace(ChallengeType::RIPEMD160, ChallengeNumber(ref->data));
     } else if (ref->nodetype == miniscript::NodeType::HASH256) {
-        int idx = FindHash(ref->data, ChallengeType::HASH256);
-        if (idx != -1) chal.emplace(ChallengeType::HASH256, idx);
+        chal.emplace(ChallengeType::HASH256, ChallengeNumber(ref->data));
     } else if (ref->nodetype == miniscript::NodeType::HASH160) {
-        int idx = FindHash(ref->data, ChallengeType::HASH160);
-        if (idx != -1) chal.emplace(ChallengeType::HASH160, idx);
+        chal.emplace(ChallengeType::HASH160, ChallengeNumber(ref->data));
     }
+    for (const auto& sub : ref->subs) {
+        auto sub_chal = FindChallenges(sub);
+        chal.insert(sub_chal.begin(), sub_chal.end());
+    }
+    return chal;
 }
 
-void Verify(const std::string& testcase, const NodeRef& node, const TestContext& ctx, std::vector<std::vector<unsigned char>> stack, const CScript& script, bool nonmal) {
+/** Verify a satisfaction. */
+void Verify(const std::string& testcase, const NodeRef& node, const Satisfier& ctx, std::vector<std::vector<unsigned char>> stack, const CScript& script, bool nonmal) {
     // Construct P2WSH scriptPubKey.
     CScript spk = GetScriptForDestination(WitnessV0ScriptHash(script));
     // Construct the P2WSH witness (script stack + script).
@@ -514,17 +434,76 @@ void Verify(const std::string& testcase, const NodeRef& node, const TestContext&
     ScriptError serror;
     if (nonmal) BOOST_CHECK(stack.size() <= node->GetStackSize());
     if (!VerifyScript(CScript(), spk, &witness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror)) {
-        if (nonmal || serror != SCRIPT_ERR_OP_COUNT) { // Only the nonmalleable satisfier is guaranteed to stay below the ops limit
-            fprintf(stderr, "\nFAILURE: %s\n", testcase.c_str());
-            fprintf(stderr, "* Script: %s\n", ScriptToAsmStr(script).c_str());
-            fprintf(stderr, "* Max ops: %i\n", node->GetOps());
-            fprintf(stderr, "* Stack:");
-            for (const auto& arg : stack) {
-                fprintf(stderr, " %s", HexStr(arg).c_str());
-            }
-            fprintf(stderr, "* ERROR: %s\n", ScriptErrorString(serror));
-            BOOST_CHECK(false);
+        // The only possible violation should be the ops limit, as that is hard to statically guarantee.
+        BOOST_CHECK(serror == SCRIPT_ERR_OP_COUNT);
+        // When using the non-malleable satisfier, and our OpsLimit analysis succeeds, no execution errors should occur at all.
+        BOOST_CHECK(!(nonmal && node->CheckOpsLimit()));
+    }
+}
+
+/** Run random satisfaction tests. */
+void TestSatisfy(const std::string& testcase, const NodeRef& node) {
+    auto script = node->ToScript(CONVERTER);
+    auto challenges = FindChallenges(node); // Find all challenges in the generated miniscript.
+    std::vector<Challenge> challist(challenges.begin(), challenges.end());
+    for (int iter = 0; iter < 3; ++iter) {
+        Shuffle(challist.begin(), challist.end(), g_insecure_rand_ctx);
+        Satisfier satisfier;
+        bool prev_mal_success = false, prev_nonmal_success = false;
+        // Go over all challenges involved in this miniscript in random order.
+        for (int add = -1; add < (int)challist.size(); ++add) {
+            if (add >= 0) satisfier.supported.insert(challist[add]); // The first iteration does not add anything
+            // First try to produce a potentially malleable satisfaction.
+            std::vector<std::vector<unsigned char>> stack;
+            bool mal_success = node->Satisfy(satisfier, stack, false);
+            if (mal_success) Verify(testcase, node, satisfier, stack, script, false); // And verify it against consensus/standardness.
+            // Then produce a non-malleable satisfaction.
+            bool nonmal_success = node->Satisfy(satisfier, stack, true);
+            if (nonmal_success) Verify(testcase, node, satisfier, std::move(stack), std::move(script), true);
+            // If a nonmalleable solution exists, a solution whatsoever must also exist.
+            BOOST_CHECK(mal_success >= nonmal_success);
+            // If a miniscript is nonmalleable and needs a signature, and a solution exists, a non-malleable solution must also exist.
+            if (node->IsNonMalleable() && node->NeedsSignature()) BOOST_CHECK_EQUAL(nonmal_success, mal_success);
+            // Adding more satisfied conditions can never remove our ability to produce a satisfaction.
+            BOOST_CHECK(mal_success >= prev_mal_success);
+            // For nonmalleable solutions this is only true if the added condition is PK; for other conditions, adding one may make an valid satisfaction become malleable.
+            if (add >= 0 && challist[add].first == ChallengeType::PK) BOOST_CHECK(nonmal_success >= prev_nonmal_success);
+            // Remember results for the next added challenge.
+            prev_mal_success = mal_success;
+            prev_nonmal_success = nonmal_success;
         }
+        // If the miniscript was satisfiable at all, a satisfaction must be found after all conditions are added.
+        BOOST_CHECK_EQUAL(prev_mal_success, Satisfiable(node));
+    }
+}
+
+enum TestMode : int {
+    TESTMODE_INVALID = 0,
+    TESTMODE_VALID = 1,
+    TESTMODE_NONMAL = 2,
+    TESTMODE_NEEDSIG = 4
+};
+
+void Test(const std::string& ms, const std::string& hexscript, int mode, int opslimit = -1, int stacklimit = -1)
+{
+    auto node = miniscript::FromString(ms, CONVERTER);
+    if (mode == TESTMODE_INVALID) {
+        BOOST_CHECK_MESSAGE(!node || !node->IsValid(), "Unexpectedly valid: " + ms);
+    } else {
+        BOOST_CHECK_MESSAGE(node, "Unparseable: " + ms);
+        BOOST_CHECK_MESSAGE(node->IsValid(), "Invalid: " + ms);
+        BOOST_CHECK_MESSAGE(node->IsValidTopLevel(), "Invalid top level: " + ms);
+        auto computed_script = node->ToScript(CONVERTER);
+        BOOST_CHECK_MESSAGE(node->ScriptSize() == computed_script.size(), "Script size mismatch: " + ms);
+        if (hexscript != "?") BOOST_CHECK_MESSAGE(HexStr(computed_script) == hexscript, "Script mismatch: " + ms + " (" + HexStr(computed_script) + " vs " + hexscript + ")");
+        BOOST_CHECK_MESSAGE(node->IsNonMalleable() == !!(mode & TESTMODE_NONMAL), "Malleability mismatch: " + ms);
+        BOOST_CHECK_MESSAGE(node->NeedsSignature() == !!(mode & TESTMODE_NEEDSIG), "Signature necessity mismatch: " + ms);
+        auto inferred_miniscript = miniscript::FromScript(computed_script, CONVERTER);
+        BOOST_CHECK_MESSAGE(inferred_miniscript, "Cannot infer miniscript from script: " + ms);
+        BOOST_CHECK_MESSAGE(inferred_miniscript->ToScript(CONVERTER) == computed_script, "Roundtrip failure: miniscript->script != miniscript->script->miniscript->script: " + ms);
+        if (opslimit != -1) BOOST_CHECK_MESSAGE((int)node->GetOps() == opslimit, "Ops limit mismatch: " + ms + " (" + std::to_string(node->GetOps()) + " vs " + std::to_string(opslimit) + ")");
+        if (stacklimit != -1) BOOST_CHECK_MESSAGE((int)node->GetStackSize() == stacklimit, "Stack limit mismatch: " + ms + " (" + std::to_string(node->GetStackSize()) + " vs " + std::to_string(stacklimit) + ")");
+        TestSatisfy(ms, node);
     }
 }
 
@@ -532,78 +511,125 @@ void Verify(const std::string& testcase, const NodeRef& node, const TestContext&
 
 BOOST_FIXTURE_TEST_SUITE(miniscript_tests, BasicTestingSetup)
 
-BOOST_AUTO_TEST_CASE(random_miniscript_tests)
+BOOST_AUTO_TEST_CASE(fixed_tests)
 {
+    g_testdata.reset(new TestData());
+
+    // Validity rules
+    Test("l:older(1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // older(1): valid
+    Test("l:older(0)", "?", TESTMODE_INVALID); // older(0): k must be at least 1
+    Test("l:older(2147483647)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // older(2147483647): valid
+    Test("l:older(2147483648)", "?", TESTMODE_INVALID); // older(2147483648): k must be below 2^31
+    Test("u:after(1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // after(1): valid
+    Test("u:after(0)", "?", TESTMODE_INVALID); // after(0): k must be at least 1
+    Test("u:after(2147483647)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // after(2147483647): valid
+    Test("u:after(2147483648)", "?", TESTMODE_INVALID); // after(2147483648): k must be below 2^31
+    Test("andor(0,1,1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // andor(Bdu,B,B): valid
+    Test("andor(a:0,1,1)", "?", TESTMODE_INVALID); // andor(Wdu,B,B): X must be B
+    Test("andor(0,a:1,a:1)", "?", TESTMODE_INVALID); // andor(Bdu,W,W): Y and Z must be B/V/K
+    Test("andor(1,1,1)", "?", TESTMODE_INVALID); // andor(Bu,B,B): X must be d
+    Test("andor(n:or_i(0,after(1)),1,1)", "?", TESTMODE_VALID); // andor(Bdu,B,B): valid
+    Test("andor(or_i(0,after(1)),1,1)", "?", TESTMODE_INVALID); // andor(Bd,B,B): X must be u
+    Test("c:andor(0,pk(03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7),pk(036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00))", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // andor(Bdu,K,K): valid
+    Test("t:andor(0,v:1,v:1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // andor(Bdu,V,V): valid
+    Test("and_v(v:1,1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // and_v(V,B): valid
+    Test("t:and_v(v:1,v:1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // and_v(V,V): valid
+    Test("c:and_v(v:1,pk(036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00))", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // and_v(V,K): valid
+    Test("and_v(1,1)", "?", TESTMODE_INVALID); // and_v(B,B): X must be V
+    Test("and_v(pk(02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5),1)", "?", TESTMODE_INVALID); // and_v(K,B): X must be V
+    Test("and_v(v:1,a:1)", "?", TESTMODE_INVALID); // and_v(K,W): Y must be B/V/K
+    Test("and_b(1,a:1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // and_b(B,W): valid
+    Test("and_b(1,1)", "?", TESTMODE_INVALID); // and_b(B,B): Y must W
+    Test("and_b(v:1,a:1)", "?", TESTMODE_INVALID); // and_b(V,W): X must be B
+    Test("and_b(a:1,a:1)", "?", TESTMODE_INVALID); // and_b(W,W): X must be B
+    Test("and_b(pk(025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc),a:1)", "?", TESTMODE_INVALID); // and_b(K,W): X must be B
+    Test("or_b(0,a:0)", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // or_b(Bd,Wd): valid
+    Test("or_b(1,a:0)", "?", TESTMODE_INVALID); // or_b(B,Wd): X must be d
+    Test("or_b(0,a:1)", "?", TESTMODE_INVALID); // or_b(Bd,W): Y must be d
+    Test("or_b(0,0)", "?", TESTMODE_INVALID); // or_b(Bd,Bd): Y must W
+    Test("or_b(v:0,a:0)", "?", TESTMODE_INVALID); // or_b(V,Wd): X must be B
+    Test("or_b(a:0,a:0)", "?", TESTMODE_INVALID); // or_b(Wd,Wd): X must be B
+    Test("or_b(pk(025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc),a:0)", "?", TESTMODE_INVALID); // or_b(Kd,Wd): X must be B
+    Test("t:or_c(0,v:1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // or_c(Bdu,V): valid
+    Test("t:or_c(a:0,v:1)", "?", TESTMODE_INVALID); // or_c(Wdu,V): X must be B
+    Test("t:or_c(1,v:1)", "?", TESTMODE_INVALID); // or_c(Bu,V): X must be d
+    Test("t:or_c(n:or_i(0,after(1)),v:1)", "?", TESTMODE_VALID); // or_c(Bdu,V): valid
+    Test("t:or_c(or_i(0,after(1)),v:1)", "?", TESTMODE_INVALID); // or_c(Bd,V): X must be u
+    Test("t:or_c(0,1)", "?", TESTMODE_INVALID); // or_c(Bdu,B): Y must be V
+    Test("or_d(0,1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // or_d(Bdu,B): valid
+    Test("or_d(a:0,1)", "?", TESTMODE_INVALID); // or_d(Wdu,B): X must be B
+    Test("or_d(1,1)", "?", TESTMODE_INVALID); // or_d(Bu,B): X must be d
+    Test("or_d(n:or_i(0,after(1)),1)", "?", TESTMODE_VALID); // or_d(Bdu,B): valid
+    Test("or_d(or_i(0,after(1)),1)", "?", TESTMODE_INVALID); // or_d(Bd,B): X must be u
+    Test("or_d(0,v:1)", "?", TESTMODE_INVALID); // or_d(Bdu,V): Y must be B
+    Test("or_i(1,1)", "?", TESTMODE_VALID); // or_i(B,B): valid
+    Test("t:or_i(v:1,v:1)", "?", TESTMODE_VALID); // or_i(V,V): valid
+    Test("c:or_i(pk(03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7),pk(036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00))", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // or_i(K,K): valid
+    Test("or_i(a:1,a:1)", "?", TESTMODE_INVALID); // or_i(W,W): X and Y must be B/V/K
+
+    // Randomly generated test set that covers the majority of type and node type combinations
+    Test("lltvln:after(1231488000)", "6300676300676300670400046749b1926869516868", TESTMODE_VALID | TESTMODE_NONMAL, 12, 3);
+    Test("uuj:and_v(v:thresh_m(2,03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a,025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc),after(1231488000))", "6363829263522103d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a21025601570cb47f238d2b0286db4a990fa0f3ba28d1a319f5e7cf55c2a2444da7cc52af0400046749b168670068670068", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 14, 5);
+    Test("or_b(un:thresh_m(2,03daed4f2be3a8bf278e70132fb0beb7522f570e144bf615c07e996d443dee8729,024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97),al:older(16))", "63522103daed4f2be3a8bf278e70132fb0beb7522f570e144bf615c07e996d443dee872921024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c9752ae926700686b63006760b2686c9b", TESTMODE_VALID, 14, 5);
+    Test("j:and_v(vdv:after(1567547623),older(2016))", "829263766304e7e06e5db169686902e007b268", TESTMODE_VALID | TESTMODE_NONMAL, 11, 1);
+    Test("t:and_v(vu:hash256(131772552c01444cd81360818376a040b7c3b2b7b0a53550ee3edde216cec61b),v:sha256(ec4916dd28fc4c10d78e287ca5d9cc51ee1ae73cbfde08c6b37324cbfaac8bc5))", "6382012088aa20131772552c01444cd81360818376a040b7c3b2b7b0a53550ee3edde216cec61b876700686982012088a820ec4916dd28fc4c10d78e287ca5d9cc51ee1ae73cbfde08c6b37324cbfaac8bc58851", TESTMODE_VALID | TESTMODE_NONMAL, 12, 3);
+    Test("t:andor(thresh_m(3,02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e,03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556,02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13),v:older(4194305),v:sha256(9267d3dbed802941483f1afa2a6bc68de5f653128aca9bf1461c5d0a3ad36ed2))", "532102d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e2103fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a14602975562102e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd1353ae6482012088a8209267d3dbed802941483f1afa2a6bc68de5f653128aca9bf1461c5d0a3ad36ed2886703010040b2696851", TESTMODE_VALID | TESTMODE_NONMAL, 13, 5);
+    Test("or_d(thresh_m(1,02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9),or_b(thresh_m(3,022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01,032fa2104d6b38d11b0230010559879124e42ab8dfeff5ff29dc9cdadd4ecacc3f,03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a),su:after(500000)))", "512102f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f951ae73645321022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a0121032fa2104d6b38d11b0230010559879124e42ab8dfeff5ff29dc9cdadd4ecacc3f2103d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a53ae7c630320a107b16700689b68", TESTMODE_VALID | TESTMODE_NONMAL, 15, 7);
+    Test("or_d(sha256(38df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b6),and_n(un:after(499999999),older(4194305)))", "82012088a82038df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b68773646304ff64cd1db19267006864006703010040b26868", TESTMODE_VALID, 16, 1);
+    Test("and_v(or_i(v:thresh_m(2,02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5,03774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb),v:thresh_m(2,03e60fce93b59e9ec53011aabc21c23e97b2a31369b87a5ae9c44ee89e2a6dec0a,025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc)),sha256(d1ec675902ef1633427ca360b290b0b3045a0d9058ddb5e648b4c3c3224c5c68))", "63522102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee52103774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb52af67522103e60fce93b59e9ec53011aabc21c23e97b2a31369b87a5ae9c44ee89e2a6dec0a21025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc52af6882012088a820d1ec675902ef1633427ca360b290b0b3045a0d9058ddb5e648b4c3c3224c5c6887", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 11, 5);
+    Test("j:and_b(thresh_m(2,0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798,024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97),s:or_i(older(1),older(4252898)))", "82926352210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179821024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c9752ae7c6351b26703e2e440b2689a68", TESTMODE_VALID | TESTMODE_NEEDSIG, 14, 4);
+    Test("and_b(older(16),s:or_d(sha256(e38990d0c7fc009880a9c07c23842e886c6bbdc964ce6bdd5817ad357335ee6f),n:after(1567547623)))", "60b27c82012088a820e38990d0c7fc009880a9c07c23842e886c6bbdc964ce6bdd5817ad357335ee6f87736404e7e06e5db192689a", TESTMODE_VALID, 12, 1);
+    Test("j:and_v(v:hash160(20195b5a3d650c17f0f29f91c33f8f6335193d07),or_d(sha256(96de8fc8c256fa1e1556d41af431cace7dca68707c78dd88c3acab8b17164c47),older(16)))", "82926382012088a91420195b5a3d650c17f0f29f91c33f8f6335193d078882012088a82096de8fc8c256fa1e1556d41af431cace7dca68707c78dd88c3acab8b17164c4787736460b26868", TESTMODE_VALID, 16, 2);
+    Test("and_b(hash256(32ba476771d01e37807990ead8719f08af494723de1d228f2c2c07cc0aa40bac),a:and_b(hash256(131772552c01444cd81360818376a040b7c3b2b7b0a53550ee3edde216cec61b),a:older(1)))", "82012088aa2032ba476771d01e37807990ead8719f08af494723de1d228f2c2c07cc0aa40bac876b82012088aa20131772552c01444cd81360818376a040b7c3b2b7b0a53550ee3edde216cec61b876b51b26c9a6c9a", TESTMODE_VALID | TESTMODE_NONMAL, 15, 2);
+    Test("thresh(2,thresh_m(2,03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7,036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00),a:thresh_m(1,036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00),ac:pk(022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01))", "522103a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c721036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a0052ae6b5121036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a0051ae6c936b21022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01ac6c935287", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 13, 6);
+    Test("and_n(sha256(d1ec675902ef1633427ca360b290b0b3045a0d9058ddb5e648b4c3c3224c5c68),t:or_i(v:older(4252898),v:older(144)))", "82012088a820d1ec675902ef1633427ca360b290b0b3045a0d9058ddb5e648b4c3c3224c5c68876400676303e2e440b26967029000b269685168", TESTMODE_VALID, 14, 2);
+    Test("or_d(d:and_v(v:older(4252898),v:older(4252898)),sha256(38df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b6))", "766303e2e440b26903e2e440b26968736482012088a82038df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b68768", TESTMODE_VALID, 14, 2);
+    Test("c:and_v(or_c(sha256(9267d3dbed802941483f1afa2a6bc68de5f653128aca9bf1461c5d0a3ad36ed2),v:thresh_m(1,02c44d12c7065d812e8acf28d7cbb19f9011ecd9e9fdf281b0e6a3b5e87d22e7db)),pk(03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe))", "82012088a8209267d3dbed802941483f1afa2a6bc68de5f653128aca9bf1461c5d0a3ad36ed28764512102c44d12c7065d812e8acf28d7cbb19f9011ecd9e9fdf281b0e6a3b5e87d22e7db51af682103acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbeac", TESTMODE_VALID | TESTMODE_NEEDSIG, 8, 2);
+    Test("c:and_v(or_c(thresh_m(2,036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00,02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5),v:ripemd160(1b0f3c404d12075c68c938f9f60ebea4f74941a0)),pk(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556))", "5221036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a002102352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d552ae6482012088a6141b0f3c404d12075c68c938f9f60ebea4f74941a088682103fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ac", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 10, 5);
+    Test("and_v(andor(hash256(8a35d9ca92a48eaade6f53a64985e9e2afeb74dcf8acb4c3721e0dc7e4294b25),v:hash256(939894f70e6c3a25da75da0cc2071b4076d9b006563cf635986ada2e93c0d735),v:older(50000)),after(499999999))", "82012088aa208a35d9ca92a48eaade6f53a64985e9e2afeb74dcf8acb4c3721e0dc7e4294b2587640350c300b2696782012088aa20939894f70e6c3a25da75da0cc2071b4076d9b006563cf635986ada2e93c0d735886804ff64cd1db1", TESTMODE_VALID, 14, 2);
+    Test("andor(hash256(5f8d30e655a7ba0d7596bb3ddfb1d2d20390d23b1845000e1e118b3be1b3f040),j:and_v(v:hash160(3a2bff0da9d96868e66abc4427bea4691cf61ccd),older(4194305)),ripemd160(44d90e2d3714c8663b632fcf0f9d5f22192cc4c8))", "82012088aa205f8d30e655a7ba0d7596bb3ddfb1d2d20390d23b1845000e1e118b3be1b3f040876482012088a61444d90e2d3714c8663b632fcf0f9d5f22192cc4c8876782926382012088a9143a2bff0da9d96868e66abc4427bea4691cf61ccd8803010040b26868", TESTMODE_VALID, 20, 2);
+    Test("or_i(c:and_v(v:after(500000),pk(02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5)),sha256(d9147961436944f43cd99d28b2bbddbf452ef872b30c8279e255e7daafc7f946))", "630320a107b1692102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5ac6782012088a820d9147961436944f43cd99d28b2bbddbf452ef872b30c8279e255e7daafc7f9468768", TESTMODE_VALID | TESTMODE_NONMAL, 10, 2);
+    Test("thresh(2,c:pk_h(025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc),s:sha256(e38990d0c7fc009880a9c07c23842e886c6bbdc964ce6bdd5817ad357335ee6f),a:hash160(dd69735817e0e3f6f826a9238dc2e291184f0131))", "76a9145dedfbf9ea599dd4e3ca6a80b333c472fd0b3f6988ac7c82012088a820e38990d0c7fc009880a9c07c23842e886c6bbdc964ce6bdd5817ad357335ee6f87936b82012088a914dd69735817e0e3f6f826a9238dc2e291184f0131876c935287", TESTMODE_VALID, 18, 4);
+    Test("and_n(sha256(9267d3dbed802941483f1afa2a6bc68de5f653128aca9bf1461c5d0a3ad36ed2),uc:and_v(v:older(144),pk(03fe72c435413d33d48ac09c9161ba8b09683215439d62b7940502bda8b202e6ce)))", "82012088a8209267d3dbed802941483f1afa2a6bc68de5f653128aca9bf1461c5d0a3ad36ed28764006763029000b2692103fe72c435413d33d48ac09c9161ba8b09683215439d62b7940502bda8b202e6ceac67006868", TESTMODE_VALID | TESTMODE_NEEDSIG, 13, 3);
+    Test("and_n(c:pk(03daed4f2be3a8bf278e70132fb0beb7522f570e144bf615c07e996d443dee8729),and_b(l:older(4252898),a:older(16)))", "2103daed4f2be3a8bf278e70132fb0beb7522f570e144bf615c07e996d443dee8729ac64006763006703e2e440b2686b60b26c9a68", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 12, 2);
+    Test("c:or_i(and_v(v:older(16),pk_h(02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e)),pk_h(026a245bf6dc698504c89a20cfded60853152b695336c28063b61c65cbd269e6b4))", "6360b26976a9149fc5dbe5efdce10374a4dd4053c93af540211718886776a9142fbd32c8dd59ee7c17e66cb6ebea7e9846c3040f8868ac", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 12, 3);
+    Test("or_d(c:pk_h(02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13),andor(c:pk(024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97),older(2016),after(1567547623)))", "76a914c42e7ef92fdb603af844d064faad95db9bcdfd3d88ac736421024ce119c96e2fa357200b559b2f7dd5a5f02d5290aff74b03f3e471b273211c97ac6404e7e06e5db16702e007b26868", TESTMODE_VALID | TESTMODE_NONMAL, 13, 3);
+    Test("c:andor(ripemd160(6ad07d21fd5dfc646f0b30577045ce201616b9ba),pk_h(02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e),and_v(v:hash256(8a35d9ca92a48eaade6f53a64985e9e2afeb74dcf8acb4c3721e0dc7e4294b25),pk_h(03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a)))", "82012088a6146ad07d21fd5dfc646f0b30577045ce201616b9ba876482012088aa208a35d9ca92a48eaade6f53a64985e9e2afeb74dcf8acb4c3721e0dc7e4294b258876a914dd100be7d9aea5721158ebde6d6a1fd8fff93bb1886776a9149fc5dbe5efdce10374a4dd4053c93af5402117188868ac", TESTMODE_VALID | TESTMODE_NEEDSIG, 18, 3);
+    Test("c:andor(u:ripemd160(6ad07d21fd5dfc646f0b30577045ce201616b9ba),pk_h(03daed4f2be3a8bf278e70132fb0beb7522f570e144bf615c07e996d443dee8729),or_i(pk_h(022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01),pk_h(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798)))", "6382012088a6146ad07d21fd5dfc646f0b30577045ce201616b9ba87670068646376a9149652d86bedf43ad264362e6e6eba6eb764508127886776a914751e76e8199196d454941c45d1b3a323f1433bd688686776a91420d637c1a6404d2227f3561fdbaff5a680dba6488868ac", TESTMODE_VALID | TESTMODE_NEEDSIG, 23, 4);
+    Test("c:or_i(andor(c:pk_h(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),pk_h(022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01),pk_h(02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5)),pk(02d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e))", "6376a914fcd35ddacad9f2d5be5e464639441c6065e6955d88ac6476a91406afd46bcdfd22ef94ac122aa11f241244a37ecc886776a9149652d86bedf43ad264362e6e6eba6eb7645081278868672102d7924d4f7d43ea965a465ae3095ff41131e5946f3c85f79e44adbcf8e27e080e68ac", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 17, 5);
+
+    g_testdata.reset();
+}
+
+BOOST_AUTO_TEST_CASE(random_tests)
+{
+    // Initialize precomputed data.
+    g_testdata.reset(new TestData());
+
     for (int i = 0; i < 1000; ++i) {
-        auto typ = InsecureRandRange(20) ? "B"_mst : "Bms"_mst; // require 5% strong, non-malleable
-        auto node = RandomNode(typ, 1 + InsecureRandRange(90));
-        std::string str;
-        bool str_ret = node->ToString(CTX, str);
-        BOOST_CHECK(str_ret);
-        auto script = node->ToScript(CTX);
-        // Check consistency between script size estimation and real size
-        BOOST_CHECK(node->ScriptSize() == script.size());
+        bool safe = InsecureRandRange(20) == 0; // In 5% of the cases, generate safe top-level expressions.
+        // Generate a random B (or Bms) node of variable complexity, which should be valid as a top-level expression.
+        auto node = RandomNode(safe ? "Bms"_mst : "B"_mst, 1 + InsecureRandRange(90));
+        BOOST_CHECK(node && node->IsValid() && node->IsValidTopLevel());
+        auto script = node->ToScript(CONVERTER);
+        BOOST_CHECK(node->ScriptSize() == script.size()); // Check consistency between script size estimation and real size
         // Check consistency of "x" property with the script (relying on the fact that in this test no keys or hashes end with a byte matching any of the opcodes below).
         BOOST_CHECK((node->GetType() << "x"_mst) != (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
-        auto parsed = miniscript::FromString(str, CTX);
-        // Check that we can parse the descriptor form back
-        BOOST_CHECK(parsed);
-        // Check that it matches the original
-        if (parsed) {
-            BOOST_CHECK(*parsed == *node);
-        }
-        auto decoded = miniscript::FromScript(script, CTX);
-        // Check that we can decode the miniscript back from the script.
-        BOOST_CHECK_MESSAGE(decoded, str);
-        // Check that it matches the original (we can't use *decoded == *node because the miniscript representation may differ, but the script will always match)
-        if (decoded) {
-            BOOST_CHECK(decoded->ToScript(CTX) == script);
-            BOOST_CHECK(decoded->GetType() == node->GetType());
-        }
-
-        std::set<Challenge> challenges;
-        FindChallenges(node, challenges);
-        std::vector<Challenge> challist(challenges.begin(), challenges.end());
-        for (int iter = 0; iter < 3; ++iter) {
-            Shuffle(challist.begin(), challist.end(), g_insecure_rand_ctx);
-            TestContext ctx;
-            bool prev_mal_success = false, prev_nonmal_success = false;
-            // Go over all challenges involved in this miniscript in random order; the first iteration does not add anything.
-            for (int add = -1; add < (int)challist.size(); ++add) {
-                if (add >= 0) {
-                    ctx.supported.insert(challist[add]);
-                }
-                std::vector<std::vector<unsigned char>> stack;
-                bool mal_success = false;
-                if (node->Satisfy(ctx, stack, false)) {
-                    Verify(str, node, ctx, stack, script, false);
-                    mal_success = true;
-                }
-                bool nonmal_success = false;
-                if (node->Satisfy(ctx, stack, true)) {
-                    Verify(str, node, ctx, std::move(stack), std::move(script), true);
-                    nonmal_success = true;
-                }
-                // If a nonmalleable solution exists, a solution whatsoever must also exist.
-                BOOST_CHECK(mal_success >= nonmal_success);
-                // If a miniscript is nonmalleable/strong, and a solution exists, a non-malleable solution must also exist.
-                if (node->GetType() << "ms"_mst) {
-                    BOOST_CHECK_EQUAL(nonmal_success, mal_success);
-                }
-                // Adding more satisfied conditions can never remove our ability to produce a satisfaction.
-                BOOST_CHECK(mal_success >= prev_mal_success);
-                prev_mal_success = mal_success;
-                // For nonmalleable solutions this is only true if the added condition is PK; for other conditions, it may make an valid satisfaction become malleable
-                if (add >= 0 && challist[add].first == ChallengeType::PK) {
-                    BOOST_CHECK(nonmal_success >= prev_nonmal_success);
-                    assert(nonmal_success >= prev_nonmal_success);
-                }
-                prev_nonmal_success = nonmal_success;
-            }
-            // If the miniscript was satisfiable at all, a satisfaction must be found after all conditions are added.
-            BOOST_CHECK_EQUAL(prev_mal_success, Satisfiable(node));
-        }
+        std::string str;
+        BOOST_CHECK(node->ToString(CONVERTER, str)); // Check that we can convert to text
+        auto parsed = miniscript::FromString(str, CONVERTER);
+        BOOST_CHECK(parsed); // Check that we can convert back
+        BOOST_CHECK(*parsed == *node); // Check that it matches the original
+        auto decoded = miniscript::FromScript(script, CONVERTER);
+        BOOST_CHECK(decoded); // Check that we can decode the miniscript back from the script.
+        // Check that it matches the original (we can't use *decoded == *node because the miniscript representation may differ)
+        BOOST_CHECK(decoded->ToScript(CONVERTER) == script); // The script corresponding to that decoded form must match exactly.
+        BOOST_CHECK(decoded->GetType() == node->GetType()); // The type also has to match exactly.
+        // Random satisfaction tests.
+        TestSatisfy(str, node);
     }
+
+    g_testdata.reset();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

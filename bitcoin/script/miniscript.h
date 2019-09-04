@@ -768,14 +768,20 @@ public:
     //! Return the expression type.
     Type GetType() const { return typ; }
 
+    //! Check whether this node is valid at all.
+    bool IsValid() const { return !(GetType() == ""_mst); }
+
     //! Check whether this node is valid as a script on its own.
-    bool ValidTopLevel() const { return GetType() << "B"_mst; }
+    bool IsValidTopLevel() const { return GetType() << "B"_mst; }
 
     //! Check whether this script can always be satisfied in a non-malleable way.
     bool IsNonMalleable() const { return GetType() << "m"_mst; }
 
     //! Check whether this script always needs a signature.
     bool NeedsSignature() const { return GetType() << "s"_mst; }
+
+    //! Do all sanity checks.
+    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckOpsLimit() && CheckStackSize(); }
 
     //! Construct the script for this miniscript (including subexpressions).
     template<typename Ctx>
