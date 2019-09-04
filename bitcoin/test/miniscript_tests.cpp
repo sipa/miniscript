@@ -231,7 +231,7 @@ public:
 };
 
 //! Singleton instance of KeyConverter.
-const KeyConverter CONVERTER;
+const KeyConverter CONVERTER{};
 
 // Helper types and functions that use miniscript instantiated for CPubKey.
 using NodeType = miniscript::NodeType;
