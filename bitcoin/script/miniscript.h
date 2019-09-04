@@ -493,7 +493,7 @@ private:
                 for (const auto& sub : subs) {
                     stat += sub->ops.stat + 1;
                     dsat += sub->ops.dsat.value; // The type system requires "d" for thresh, so dsat must always be valid.
-                    if (sub->ops.sat.valid) diffs.push_back((int32_t)sub->ops.sat.value - sub->ops.dsat.value);
+                    if (sub->ops.sat.valid) diffs.push_back((int32_t)sub->ops.sat.value - (int32_t)sub->ops.dsat.value);
                 }
                 if (diffs.size() < k) return {stat, {}, dsat};
                 std::sort(diffs.begin(), diffs.end());
@@ -538,7 +538,7 @@ private:
                 std::vector<int32_t> diffs;
                 for (const auto& sub : subs) {
                     dsat += sub->ss.dsat.value; // The type system requires "d" for thresh, so dsat must always be valid.
-                    if (sub->ss.sat.valid) diffs.push_back((int32_t)sub->ss.sat.value - sub->ss.dsat.value);
+                    if (sub->ss.sat.valid) diffs.push_back((int32_t)sub->ss.sat.value - (int32_t)sub->ss.dsat.value);
                 }
                 if (diffs.size() < k) return {{}, dsat};
                 std::sort(diffs.begin(), diffs.end());
