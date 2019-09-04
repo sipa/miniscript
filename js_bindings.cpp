@@ -6,7 +6,7 @@
 
 namespace {
 
-using miniscript::operator""_mst;
+using miniscript::operator"" _mst;
 
 void Output(const std::string& str, char* out, int outlen) {
     int maxlen = std::min<int>(outlen - 1, str.size());

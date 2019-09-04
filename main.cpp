@@ -8,7 +8,7 @@
 
 #include "compiler.h"
 
-using miniscript::operator""_mst;
+using miniscript::operator"" _mst;
 
 static bool run(std::string&& line, int64_t count) {
     if (line.size() && line.back() == '\n') line.pop_back();

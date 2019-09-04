@@ -20,7 +20,7 @@ namespace {
 
 using Node = miniscript::NodeRef<std::string>;
 using NodeType = miniscript::NodeType;
-using miniscript::operator""_mst;
+using miniscript::operator"" _mst;
 
 template<typename... Args>
 Node MakeNode(Args&&... args) { return miniscript::MakeNodeRef<std::string>(std::forward<Args>(args)...); }

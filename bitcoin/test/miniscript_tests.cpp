@@ -237,7 +237,7 @@ const KeyConverter CONVERTER{};
 using NodeType = miniscript::NodeType;
 using NodeRef = miniscript::NodeRef<CPubKey>;
 template<typename... Args> NodeRef MakeNodeRef(Args&&... args) { return miniscript::MakeNodeRef<CPubKey>(std::forward<Args>(args)...); }
-using miniscript::operator""_mst;
+using miniscript::operator"" _mst;
 
 //! Determine whether a Miniscript node is satisfiable at all (and thus isn't equivalent to just "false").
 bool Satisfiable(const NodeRef& ref) {
