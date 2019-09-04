@@ -841,7 +841,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
             auto in2 = expr.subspan(i + 1);
             auto sub = Parse<Key>(in2, ctx);
             if (!sub || in2.size()) return {};
-            for (size_t j = i; j-- > 0; ) {
+            for (int j = i; j-- > 0; ) {
                 if (expr[j] == 'a') {
                     sub = MakeNodeRef<Key>(NodeType::WRAP_A, Vector(std::move(sub)));
                 } else if (expr[j] == 's') {
