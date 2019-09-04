@@ -58,8 +58,8 @@ std::string Analyze(const miniscript::NodeRef<std::string>& node) {
         case miniscript::NodeType::RIPEMD160: return Props(node, "ripemd160()");
         case miniscript::NodeType::HASH256: return Props(node, "hash256()");
         case miniscript::NodeType::HASH160: return Props(node, "hash160()");
-        case miniscript::NodeType::FALSE: return Props(node, "false");
-        case miniscript::NodeType::TRUE: return Props(node, "true");
+        case miniscript::NodeType::JUST_0: return Props(node, "false");
+        case miniscript::NodeType::JUST_1: return Props(node, "true");
         case miniscript::NodeType::WRAP_A: return Props(node, "a:") + " " + Analyze(node->subs[0]);
         case miniscript::NodeType::WRAP_S: return Props(node, "s:") + " " + Analyze(node->subs[0]);
         case miniscript::NodeType::WRAP_C: return Props(node, "c:") + " " + Analyze(node->subs[0]);

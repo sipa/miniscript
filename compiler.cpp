@@ -175,7 +175,7 @@ Policy Parse(const std::string& in) {
 
 struct Strat {
     enum class Type {
-        FALSE, TRUE,
+        JUST_0, JUST_1,
         PK, THRESH_M,
         OLDER, AFTER,
         HASH160, HASH256, SHA256, RIPEMD160,
@@ -231,8 +231,8 @@ const Strat* GetStrategy(const Policy& node, std::unordered_map<const Policy*, c
 }
 
 static StratStore STRAT_GLOBAL;
-static const Strat* STRAT_FALSE = MakeStrat(STRAT_GLOBAL, Strat::Type::CACHE, Vector(MakeStrat(STRAT_GLOBAL, Strat::Type::FALSE)));
-static const Strat* STRAT_TRUE = MakeStrat(STRAT_GLOBAL, Strat::Type::CACHE, Vector(MakeStrat(STRAT_GLOBAL, Strat::Type::TRUE)));
+static const Strat* STRAT_FALSE = MakeStrat(STRAT_GLOBAL, Strat::Type::CACHE, Vector(MakeStrat(STRAT_GLOBAL, Strat::Type::JUST_0)));
+static const Strat* STRAT_TRUE = MakeStrat(STRAT_GLOBAL, Strat::Type::CACHE, Vector(MakeStrat(STRAT_GLOBAL, Strat::Type::JUST_1)));
 
 const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy*, const Strat*>& cache, StratStore& store) {
     std::vector<const Strat*> strats;
@@ -481,8 +481,8 @@ CostPair CalcCostPair(NodeType nt, const std::vector<const Result*>& s, double l
         case NodeType::WRAP_D: return {2 + s[0]->pair.sat, 1};
         case NodeType::WRAP_V: return {s[0]->pair.sat, INF};
         case NodeType::WRAP_J: return {s[0]->pair.sat, 1};
-        case NodeType::TRUE: return {0, INF};
-        case NodeType::FALSE: return {INF, 0};
+        case NodeType::JUST_1: return {0, INF};
+        case NodeType::JUST_0: return {INF, 0};
         case NodeType::AND_V: return {s[0]->pair.sat + s[1]->pair.sat, INF};
         case NodeType::AND_B: return {s[0]->pair.sat + s[1]->pair.sat, s[0]->pair.nsat + s[1]->pair.nsat};
         case NodeType::OR_B:
@@ -511,8 +511,8 @@ std::pair<std::vector<double>, std::vector<double>> GetPQs(NodeType nt, double p
     static const std::pair<std::vector<double>, std::vector<double>> NONE;
     double r = 1.0 - l;
     switch (nt) {
-        case NodeType::TRUE:
-        case NodeType::FALSE:
+        case NodeType::JUST_1:
+        case NodeType::JUST_0:
         case NodeType::PK:
         case NodeType::PK_H:
         case NodeType::THRESH_M:
@@ -578,8 +578,8 @@ const TypeFilters& GetTypeFilter(NodeType nt) {
     };
 
     switch (nt) {
-        case NodeType::TRUE:
-        case NodeType::FALSE:
+        case NodeType::JUST_1:
+        case NodeType::JUST_0:
         case NodeType::PK:
         case NodeType::PK_H:
         case NodeType::THRESH_M:
@@ -691,11 +691,11 @@ void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationK
             }
             return;
         }
-        case Strat::Type::FALSE:
-            Add(compilation, cache, NodeType::FALSE, strat->sub, 0, 0);
+        case Strat::Type::JUST_0:
+            Add(compilation, cache, NodeType::JUST_0, strat->sub, 0, 0);
             return;
-        case Strat::Type::TRUE:
-            Add(compilation, cache, NodeType::TRUE, strat->sub, 0, 0);
+        case Strat::Type::JUST_1:
+            Add(compilation, cache, NodeType::JUST_1, strat->sub, 0, 0);
             return;
         case Strat::Type::AFTER:
         case Strat::Type::OLDER: {
@@ -886,8 +886,8 @@ std::string DebugNode(const Node& node) {
         case NodeType::HASH256: return "hash256";
         case NodeType::RIPEMD160: return "ripemd160";
         case NodeType::HASH160: return "hash160";
-        case NodeType::TRUE: return "1";
-        case NodeType::FALSE: return "0";
+        case NodeType::JUST_1: return "1";
+        case NodeType::JUST_0: return "0";
         case NodeType::WRAP_C: return "c:";
         case NodeType::WRAP_A: return "a:";
         case NodeType::WRAP_S: return "s:";
