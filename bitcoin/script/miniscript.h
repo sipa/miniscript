@@ -132,7 +132,7 @@ public:
 };
 
 //! Literal operator to construct Type objects.
-inline constexpr Type operator""_mst(const char* c, size_t l) {
+inline constexpr Type operator"" _mst(const char* c, size_t l) {
     return l == 0 ? Type(0) : operator"" _mst(c + 1, l - 1) | Type(
         *c == 'B' ? 1 << 0 : // Base type
         *c == 'V' ? 1 << 1 : // Verify type
