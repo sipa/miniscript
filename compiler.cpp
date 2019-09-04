@@ -100,11 +100,23 @@ Policy Parse(Span<const char>& in) {
         }
         return Policy(Policy::Type::NONE);
     } else if (Func("after", expr)) {
-        unsigned long num = std::stoul(std::string(expr.begin(), expr.end()));
-        return Policy(Policy::Type::AFTER, num);
+        uint64_t num;
+        if (!ParseUInt64(std::string(expr.begin(), expr.end()), &num)) {
+            return Policy(Policy::Type::NONE);
+        }
+        if (num >= 1 && num < 0x80000000UL) {
+            return Policy(Policy::Type::AFTER, num);
+        }
+        return Policy(Policy::Type::NONE);
     } else if (Func("older", expr)) {
-        unsigned long num = std::stoul(std::string(expr.begin(), expr.end()));
-        return Policy(Policy::Type::OLDER, num);
+        uint64_t num;
+        if (!ParseUInt64(std::string(expr.begin(), expr.end()), &num)) {
+            return Policy(Policy::Type::NONE);
+        }
+        if (num >= 1 && num < 0x80000000UL) {
+            return Policy(Policy::Type::OLDER, num);
+        }
+        return Policy(Policy::Type::NONE);
     } else if (Func("sha256", expr)) {
         auto hash = Hash(expr, 32);
         if (hash.size()) return Policy(Policy::Type::SHA256, std::move(hash));
@@ -147,7 +159,10 @@ Policy Parse(Span<const char>& in) {
         return Policy(Policy::Type::AND, std::move(sub));
     } else if (Func("thresh", expr)) {
         auto arg = Expr(expr);
-        uint32_t count = std::stoul(std::string(arg.begin(), arg.end()));
+        uint32_t count;
+        if (!ParseUInt32(std::string(arg.begin(), arg.end()), &count)) {
+            return Policy(Policy::Type::NONE);
+        }
         if (count < 1) return Policy(Policy::Type::NONE);
         std::vector<Policy> sub;
         while (expr.size()) {
