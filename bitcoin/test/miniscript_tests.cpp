@@ -169,35 +169,35 @@ struct Satisfier : public KeyConverter {
     }
 
     //! Produce a signature for the given key.
-    bool Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
+    miniscript::Availability Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
         if (supported.count(Challenge(ChallengeType::PK, ChallengeNumber(key)))) {
             auto it = g_testdata->signatures.find(key);
-            if (it == g_testdata->signatures.end()) return false;
+            if (it == g_testdata->signatures.end()) return miniscript::Availability::NO;
             sig = it->second;
-            return true;
+            return miniscript::Availability::YES;
         }
-        return false;
+        return miniscript::Availability::NO;
     }
 
     //! Helper function for the various hash based satisfactions.
-    bool SatHash(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage, ChallengeType chtype) const {
-        if (!supported.count(Challenge(chtype, ChallengeNumber(hash)))) return false;
+    miniscript::Availability SatHash(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage, ChallengeType chtype) const {
+        if (!supported.count(Challenge(chtype, ChallengeNumber(hash)))) return miniscript::Availability::NO;
         const auto& m =
             chtype == ChallengeType::SHA256 ? g_testdata->sha256_preimages :
             chtype == ChallengeType::HASH256 ? g_testdata->hash256_preimages :
             chtype == ChallengeType::RIPEMD160 ? g_testdata->ripemd160_preimages :
             g_testdata->hash160_preimages;
         auto it = m.find(hash);
-        if (it == m.end()) return false;
+        if (it == m.end()) return miniscript::Availability::NO;
         preimage = it->second;
-        return true;
+        return miniscript::Availability::YES;
     }
 
     // Functions that produce the preimage for hashes of various types.
-    bool SatSHA256(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::SHA256); }
-    bool SatRIPEMD160(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::RIPEMD160); }
-    bool SatHASH256(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::HASH256); }
-    bool SatHASH160(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::HASH160); }
+    miniscript::Availability SatSHA256(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::SHA256); }
+    miniscript::Availability SatRIPEMD160(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::RIPEMD160); }
+    miniscript::Availability SatHASH256(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::HASH256); }
+    miniscript::Availability SatHASH160(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const { return SatHash(hash, preimage, ChallengeType::HASH160); }
 };
 
 /** Mocking signature/timelock checker.
@@ -455,10 +455,10 @@ void TestSatisfy(const std::string& testcase, const NodeRef& node) {
             if (add >= 0) satisfier.supported.insert(challist[add]); // The first iteration does not add anything
             // First try to produce a potentially malleable satisfaction.
             std::vector<std::vector<unsigned char>> stack;
-            bool mal_success = node->Satisfy(satisfier, stack, false);
+            bool mal_success = node->Satisfy(satisfier, stack, false) == miniscript::Availability::YES;
             if (mal_success) Verify(testcase, node, satisfier, stack, script, false); // And verify it against consensus/standardness.
             // Then produce a non-malleable satisfaction.
-            bool nonmal_success = node->Satisfy(satisfier, stack, true);
+            bool nonmal_success = node->Satisfy(satisfier, stack, true) == miniscript::Availability::YES;
             if (nonmal_success) Verify(testcase, node, satisfier, std::move(stack), std::move(script), true);
             // If a nonmalleable solution exists, a solution whatsoever must also exist.
             BOOST_CHECK(mal_success >= nonmal_success);

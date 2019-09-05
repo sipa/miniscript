@@ -230,6 +230,18 @@ size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_
     return 0;
 }
 
+InputStack& InputStack::Available(Availability avail) {
+    available = avail;
+    if (avail == Availability::NO) {
+        stack.clear();
+        size = std::numeric_limits<size_t>::max();
+        has_sig = false;
+        malleable = false;
+        non_canon = false;
+    }
+    return *this;
+}
+
 InputStack& InputStack::WithSig() {
     has_sig = true;
     return *this;
@@ -245,33 +257,25 @@ InputStack& InputStack::Malleable(bool x) {
     return *this;
 }
 
-bool operator<(const InputStack& a, const InputStack& b) {
-    return a.size < b.size;
-}
-
 InputStack operator+(InputStack a, InputStack b) {
-    if (!a.valid || !b.valid) {
-        a.valid = false;
-        a.stack.clear();
-        a.size = std::numeric_limits<size_t>::max();
-        a.has_sig = false;
-        a.malleable = false;
-    } else {
-        a.stack = Cat(std::move(a.stack), std::move(b.stack));
-        a.size += b.size;
-        a.has_sig |= b.has_sig;
-        a.malleable |= b.malleable;
-        a.non_canon |= b.non_canon;
+    a.stack = Cat(std::move(a.stack), std::move(b.stack));
+    a.size += b.size;
+    a.has_sig |= b.has_sig;
+    a.malleable |= b.malleable;
+    a.non_canon |= b.non_canon;
+    if (a.available == Availability::NO || b.available == Availability::NO) {
+        a.Available(Availability::NO);
+    } else if (a.available == Availability::MAYBE || b.available == Availability::MAYBE) {
+        a.Available(Availability::MAYBE);
     }
     return a;
 }
 
 InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
     // If only one (or neither) is valid, pick the other one.
-    if (!a.valid) return b;
-    if (!b.valid) return a;
+    if (a.available == Availability::NO) return b;
+    if (b.available == Availability::NO) return a;
     // If both are valid, they must be distinct.
-    assert(a.stack != b.stack);
     if (nonmalleable) {
         // If both options are weak, any result is fine; it just needs the malleable marker.
         if (!a.has_sig && !b.has_sig) return a.Malleable();
@@ -285,8 +289,16 @@ InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
         if (b.malleable) return a;
         if (a.malleable) return b;
     }
-    // Otherwise just pick the smallest one.
-    return std::min(a, b);
+    // Pick the smaller between YESes and the bigger between MAYBEs. Prefer YES over MAYBE.
+    if (a.available == Availability::YES && b.available == Availability::YES) {
+        return std::move(a.size <= b.size ? a : b);
+    } else if (a.available == Availability::MAYBE && b.available == Availability::MAYBE) {
+        return std::move(a.size >= b.size ? a : b);
+    } else if (a.available == Availability::YES) {
+        return a;
+    } else {
+        return b;
+    }
 }
 
 bool DecomposeScript(const CScript& script, std::vector<std::pair<opcodetype, std::vector<unsigned char>>>& out)
