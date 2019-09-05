@@ -342,7 +342,7 @@ bool ParseScriptNumber(const std::pair<opcodetype, std::vector<unsigned char>>& 
         try {
             k = CScriptNum(in.second, true).GetInt64();
             return true;
-        } catch(const scriptnum_error& error) {}
+        } catch(const scriptnum_error&) {}
     }
     return false;
 }
