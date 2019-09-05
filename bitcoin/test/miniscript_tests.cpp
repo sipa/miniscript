@@ -613,8 +613,9 @@ BOOST_AUTO_TEST_CASE(random_tests)
         BOOST_CHECK(node && node->IsValid() && node->IsValidTopLevel());
         auto script = node->ToScript(CONVERTER);
         BOOST_CHECK(node->ScriptSize() == script.size()); // Check consistency between script size estimation and real size
-        // Check consistency of "x" property with the script (relying on the fact that in this test no keys or hashes end with a byte matching any of the opcodes below).
-        BOOST_CHECK((node->GetType() << "x"_mst) != (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
+        // Check consistency of "x" property with the script (relying on the fact that no top-level scripts end with a hash or key push, whose last byte could match these opcodes).
+        bool ends_in_verify = !(node->GetType() << "x"_mst);
+        BOOST_CHECK(ends_in_verify == (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
         std::string str;
         BOOST_CHECK(node->ToString(CONVERTER, str)); // Check that we can convert to text
         auto parsed = miniscript::FromString(str, CONVERTER);
