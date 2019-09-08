@@ -286,6 +286,7 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
         }
         case Policy::Type::OR: {
             if (node.sub.size() != 2) return {};
+            if (node.prob[0] + node.prob[1] < node.prob[0]) return {};
             double prob = ((double)node.prob[0]) / (node.prob[0] + node.prob[1]);
             const auto left = GetStrategy(node.sub[0], cache, store);
             const auto right = GetStrategy(node.sub[1], cache, store);
