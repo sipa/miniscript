@@ -79,7 +79,7 @@ Policy Parse(Span<const char>& in);
 Policy ParseProb(Span<const char>& in, uint32_t& prob) {
     prob = 0;
     while (in.size() && in[0] >= ('0' + (prob == 0)) && in[0] <= '9') {
-        prob = prob * 10 + (in[0] - '0');
+        prob = std::min<uint32_t>(prob * 10 + (in[0] - '0'), std::numeric_limits<uint16_t>::max());
         in = in.subspan(1);
     }
     if (prob) {
@@ -286,6 +286,7 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
         }
         case Policy::Type::OR: {
             if (node.sub.size() != 2) return {};
+            if (node.prob[0] + node.prob[1] < node.prob[0]) return {};
             double prob = ((double)node.prob[0]) / (node.prob[0] + node.prob[1]);
             const auto left = GetStrategy(node.sub[0], cache, store);
             const auto right = GetStrategy(node.sub[1], cache, store);
