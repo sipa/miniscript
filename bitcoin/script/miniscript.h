@@ -164,7 +164,7 @@ enum class NodeType {
     JUST_0,     //!< OP_0
     JUST_1,    //!< OP_1
     PK,        //!< [key]
-    PK_H,      //!< OP_DUP OP_HASH160 [keyhash] OP_EQUALVERFIFY
+    PK_H,      //!< OP_DUP OP_HASH160 [keyhash] OP_EQUALVERIFY
     OLDER,     //!< [n] OP_CHECKSEQUENCEVERIFY
     AFTER,     //!< [n] OP_CHECKLOCKTIMEVERIFY
     SHA256,    //!< OP_SIZE 32 OP_EQUALVERIFY OP_SHA256 [hash] OP_EQUAL
