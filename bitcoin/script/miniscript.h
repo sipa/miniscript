@@ -798,15 +798,25 @@ public:
 
 namespace internal {
 
+// Parse(...) is recursive. Recursion depth is limited to MAX_PARSE_RECURSION to avoid
+// running out of stack space at run-time. It is impossible to create a valid Miniscript
+// with a nesting depth higher than 402 (any such script will trivially exceed the ops
+// limit of 201). Those 402 consist of 201 v: wrappers and 201 other nodes. The Parse
+// functions don't use recursion for wrappers, so the recursion limit can be 201.
+static constexpr int MAX_PARSE_RECURSION = 201;
+
 //! Parse a miniscript from its textual descriptor form.
 template<typename Key, typename Ctx>
-inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
+inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_depth) {
+    if (recursion_depth >= MAX_PARSE_RECURSION) {
+        return {};
+    }
     auto expr = Expr(in);
     // Parse wrappers
     for (int i = 0; i < expr.size(); ++i) {
         if (expr[i] == ':') {
             auto in2 = expr.subspan(i + 1);
-            auto sub = Parse<Key>(in2, ctx);
+            auto sub = Parse<Key>(in2, ctx, recursion_depth + 1);
             if (!sub || in2.size()) return {};
             for (int j = i; j-- > 0; ) {
                 if (expr[j] == 'a') {
@@ -886,17 +896,17 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
         if (num < 1 || num >= 0x80000000L) return {};
         return MakeNodeRef<Key>(NodeType::OLDER, num);
     } else if (Func("and_n", expr)) {
-        auto left = Parse<Key>(expr, ctx);
+        auto left = Parse<Key>(expr, ctx, recursion_depth + 1);
         if (!left || !Const(",", expr)) return {};
-        auto right = Parse<Key>(expr, ctx);
+        auto right = Parse<Key>(expr, ctx, recursion_depth + 1);
         if (!right || expr.size()) return {};
         return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(right), MakeNodeRef<Key>(NodeType::JUST_0)));
     } else if (Func("andor", expr)) {
-        auto left = Parse<Key>(expr, ctx);
+        auto left = Parse<Key>(expr, ctx, recursion_depth + 1);
         if (!left || !Const(",", expr)) return {};
-        auto mid = Parse<Key>(expr, ctx);
+        auto mid = Parse<Key>(expr, ctx, recursion_depth + 1);
         if (!mid || !Const(",", expr)) return {};
-        auto right = Parse<Key>(expr, ctx);
+        auto right = Parse<Key>(expr, ctx, recursion_depth + 1);
         if (!right || expr.size()) return {};
         return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(mid), std::move(right)));
     } else if (Func("thresh_m", expr)) {
@@ -921,7 +931,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
         std::vector<NodeRef<Key>> subs;
         while (expr.size()) {
             if (!Const(",", expr)) return {};
-            auto sub = Parse<Key>(expr, ctx);
+            auto sub = Parse<Key>(expr, ctx, recursion_depth + 1);
             if (!sub) return {};
             subs.push_back(std::move(sub));
         }
@@ -942,9 +952,9 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx) {
     } else {
         return {};
     }
-    auto left = Parse<Key>(expr, ctx);
+    auto left = Parse<Key>(expr, ctx, recursion_depth + 1);
     if (!left || !Const(",", expr)) return {};
-    auto right = Parse<Key>(expr, ctx);
+    auto right = Parse<Key>(expr, ctx, recursion_depth + 1);
     if (!right || expr.size()) return {};
     return MakeNodeRef<Key>(nodetype, Vector(std::move(left), std::move(right)));
 }
@@ -1182,7 +1192,7 @@ template<typename Ctx>
 inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& ctx) {
     using namespace internal;
     Span<const char> span = MakeSpan(str);
-    auto ret = Parse<typename Ctx::Key>(span, ctx);
+    auto ret = Parse<typename Ctx::Key>(span, ctx, 0);
     if (!ret || span.size()) return {};
     return ret;
 }
