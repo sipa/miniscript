@@ -319,6 +319,7 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
                     keys.push_back(x.keys[0]);
                 }
                 strats.push_back(MakeStrat(store, Strat::Type::THRESH_M, std::move(keys), node.k));
+                break;
             }
             if (node.k > 1 && node.k < node.sub.size()) {
                 strats.push_back(MakeStrat(store, Strat::Type::THRESH, subs, node.k, (double)node.k / subs.size()));
