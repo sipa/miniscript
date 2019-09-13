@@ -976,12 +976,12 @@ std::string Expand(std::string str) {
     while (true) {
         auto pos = str.find("ripemd160(H)");
         if (pos == std::string::npos) break;
-        str.replace(pos, 12, "(9999999999999999999999999999999999999999)");
+        str.replace(pos, 12, "ripemd160(9999999999999999999999999999999999999999)");
     }
     while (true) {
         auto pos = str.find("hash160(H)");
         if (pos == std::string::npos) break;
-        str.replace(pos, 10, "(9999999999999999999999999999999999999999)");
+        str.replace(pos, 10, "hash160(9999999999999999999999999999999999999999)");
     }
     while (true) {
         auto pos = str.find(" ");
