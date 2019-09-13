@@ -1137,6 +1137,9 @@ inline NodeRef<Key> DecodeSingle(I& in, I last, const Ctx& ctx) {
     }
     subs.clear();
     if (last - in >= 3 && in[0].first == OP_EQUAL && ParseScriptNumber(in[1], k)) {
+        if (k < 2) {
+            return {};
+        }
         in += 2;
         while (last - in >= 2 && in[0].first == OP_ADD) {
             ++in;
@@ -1147,6 +1150,9 @@ inline NodeRef<Key> DecodeSingle(I& in, I last, const Ctx& ctx) {
         auto sub = DecodeSingle<Key>(in, last, ctx);
         if (!sub) return {};
         subs.push_back(std::move(sub));
+        if (k >= subs.size()) {
+            return {};
+        }
         std::reverse(subs.begin(), subs.end());
         return MakeNodeRef<Key>(NodeType::THRESH, std::move(subs), k);
     }
