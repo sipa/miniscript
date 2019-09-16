@@ -33,6 +33,7 @@ function htmlEscape(str) {
 em_miniscript_compile = Module.cwrap('miniscript_compile', 'none', ['string', 'number', 'number', 'number', 'number', 'number', 'number']);
 em_miniscript_analyze = Module.cwrap('miniscript_analyze', 'none', ['string', 'number', 'number', 'number', 'number']);
 
+
 function miniscript_compile() {
     document.getElementById("out").innerHTML = "Compiling...";
     window.setTimeout(function() {
@@ -51,6 +52,11 @@ function miniscript_compile() {
         Module._free(costout)
         Module._free(asmout)
     });
+}
+
+function load_policy(pol) {
+    document.getElementById("source").value = pol;
+    miniscript_compile();
 }
 
 function miniscript_analyze() {
@@ -131,6 +137,17 @@ Links:<ul>
     <li><samp>or([<em>N</em>@]<em>POL</em>,[<em>N</em>@]<em>POL</em>)</samp>: Require that one of the subpolicies is satisfied. The numbers N indicate the relative probability of each of the subexpressions (so <samp>9@</samp> is 9 times more likely than the default).</li>
     <li><samp>thresh(<em>NUM</em>,<em>POL</em>,<em>POL</em>,...)</samp>: Require that NUM out of the following subpolicies are met (all combinations are assumed to be equally likely).</li>
     </ul></div>
+    Fill field with:
+    <ul>
+    <li><a class="demo_link" href='javascript:load_policy("pk(key_1)")'>A single key</a>
+    <li><a class="demo_link" href='javascript:load_policy("or(pk(key_1),pk(key_2))")'>One of two keys (equally likely)</a>
+    <li><a class="demo_link" href='javascript:load_policy("or(99@pk(key_likely),pk(key_unlikely))")'>One of two keys (one likely, one unlikely)</a>
+    <li><a class="demo_link" href='javascript:load_policy("and(pk(key_user),or(99@pk(key_service),older(12960)))")'>A user and a 2FA service need to sign off, but after 90 days the user alone is enough</a>
+    <li><a class="demo_link" href='javascript:load_policy("thresh(3,pk(key_1),pk(key_2),pk(key_3),older(12960))")'>A 3-of-3 that turns into a 2-of-3 after 90 days</a>
+    <li><a class="demo_link" href='javascript:load_policy("or(pk(key_revocation),and(pk(key_local),older(1008)))")'>The BOLT #3 to_local policy</a>
+    <li><a class="demo_link" href='javascript:load_policy("or(pk(key_revocation),and(pk(key_remote),or(pk(key_local),hash160(H))))")'>The BOLT #3 offered HTLC policy</a>
+    <li><a class="demo_link" href='javascript:load_policy("or(pk(key_revocation),and(pk(key_remote),or(and(pk(key_local),hash160(H)),older(1008))))")'>The BOLT #3 received HTLC policy</a>
+    </ul>
   </div>
   <button type="button" class="btn btn-primary" onclick="miniscript_compile();">Compile</button>
 </form>
