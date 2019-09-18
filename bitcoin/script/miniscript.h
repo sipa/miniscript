@@ -161,7 +161,7 @@ NodeRef<Key> MakeNodeRef(Args&&... args) { return std::make_shared<const Node<Ke
 
 //! The different node types in miniscript.
 enum class NodeType {
-    JUST_0,     //!< OP_0
+    JUST_0,    //!< OP_0
     JUST_1,    //!< OP_1
     PK,        //!< [key]
     PK_H,      //!< OP_DUP OP_HASH160 [keyhash] OP_EQUALVERIFY
@@ -183,7 +183,7 @@ enum class NodeType {
     OR_B,      //!< [X] [Y] OP_BOOLOR
     OR_C,      //!< [X] OP_NOTIF [Y] OP_ENDIF
     OR_D,      //!< [X] OP_IFDUP OP_NOTIF [Y] OP_ENDIF
-    OR_I,      //!< IF [X] OP_ELSE [Y] OP_ENDIF
+    OR_I,      //!< OP_IF [X] OP_ELSE [Y] OP_ENDIF
     ANDOR,     //!< [X] OP_NOTIF [Z] OP_ELSE [Y] OP_ENDIF
     THRESH,    //!< [X1] ([Xn] OP_ADD)* [k] OP_EQUAL
     THRESH_M,  //!< [k] [key_n]* [n] OP_CHECKMULTISIG
