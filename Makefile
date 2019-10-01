@@ -15,3 +15,6 @@ wrapper.dot: wrapper.txt
 
 wrapper.pdf: wrapper.dot
 	dot -Tpdf <wrapper.dot >wrapper.pdf
+
+docker:
+	docker build . -f contrib/docker/Dockerfile -t miniscript
