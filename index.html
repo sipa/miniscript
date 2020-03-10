@@ -165,7 +165,7 @@ Links:<ul>
 <form>
   <div class="form-group">
     <label for="analyze_ms">Miniscript</label>
-    <textarea class="form-control" id="analyze_ms" rows="1">and_v(vc:pk(K),c:pk(A))</textarea>
+    <textarea class="form-control" id="analyze_ms" rows="1">and_v(v:pk(K),pk(A))</textarea>
     <small class="form-text test-muted">Provide a well-typed miniscript expression of type "B".</small>
   </div>
   <button type="button" class="btn btn-primary" onclick="miniscript_analyze();">Analyze</button>
@@ -184,8 +184,8 @@ Links:<ul>
 This table shows all Miniscript <em>fragments</em> and their associated semantics and Bitcoin Script.
 Fragments that do not change the semantics of their subexpressions are called <em>wrappers</em>. Normal fragments use
 a "fragment(arguments,...)" notation, while wrappers are written using prefixes separated from other fragments
-by a colon. The colon is dropped between subsequent wrappers; e.g. <code>vc:pk(key)</code> is the <code>v:</code>
-wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fragment for a given key.
+by a colon. The colon is dropped between subsequent wrappers; e.g. <code>dv:older(144)</code> is the <code>d:</code>
+wrapper applied to the <code>v:</code> wrapper applied to the <code>older</code> fragment for 144 blocks.
 
 <div class="table-responsive">
 <table class="table table-sm">
@@ -203,13 +203,21 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
   <td><samp>1</samp></td>
 </tr>
 <tr>
-  <td rowspan="2">check(key)</td>
-  <td><code>pk(key)</code></td>
+  <td rowspan="4">check(key)</td>
+  <td><code>pk_k(key)</code></td>
   <td><samp>&lt;key&gt;</samp></td>
 </tr>
 <tr>
   <td><code>pk_h(key)</code></td>
   <td><samp>DUP HASH160 &lt;HASH160(key)&gt; EQUALVERIFY</samp></td>
+</tr>
+<tr>
+  <td><code>pk(key) = c:pk_k(key)</code></td>
+  <td><samp>&lt;key&gt; CHECKSIG</samp></td>
+</tr>
+<tr>
+  <td><code>pkh(key) = c:pk_h(key)</code></td>
+  <td><samp>DUP HASH160 &lt;HASH160(key)&gt; EQUALVERIFY CHECKSIG</samp></td>
 </tr>
 <tr>
   <td>nSequence &ge; n (and compatible)</td>
@@ -282,7 +290,7 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 </tr>
 <tr>
   <td>check(key<sub>1</sub>) + ... + check(key<sub>n</sub>) = k</td>
-  <td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td>
+  <td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td>
   <td><samp>&lt;k&gt; &lt;key<sub>1</sub>&gt; ... &lt;key<sub>n</sub>&gt; &lt;n&gt; CHECKMULTISIG</samp></td>
 </tr>
 <tr>
@@ -328,7 +336,7 @@ wrapper applied to the <code>c:</code> wrapper applied to the <code>pk</code> fr
 </tbody>
 </table>
 </div>
-The <code>and_n</code> fragment and <code>t:</code>, <code>l:</code>, and <code>u:</code> wrappers are syntactic sugar for other Miniscripts, as listed in the table above.
+The <code>pk</code>, <code>pkh</code>, and <code>and_n</code> fragments and <code>t:</code>, <code>l:</code>, and <code>u:</code> wrappers are syntactic sugar for other Miniscripts, as listed in the table above.
 In what follows, they will not be included anymore, as their properties can be derived by looking at their expansion.
 
 <p>
@@ -348,14 +356,14 @@ When dissatisfied, they push an exact 0 onto the stack (if dissatisfaction witho
 This type is used for most expressions, and required for the top level expression. An example is <code>older(n)</code> = <samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp>.</li>
 <li><b>"V"</b> Verify expressions. Like "B", these take their inputs from the top of the stack. Upon satisfaction however, they continue without pushing anything. They cannot be
 dissatisfied without aborting. A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.
-An example is <code>vc:pk(key)</code> = <samp>&lt;key&gt; CHECKSIGVERIFY</samp>.</li>
+An example is <code>v:pk(key)</code> = <samp>&lt;key&gt; CHECKSIGVERIFY</samp>.</li>
 <li><b>"K"</b> Key expressions. They again take their inputs from the top of the stack, but instead of verifying a condition directly they always push a public key onto the stack, for
 which a signature is still required to satisfy the expression. A "K" can be converted into a "B" using the <code>c:</code> wrapper (<samp>CHECKSIG</samp>).
 An example is <code>pk_h(key)</code> = <samp>DUP HASH160 &lt;Hash160(key)&gt; EQUALVERIFY</samp></li>
 <li><b>"W"</b> Wrapped expressions. They take their inputs from one below the top of the stack, and push a nonzero (in case of satisfaction) or zero (in case of dissatisfaction)
 either on top of the stack, or one below. So for example a 3-input "W" would take the stack "A B C D E F" and turn it into "A B F 0" or "A B 0 F" in case of dissatisfaction, and
 "A B F n" or "A B n F" in case of satisfaction (with n a nonzero value). Every "W" is either <code>s:B</code> (<samp>SWAP B</samp>) or <code>a:B</code> (<samp>TOALTSTACK B FROMALTSTACK</samp>).
-An example is <code>sc:pk(key)</code> = <samp>SWAP &lt;key&gt; CHECKSIG</samp>.</li>
+An example is <code>s:pk(key)</code> = <samp>SWAP &lt;key&gt; CHECKSIG</samp>.</li>
 </ul>
 
 <p>
@@ -375,7 +383,7 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <tbody>
 <tr><td><code>0</code></td><td></td><td>B</td><td>z; u; d</td></tr>
 <tr><td><code>1</code></td><td></td><td>B</td><td>z; u</td></tr>
-<tr><td><code>pk(key)</code></td><td></td><td>K</td><td>o; n; d; u</td></tr>
+<tr><td><code>pk_k(key)</code></td><td></td><td>K</td><td>o; n; d; u</td></tr>
 <tr><td><code>pk_h(key)</code></td><td></td><td>K</td><td>n; d; u</td></tr>
 <tr><td><code>older(n)</code>, <code>after(n)</code></td><td>1 &le; n &lt; 2<sup>31</sup></td><td>B</td><td>z</td></tr>
 <tr><td><code>sha256(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
@@ -390,7 +398,7 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Z</em> is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>; d=d<sub>Z</sub>; u=u<sub>Z</sub></td></tr>
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>both are B, K, or V</td><td>same as X/Z</td><td>o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>1 &lt; k &lt; n; <em>X<sub>1</sub></em> is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
-<tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
+<tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
 <tr><td><code>a:X</code></td><td><em>X</em> is B</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
 <tr><td><code>s:X</code></td><td><em>X</em> is Bo</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
 <tr><td><code>c:X</code></td><td><em>X</em> is K</td><td>B</td><td>o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
@@ -409,14 +417,14 @@ This tables lists the correctness requirements for each of the Miniscript expres
 Various types of Bitcoin Scripts have different resource limitations, either through consensus or standardness. Some of them affect otherwise valid Miniscripts: <ul>
 <li>Scripts over 10000 bytes are invalid by consensus (bare, P2SH, P2WSH, P2SH-P2WSH).</li>
 <li>Scripts over 520 bytes are invalid by consensus (P2SH).</li>
-<li>Script satisfactions where the total number of non-push opcodes plus the number of keys participating in all executed <code>thresh_m</code>s, is above 201, are invalid by consensus (bare, P2SH, P2WSH, P2SH-P2WSH).</li>
-<li>Anything but <code>c:pk(key)</code> (P2PK), <code>c:pk_h(key)</code> (P2PKH), and <code>thresh_m(k,...)</code> up to n=3 is invalid by standardness (bare).</li>
+<li>Script satisfactions where the total number of non-push opcodes plus the number of keys participating in all executed <code>multi</code>s, is above 201, are invalid by consensus (bare, P2SH, P2WSH, P2SH-P2WSH).</li>
+<li>Anything but <code>pk(key)</code> (P2PK), <code>pkh(key)</code> (P2PKH), and <code>multi(k,...)</code> up to n=3 is invalid by standardness (bare).</li>
 <li>Scripts over 3600 bytes are invalid by standardness (P2WSH, P2SH-P2WSH).</li>
 <li>Script satisfactions with a serialized <samp>scriptSig</samp> over 1650 bytes are invalid by standardness (P2SH).</li>
 <li>Script satisfactions with a witness consisting of over 100 stack elements (excluding the script itself) are invalid by standardness (P2WSH, P2SH-P2WSH).</li>
 </ul>
 Miniscript makes it easy to verify that the ability to satisfy a script is not impacted by these limits. Note that this is different from verifying whether the limits are never
-reachable at all (which is also possible). Consider for example an <code>or_b(<em>X</em>,<em>Y</em>)</code> where both <em>X</em> and <em>Y</em> require a number of large <code>thresh_m</code>s
+reachable at all (which is also possible). Consider for example an <code>or_b(<em>X</em>,<em>Y</em>)</code> where both <em>X</em> and <em>Y</em> require a number of large <code>multi</code>s
 to be executed to satisfy. It may be the case that satisfying just one of <em>X</em> or <em>Y</em> does not exceed the ops limit, while satisfying both does. As it's never required to
 satisfy both, the limit does not prevent satisfaction.
 
@@ -455,7 +463,7 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <tbody>
 <tr><td><code>0</code></td><td></td><td>-</td></tr>
 <tr><td><code>1</code></td><td>-</td><td></td></tr>
-<tr><td><code>pk(key)</code></td><td>0</td><td>sig</td></tr>
+<tr><td><code>pk_k(key)</code></td><td>0</td><td>sig</td></tr>
 <tr><td><code>pk_h(key)</code></td><td>0 key</td><td>sig key</td></tr>
 <tr><td><code>older(n)</code></td><td>-</td><td></td></tr>
 <tr><td><code>after(n)</code></td><td>-</td><td></td></tr>
@@ -471,7 +479,7 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>Z</em>) dsat(<em>X</em>)</td><td>sat(<em>X</em>); sat(<em>Z</em>) dsat(<em>X</em>)</td></tr>
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>X</em>) 1; dsat(<em>Z</em>) 0</td><td>sat(<em>X</em>) 1; sat(<em>Z</em>) 0</td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>All dsats <span class="text-muted">[Sats/dsats with 1 &le; #(sats) &ne; k]</span></td><td>Sats/dsats with #(sats) = k</td></tr>
-<tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 0 ... 0 (n+1 times)</td><td>0 sig ... sig</td></tr>
+<tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 0 ... 0 (n+1 times)</td><td>0 sig ... sig</td></tr>
 <tr><td><code>a:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>s:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>c:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
@@ -547,7 +555,7 @@ In order to produce non-malleable satisfactions we make use of a function that r
 <li>Iterate over all the valid satisfactions/dissatisfactions in the table above (including the non-canonical ones), taking into account:<ul>
   <li>The dissatisfactions for <code>sha256</code>, <code>ripemd160</code>, <code>hash256</code>, and <code>hash160</code> are always malleable (reason 1), so instead use DONTUSE there.</li>
   <li>The non-canonical options for <code>and_b</code>, <code>or_b</code>, and <code>thresh</code> are always overcomplete (reason 3), so instead use DONTUSE there as well (with HASSIG flag if the original non-canonical solution had one).
-  <li>The satisfactions for <code>pk</code>, <code>pk_h</code>, and <code>thresh_m</code> can be marked HASSIG.</li>
+  <li>The satisfactions for <code>pk_k</code>, <code>pk_h</code>, and <code>multi</code> can be marked HASSIG.</li>
   <li>When constructing solutions by combining results for subexpressions, the result is DONTUSE if any of the constituent results is DONTUSE. Furthermore, the result gets the HASSIG tag if any of the constituents do.</li>
 </ul></li>
 <li>If among all valid solutions (including DONTUSE ones) more than one does not have the HASSIG marker, return DONTUSE, as this is malleable because of reason 1.</li>
@@ -591,7 +599,7 @@ The following table lists these additional properties, and the requirements for 
 <tbody>
 <tr><td><code>0</code></td><td></td><td>s, e</td></tr>
 <tr><td><code>1</code></td><td></td><td>f</td></tr>
-<tr><td><code>pk(key)</code></td><td></td><td>s, e</td></tr>
+<tr><td><code>pk_k(key)</code></td><td></td><td>s, e</td></tr>
 <tr><td><code>pk_h(key)</code></td><td></td><td>s, e</td></tr>
 <tr><td><code>older(n)</code></td><td></td><td>f</td></tr>
 <tr><td><code>after(n)</code></td><td></td><td>f</td></tr>
@@ -607,7 +615,7 @@ The following table lists these additional properties, and the requirements for 
 <tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td>e<sub>X</sub> and (s<sub>X</sub> or s<sub>Z</sub>)</td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>Z</sub>; e=e<sub>Z</sub></td></tr>
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>s<sub>X</sub> or s<sub>Z</sub></td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>X</sub>f<sub>Z</sub>; e=e<sub>X</sub>f<sub>Z</sub> or e<sub>Z</sub>f<sub>X</sub></td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>all are e; at most k are non-s</td><td>s=at most k-1 are non-s; e=all are s</td></tr>
-<tr><td><code>thresh_m(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td></td><td>s; e</td></tr>
+<tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td></td><td>s; e</td></tr>
 <tr><td><code>a:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
 <tr><td><code>s:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
 <tr><td><code>c:<em>X</em></code></td><td></td><td>s; e=e<sub>X</sub></td></tr>
