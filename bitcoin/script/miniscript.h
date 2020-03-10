@@ -397,10 +397,19 @@ private:
     //! Internal code for ToString.
     template<typename Ctx>
     std::string MakeString(const Ctx& ctx, bool& success, bool wrapped = false) const {
+        std::string ret = wrapped ? ":" : "";
+
         switch (nodetype) {
             case NodeType::WRAP_A: return "a" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_S: return "s" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::WRAP_C: return "c" + subs[0]->MakeString(ctx, success, true);
+            case NodeType::WRAP_C:
+                if (subs[0]->nodetype == NodeType::PK_K) {
+                    // pk(K) is syntactic sugar for c:pk_k(K)
+                    std::string key_str;
+                    success = ctx.ToString(subs[0]->keys[0], key_str);
+                    return std::move(ret) + "pk(" + std::move(key_str) + ")";
+                }
+                return "c" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_D: return "d" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_V: return "v" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_J: return "j" + subs[0]->MakeString(ctx, success, true);
@@ -416,8 +425,6 @@ private:
             default:
                 break;
         }
-
-        std::string ret = wrapped ? ":" : "";
 
         switch (nodetype) {
             case NodeType::PK_K: {
@@ -853,6 +860,12 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
         return MakeNodeRef<Key>(NodeType::JUST_0);
     } else if (expr == Span<const char>("1", 1)) {
         return MakeNodeRef<Key>(NodeType::JUST_1);
+    } else if (Func("pk", expr)) {
+        Key key;
+        if (ctx.FromString(expr.begin(), expr.end(), key)) {
+            return MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key)))));
+        }
+        return {};
     } else if (Func("pk_k", expr)) {
         Key key;
         if (ctx.FromString(expr.begin(), expr.end(), key)) {
