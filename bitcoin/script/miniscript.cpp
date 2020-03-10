@@ -45,7 +45,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
     // Sanity check on k
     if (nodetype == NodeType::OLDER || nodetype == NodeType::AFTER) {
         assert(k >= 1 && k < 0x80000000UL);
-    } else if (nodetype == NodeType::THRESH_M) {
+    } else if (nodetype == NodeType::MULTI) {
         assert(k >= 1 && k <= n_keys);
     } else if (nodetype == NodeType::THRESH) {
         assert(k > 1 && k < n_subs);
@@ -66,9 +66,9 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
         assert(n_subs == 0);
     }
     // Sanity check on keys
-    if (nodetype == NodeType::PK || nodetype == NodeType::PK_H) {
+    if (nodetype == NodeType::PK_K || nodetype == NodeType::PK_H) {
         assert(n_keys == 1);
-    } else if (nodetype == NodeType::THRESH_M) {
+    } else if (nodetype == NodeType::MULTI) {
         assert(n_keys >= 1 && n_keys <= 20);
     } else {
         assert(n_keys == 0);
@@ -78,7 +78,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
     // It heavily relies on Type's << operator (where "X << a_mst" means
     // "X has all properties listed in a").
     switch (nodetype) {
-        case NodeType::PK: return "Konudemsx"_mst;
+        case NodeType::PK_K: return "Konudemsx"_mst;
         case NodeType::PK_H: return "Knudemsx"_mst;
         case NodeType::OLDER: return "Bzfmx"_mst;
         case NodeType::AFTER: return "Bzfmx"_mst;
@@ -171,7 +171,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
             (x & y & z & "m"_mst).If(x << "e"_mst && (x | y | z) << "s"_mst) | // m=m_x*m_y*m_z*e_x*(s_x+s_y+s_z)
             (z & (x | y) & "s"_mst) | // s=s_z*(s_x+s_y)
             "x"_mst; // x
-        case NodeType::THRESH_M: return "Bnudems"_mst;
+        case NodeType::MULTI: return "Bnudems"_mst;
         case NodeType::THRESH: {
             bool all_e = true;
             bool all_m = true;
@@ -199,7 +199,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
 
 size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys) {
     switch (nodetype) {
-        case NodeType::PK: return subsize + 34;
+        case NodeType::PK_K: return subsize + 34;
         case NodeType::PK_H: return subsize + 3 + 21;
         case NodeType::OLDER: return subsize + 1 + (CScript() << k).size();
         case NodeType::AFTER: return subsize + 1 + (CScript() << k).size();
@@ -224,7 +224,7 @@ size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_
         case NodeType::OR_I: return subsize + 3;
         case NodeType::ANDOR: return subsize + 3;
         case NodeType::THRESH: return subsize + n_subs + 1;
-        case NodeType::THRESH_M: return subsize + 3 + (n_keys > 16) + (k > 16) + 34 * n_keys;
+        case NodeType::MULTI: return subsize + 3 + (n_keys > 16) + (k > 16) + 34 * n_keys;
     }
     assert(false);
     return 0;
