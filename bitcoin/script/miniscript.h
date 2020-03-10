@@ -409,6 +409,12 @@ private:
                     success = ctx.ToString(subs[0]->keys[0], key_str);
                     return std::move(ret) + "pk(" + std::move(key_str) + ")";
                 }
+                if (subs[0]->nodetype == NodeType::PK_H) {
+                    // pkh(K) is syntactix sugar for c:pk_h(K)
+                    std::string key_str;
+                    success = ctx.ToString(subs[0]->keys[0], key_str);
+                    return std::move(ret) + "pkh(" + std::move(key_str) + ")";
+                }
                 return "c" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_D: return "d" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_V: return "v" + subs[0]->MakeString(ctx, success, true);
@@ -864,6 +870,12 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
         Key key;
         if (ctx.FromString(expr.begin(), expr.end(), key)) {
             return MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key)))));
+        }
+        return {};
+    } else if (Func("pkh", expr)) {
+        Key key;
+        if (ctx.FromString(expr.begin(), expr.end(), key)) {
+            return MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key)))));
         }
         return {};
     } else if (Func("pk_k", expr)) {
