@@ -169,8 +169,8 @@ enum class NodeType {
     AFTER,     //!< [n] OP_CHECKLOCKTIMEVERIFY
     SHA256,    //!< OP_SIZE 32 OP_EQUALVERIFY OP_SHA256 [hash] OP_EQUAL
     HASH256,   //!< OP_SIZE 32 OP_EQUALVERIFY OP_HASH256 [hash] OP_EQUAL
-    RIPEMD160, //!< OP_SIZE 32 OP_EQUALVERIFY OP_RIPEMD160 [hash] OP_EQUAL
-    HASH160,   //!< OP_SIZE 32 OP_EQUALVERIFY OP_HASH160 [hash] OP_EQUAL
+    RIPEMD160, //!< OP_SIZE 20 OP_EQUALVERIFY OP_RIPEMD160 [hash] OP_EQUAL
+    HASH160,   //!< OP_SIZE 20 OP_EQUALVERIFY OP_HASH160 [hash] OP_EQUAL
     WRAP_A,    //!< OP_TOALTSTACK [X] OP_FROMALTSTACK
     WRAP_S,    //!< OP_SWAP [X]
     WRAP_C,    //!< [X] OP_CHECKSIG
@@ -356,9 +356,9 @@ private:
             case NodeType::OLDER: return CScript() << k << OP_CHECKSEQUENCEVERIFY;
             case NodeType::AFTER: return CScript() << k << OP_CHECKLOCKTIMEVERIFY;
             case NodeType::SHA256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_SHA256 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-            case NodeType::RIPEMD160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_RIPEMD160 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
+            case NodeType::RIPEMD160: return CScript() << OP_SIZE << 20 << OP_EQUALVERIFY << OP_RIPEMD160 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
             case NodeType::HASH256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH256 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-            case NodeType::HASH160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH160 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
+            case NodeType::HASH160: return CScript() << OP_SIZE << 20 << OP_EQUALVERIFY << OP_HASH160 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
             case NodeType::WRAP_A: return (CScript() << OP_TOALTSTACK) + subs[0]->MakeScript(ctx) + (CScript() << OP_FROMALTSTACK);
             case NodeType::WRAP_S: return (CScript() << OP_SWAP) + subs[0]->MakeScript(ctx, verify);
             case NodeType::WRAP_C: return subs[0]->MakeScript(ctx) + CScript() << (verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
