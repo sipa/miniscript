@@ -29,7 +29,7 @@ struct Policy {
     enum class Type {
         NONE,
 
-        PK,
+        PK_K,
         OLDER,
         AFTER,
         HASH160,
@@ -96,7 +96,7 @@ Policy Parse(Span<const char>& in) {
     if (Func("pk", expr)) {
         std::string key;
         if (COMPILER_CTX.FromString(expr.begin(), expr.end(), key)) {
-            return Policy(Policy::Type::PK, Vector(std::move(key)));
+            return Policy(Policy::Type::PK_K, Vector(std::move(key)));
         }
         return Policy(Policy::Type::NONE);
     } else if (Func("after", expr)) {
@@ -191,12 +191,12 @@ Policy Parse(const std::string& in) {
 struct Strat {
     enum class Type {
         JUST_0, JUST_1,
-        PK, THRESH_M,
+        PK_K, MULTI,
         OLDER, AFTER,
         HASH160, HASH256, SHA256, RIPEMD160,
         AND, OR, ANDOR, THRESH,
         WRAP_AS, WRAP_C, WRAP_D, WRAP_V, WRAP_J, WRAP_N, // Several kinds of wrappers that don't change semantics
-        MULTI, // Every subgraph is a separate compilation strategy; try each once
+        ALTERNATIVES, // Every subgraph is a separate compilation strategy; try each once
         CACHE, // sub[0] is the dependency; sub[1] and higher are (possibly self-referential) improvements to try repeatedly until all of them stop improving
     };
 
@@ -254,8 +254,8 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
     switch (node.node_type) {
         case Policy::Type::NONE:
             return {};
-        case Policy::Type::PK:
-            strats.push_back(MakeStrat(store, Strat::Type::PK, node.keys));
+        case Policy::Type::PK_K:
+            strats.push_back(MakeStrat(store, Strat::Type::PK_K, node.keys));
             break;
         case Policy::Type::OLDER:
             strats.push_back(MakeStrat(store, Strat::Type::OLDER, node.k));
@@ -313,12 +313,12 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
             for (const auto& s : subs) {
                 if (!s) return {};
             }
-            if (node.sub.size() <= 20 && std::all_of(node.sub.begin(), node.sub.end(), [&](const Policy& x){ return x.node_type == Policy::Type::PK; })) {
+            if (node.sub.size() <= 20 && std::all_of(node.sub.begin(), node.sub.end(), [&](const Policy& x){ return x.node_type == Policy::Type::PK_K; })) {
                 std::vector<std::string> keys;
                 for (const Policy& x : node.sub) {
                     keys.push_back(x.keys[0]);
                 }
-                strats.push_back(MakeStrat(store, Strat::Type::THRESH_M, std::move(keys), node.k));
+                strats.push_back(MakeStrat(store, Strat::Type::MULTI, std::move(keys), node.k));
             }
             if (node.k > 1 && node.k < node.sub.size()) {
                 strats.push_back(MakeStrat(store, Strat::Type::THRESH, subs, node.k, (double)node.k / subs.size()));
@@ -338,7 +338,7 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
 
     if (strats.size() != 1) {
         auto sub = std::move(strats);
-        strats.push_back(MakeStrat(store, Strat::Type::MULTI, std::move(sub)));
+        strats.push_back(MakeStrat(store, Strat::Type::ALTERNATIVES, std::move(sub)));
     }
 
     auto ret = MakeMutStrat(store, Strat::Type::CACHE, std::move(strats));
@@ -475,11 +475,11 @@ constexpr double INF = std::numeric_limits<double>::infinity();
 
 CostPair CalcCostPair(NodeType nt, const std::vector<const Result*>& s, double l) {
     double r = 1.0 - l;
-    if (nt != NodeType::OR_B && nt != NodeType::OR_D && nt != NodeType::OR_C && nt != NodeType::OR_I && nt != NodeType::THRESH && nt != NodeType::ANDOR && nt != NodeType::THRESH_M) {
+    if (nt != NodeType::OR_B && nt != NodeType::OR_D && nt != NodeType::OR_C && nt != NodeType::OR_I && nt != NodeType::THRESH && nt != NodeType::ANDOR && nt != NodeType::MULTI) {
         assert(l == 0);
     }
     switch (nt) {
-        case NodeType::PK: return {73, 1};
+        case NodeType::PK_K: return {73, 1};
         case NodeType::PK_H: return {107, 35};
         case NodeType::OLDER:
         case NodeType::AFTER:
@@ -510,7 +510,7 @@ CostPair CalcCostPair(NodeType nt, const std::vector<const Result*>& s, double l
             return {Mul(l, s[0]->pair.sat + 2) + Mul(r, s[1]->pair.sat + 1), std::min(2 + s[0]->pair.nsat, 1 + s[1]->pair.nsat)};
         case NodeType::ANDOR:
             return {Mul(l, s[0]->pair.sat + s[1]->pair.sat) + Mul(r, s[0]->pair.nsat + s[2]->pair.sat), s[0]->pair.nsat + s[2]->pair.nsat};
-        case NodeType::THRESH_M: return CostPair{1.0 + l * 73.0, 1.0 + l};
+        case NodeType::MULTI: return CostPair{1.0 + l * 73.0, 1.0 + l};
         case NodeType::THRESH: {
             double sat = 0.0, nsat = 0.0;
             for (const auto& sub : s) {
@@ -529,9 +529,9 @@ std::pair<std::vector<double>, std::vector<double>> GetPQs(NodeType nt, double p
     switch (nt) {
         case NodeType::JUST_1:
         case NodeType::JUST_0:
-        case NodeType::PK:
+        case NodeType::PK_K:
         case NodeType::PK_H:
-        case NodeType::THRESH_M:
+        case NodeType::MULTI:
         case NodeType::OLDER:
         case NodeType::AFTER:
         case NodeType::HASH256:
@@ -596,9 +596,9 @@ const TypeFilters& GetTypeFilter(NodeType nt) {
     switch (nt) {
         case NodeType::JUST_1:
         case NodeType::JUST_0:
-        case NodeType::PK:
+        case NodeType::PK_K:
         case NodeType::PK_H:
-        case NodeType::THRESH_M:
+        case NodeType::MULTI:
         case NodeType::OLDER:
         case NodeType::AFTER:
         case NodeType::HASH256:
@@ -695,7 +695,7 @@ const Compilation& GetCompilation(const Strat* strat, double p, double q, std::m
 void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationKey, Compilation>& cache) {
     double p = compilation.p, q = compilation.q;
     switch (strat->node_type) {
-        case Strat::Type::MULTI:
+        case Strat::Type::ALTERNATIVES:
             for (const auto& x : strat->sub) {
                 Compile(x, compilation, cache);
             }
@@ -734,13 +734,13 @@ void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationK
             Add(compilation, cache, NodeType::SHA256, strat->sub, 0, 0, strat->data);
             return;
         }
-        case Strat::Type::PK: {
-            Add(compilation, cache, NodeType::PK, strat->sub, 0, 0, strat->keys);
+        case Strat::Type::PK_K: {
+            Add(compilation, cache, NodeType::PK_K, strat->sub, 0, 0, strat->keys);
             Add(compilation, cache, NodeType::PK_H, strat->sub, 0, 0, strat->keys);
             return;
         }
-        case Strat::Type::THRESH_M:
-            Add(compilation, cache, NodeType::THRESH_M, strat->sub, strat->k, 0, strat->keys, strat->k);
+        case Strat::Type::MULTI:
+            Add(compilation, cache, NodeType::MULTI, strat->sub, strat->k, 0, strat->keys, strat->k);
             return;
         case Strat::Type::WRAP_AS:
             Add(compilation, cache, NodeType::WRAP_A, strat->sub, 0, 0);
@@ -893,9 +893,9 @@ std::string Disassembler(CScript::const_iterator& it, CScript::const_iterator en
 /*
 std::string DebugNode(const Node& node) {
     switch (node->nodetype) {
-        case NodeType::PK: return "pk";
+        case NodeType::PK_K: return "pk";
         case NodeType::PK_H: return "pk_h";
-        case NodeType::THRESH_M: return "thresh_m(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")";
+        case NodeType::MULTI: return "multi(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")";
         case NodeType::AFTER: return "after";
         case NodeType::OLDER: return "older";
         case NodeType::SHA256: return "sha256";

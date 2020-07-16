@@ -41,17 +41,17 @@ std::string Props(const miniscript::NodeRef<std::string>& node, std::string in) 
 
 std::string Analyze(const miniscript::NodeRef<std::string>& node) {
     switch (node->nodetype) {
-        case miniscript::NodeType::PK: {
+        case miniscript::NodeType::PK_K: {
             std::string str;
             COMPILER_CTX.ToString(node->keys[0], str);
-            return Props(node, "pk(" + std::move(str) + ")");
+            return Props(node, "pk_k(" + std::move(str) + ")");
         }
         case miniscript::NodeType::PK_H: {
             std::string str;
             COMPILER_CTX.ToString(node->keys[0], str);
             return Props(node, "pk_h(" + std::move(str) + ")");
         }
-        case miniscript::NodeType::THRESH_M: return Props(node, "thresh_m(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")");
+        case miniscript::NodeType::MULTI: return Props(node, "multi(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")");
         case miniscript::NodeType::AFTER: return Props(node, "after(" + std::to_string(node->k) + ")");
         case miniscript::NodeType::OLDER: return Props(node, "older(" + std::to_string(node->k) + ")");
         case miniscript::NodeType::SHA256: return Props(node, "sha256()");

@@ -42,7 +42,7 @@ namespace miniscript {
  *   - This is obtained by adding an OP_VERIFY to a B, modifying the last opcode
  *     of a B to its -VERIFY version (only for OP_CHECKSIG, OP_CHECKSIGVERIFY
  *     and OP_EQUAL), or using IFs where both branches are also Vs.
- *   - For example vc:pk(key) = <key> OP_CHECKSIGVERIFY
+ *   - For example vc:pk_k(key) = <key> OP_CHECKSIGVERIFY
  * - "K" Key:
  *   - Takes its inputs from the top of the stack.
  *   - Becomes a B when followed by OP_CHECKSIG.
@@ -54,7 +54,7 @@ namespace miniscript {
  *   - When satisfied, pushes a nonzero value (like B) on top of the stack, or one below.
  *   - When dissatisfied, pushes 0 op top of the stack or one below.
  *   - Is always "OP_SWAP [B]" or "OP_TOALTSTACK [B] OP_FROMALTSTACK".
- *   - For example sc:pk(key) = OP_SWAP <key> OP_CHECKSIG
+ *   - For example sc:pk_k(key) = OP_SWAP <key> OP_CHECKSIG
  *
  * There a type properties that help reasoning about correctness:
  * - "z" Zero-arg:
@@ -163,7 +163,7 @@ NodeRef<Key> MakeNodeRef(Args&&... args) { return std::make_shared<const Node<Ke
 enum class NodeType {
     JUST_0,    //!< OP_0
     JUST_1,    //!< OP_1
-    PK,        //!< [key]
+    PK_K,      //!< [key]
     PK_H,      //!< OP_DUP OP_HASH160 [keyhash] OP_EQUALVERIFY
     OLDER,     //!< [n] OP_CHECKSEQUENCEVERIFY
     AFTER,     //!< [n] OP_CHECKLOCKTIMEVERIFY
@@ -186,7 +186,7 @@ enum class NodeType {
     OR_I,      //!< OP_IF [X] OP_ELSE [Y] OP_ENDIF
     ANDOR,     //!< [X] OP_NOTIF [Z] OP_ELSE [Y] OP_ENDIF
     THRESH,    //!< [X1] ([Xn] OP_ADD)* [k] OP_EQUAL
-    THRESH_M,  //!< [k] [key_n]* [n] OP_CHECKMULTISIG
+    MULTI,     //!< [k] [key_n]* [n] OP_CHECKMULTISIG
     // AND_N(X,Y) is represented as ANDOR(X,Y,0)
     // WRAP_T(X) is represented as AND_V(X,1)
     // WRAP_L(X) is represented as OR_I(0,X)
@@ -302,7 +302,7 @@ struct Node {
     const NodeType nodetype;
     //! The k parameter (time for OLDER/AFTER, threshold for THRESH(_M))
     const uint32_t k = 0;
-    //! The keys used by this expression (only for PK/PK_H/THRESH_M)
+    //! The keys used by this expression (only for PK_K/PK_H/MULTI)
     const std::vector<Key> keys;
     //! The data bytes in this expression (only for HASH160/HASH256/SHA256/RIPEMD10).
     const std::vector<unsigned char> data;
@@ -351,7 +351,7 @@ private:
     CScript MakeScript(const Ctx& ctx, bool verify = false) const {
         std::vector<unsigned char> bytes;
         switch (nodetype) {
-            case NodeType::PK: return CScript() << ctx.ToPKBytes(keys[0]);
+            case NodeType::PK_K: return CScript() << ctx.ToPKBytes(keys[0]);
             case NodeType::PK_H: return CScript() << OP_DUP << OP_HASH160 << ctx.ToPKHBytes(keys[0]) << OP_EQUALVERIFY;
             case NodeType::OLDER: return CScript() << k << OP_CHECKSEQUENCEVERIFY;
             case NodeType::AFTER: return CScript() << k << OP_CHECKLOCKTIMEVERIFY;
@@ -375,7 +375,7 @@ private:
             case NodeType::OR_C: return subs[0]->MakeScript(ctx) + (CScript() << OP_NOTIF) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
             case NodeType::OR_I: return (CScript() << OP_IF) + subs[0]->MakeScript(ctx) + (CScript() << OP_ELSE) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
             case NodeType::ANDOR: return subs[0]->MakeScript(ctx) + (CScript() << OP_NOTIF) + subs[2]->MakeScript(ctx) + (CScript() << OP_ELSE) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
-            case NodeType::THRESH_M: {
+            case NodeType::MULTI: {
                 CScript script = CScript() << k;
                 for (const auto& key : keys) {
                     script << ctx.ToPKBytes(key);
@@ -397,10 +397,25 @@ private:
     //! Internal code for ToString.
     template<typename Ctx>
     std::string MakeString(const Ctx& ctx, bool& success, bool wrapped = false) const {
+        std::string ret = wrapped ? ":" : "";
+
         switch (nodetype) {
             case NodeType::WRAP_A: return "a" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_S: return "s" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::WRAP_C: return "c" + subs[0]->MakeString(ctx, success, true);
+            case NodeType::WRAP_C:
+                if (subs[0]->nodetype == NodeType::PK_K) {
+                    // pk(K) is syntactic sugar for c:pk_k(K)
+                    std::string key_str;
+                    success = ctx.ToString(subs[0]->keys[0], key_str);
+                    return std::move(ret) + "pk(" + std::move(key_str) + ")";
+                }
+                if (subs[0]->nodetype == NodeType::PK_H) {
+                    // pkh(K) is syntactix sugar for c:pk_h(K)
+                    std::string key_str;
+                    success = ctx.ToString(subs[0]->keys[0], key_str);
+                    return std::move(ret) + "pkh(" + std::move(key_str) + ")";
+                }
+                return "c" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_D: return "d" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_V: return "v" + subs[0]->MakeString(ctx, success, true);
             case NodeType::WRAP_J: return "j" + subs[0]->MakeString(ctx, success, true);
@@ -417,13 +432,11 @@ private:
                 break;
         }
 
-        std::string ret = wrapped ? ":" : "";
-
         switch (nodetype) {
-            case NodeType::PK: {
+            case NodeType::PK_K: {
                 std::string key_str;
                 success = ctx.ToString(keys[0], key_str);
-                return std::move(ret) + "pk(" + std::move(key_str) + ")";
+                return std::move(ret) + "pk_k(" + std::move(key_str) + ")";
             }
             case NodeType::PK_H: {
                 std::string key_str;
@@ -448,8 +461,8 @@ private:
                 // and_n(X,Y) is syntactic sugar for andor(X,Y,0).
                 if (subs[2]->nodetype == NodeType::JUST_0) return std::move(ret) + "and_n(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
                 return std::move(ret) + "andor(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + "," + subs[2]->MakeString(ctx, success) + ")";
-            case NodeType::THRESH_M: {
-                auto str = std::move(ret) + "thresh_m(" + std::to_string(k);
+            case NodeType::MULTI: {
+                auto str = std::move(ret) + "multi(" + std::to_string(k);
                 for (const auto& key : keys) {
                     std::string key_str;
                     success &= ctx.ToString(key, key_str);
@@ -471,7 +484,7 @@ private:
 
     internal::Ops CalcOps() const {
         switch (nodetype) {
-            case NodeType::PK: return {0, 0, 0};
+            case NodeType::PK_K: return {0, 0, 0};
             case NodeType::PK_H: return {3, 0, 0};
             case NodeType::OLDER: return {1, 0, {}};
             case NodeType::AFTER: return {1, 0, {}};
@@ -486,7 +499,7 @@ private:
             case NodeType::OR_C: return {2 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat), {}};
             case NodeType::OR_I: return {3 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat, subs[1]->ops.sat), Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
             case NodeType::ANDOR: return {3 + subs[0]->ops.stat + subs[1]->ops.stat + subs[2]->ops.stat, Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat), subs[0]->ops.dsat + subs[2]->ops.dsat};
-            case NodeType::THRESH_M: return {1, (uint32_t)keys.size(), (uint32_t)keys.size()};
+            case NodeType::MULTI: return {1, (uint32_t)keys.size(), (uint32_t)keys.size()};
             case NodeType::WRAP_A: return {2 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
             case NodeType::WRAP_S: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
             case NodeType::WRAP_C: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
@@ -515,7 +528,7 @@ private:
 
     internal::StackSize CalcStackSize() const {
         switch (nodetype) {
-            case NodeType::PK: return {1, 1};
+            case NodeType::PK_K: return {1, 1};
             case NodeType::PK_H: return {2, 2};
             case NodeType::OLDER: return {0, {}};
             case NodeType::AFTER: return {0, {}};
@@ -530,7 +543,7 @@ private:
             case NodeType::OR_C: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), {}};
             case NodeType::OR_D: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), subs[0]->ss.dsat + subs[1]->ss.dsat};
             case NodeType::OR_I: return {Choose(subs[0]->ss.sat + 1, subs[1]->ss.sat + 1), Choose(subs[0]->ss.dsat + 1, subs[1]->ss.dsat + 1)};
-            case NodeType::THRESH_M: return {(uint32_t)keys.size() + 1, (uint32_t)keys.size() + 1};
+            case NodeType::MULTI: return {(uint32_t)keys.size() + 1, (uint32_t)keys.size() + 1};
             case NodeType::WRAP_A: return subs[0]->ss;
             case NodeType::WRAP_S: return subs[0]->ss;
             case NodeType::WRAP_C: return subs[0]->ss;
@@ -590,7 +603,7 @@ private:
         const auto INVALID = InputStack().Available(Availability::NO);
 
         switch (nodetype) {
-            case NodeType::PK: {
+            case NodeType::PK_K: {
                 std::vector<unsigned char> sig;
                 Availability avail = ctx.Sign(keys[0], sig);
                 return InputResult(ZERO, InputStack(std::move(sig)).WithSig().Available(avail));
@@ -600,7 +613,7 @@ private:
                 Availability avail = ctx.Sign(keys[0], sig);
                 return InputResult(ZERO + InputStack(key), (InputStack(std::move(sig)).WithSig() + InputStack(key)).Available(avail));
             }
-            case NodeType::THRESH_M: {
+            case NodeType::MULTI: {
                 std::vector<InputStack> sats = Vector(ZERO);
                 for (size_t i = 0; i < keys.size(); ++i) {
                     std::vector<unsigned char> sig;
@@ -856,7 +869,19 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
     } else if (Func("pk", expr)) {
         Key key;
         if (ctx.FromString(expr.begin(), expr.end(), key)) {
-            return MakeNodeRef<Key>(NodeType::PK, Vector(std::move(key)));
+            return MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key)))));
+        }
+        return {};
+    } else if (Func("pkh", expr)) {
+        Key key;
+        if (ctx.FromString(expr.begin(), expr.end(), key)) {
+            return MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key)))));
+        }
+        return {};
+    } else if (Func("pk_k", expr)) {
+        Key key;
+        if (ctx.FromString(expr.begin(), expr.end(), key)) {
+            return MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key)));
         }
         return {};
     } else if (Func("pk_h", expr)) {
@@ -909,7 +934,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
         auto right = Parse<Key>(expr, ctx, recursion_depth + 1);
         if (!right || expr.size()) return {};
         return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(mid), std::move(right)));
-    } else if (Func("thresh_m", expr)) {
+    } else if (Func("multi", expr)) {
         auto arg = Expr(expr);
         int64_t count;
         if (!ParseInt64(std::string(arg.begin(), arg.end()), &count)) return {};
@@ -923,7 +948,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
         }
         if (keys.size() < 1 || keys.size() > 20) return {};
         if (count < 1 || count > (int64_t)keys.size()) return {};
-        return MakeNodeRef<Key>(NodeType::THRESH_M, std::move(keys), count);
+        return MakeNodeRef<Key>(NodeType::MULTI, std::move(keys), count);
     } else if (Func("thresh", expr)) {
         auto arg = Expr(expr);
         int64_t count;
@@ -995,7 +1020,7 @@ inline NodeRef<Key> DecodeSingle(I& in, I last, const Ctx& ctx) {
         Key key;
         if (!ctx.FromPKBytes(in[0].second.begin(), in[0].second.end(), key)) return {};
         ++in;
-        return MakeNodeRef<Key>(NodeType::PK, Vector(std::move(key)));
+        return MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key)));
     }
     if (last - in >= 5 && in[0].first == OP_VERIFY && in[1].first == OP_EQUAL && in[3].first == OP_HASH160 && in[4].first == OP_DUP && in[2].second.size() == 20) {
         Key key;
@@ -1133,7 +1158,7 @@ inline NodeRef<Key> DecodeSingle(I& in, I last, const Ctx& ctx) {
         if (k < 1 || k > n) return {};
         in += 3 + n;
         std::reverse(keys.begin(), keys.end());
-        return MakeNodeRef<Key>(NodeType::THRESH_M, std::move(keys), k);
+        return MakeNodeRef<Key>(NodeType::MULTI, std::move(keys), k);
     }
     subs.clear();
     if (last - in >= 3 && in[0].first == OP_EQUAL && ParseScriptNumber(in[1], k)) {
