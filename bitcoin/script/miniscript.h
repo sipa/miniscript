@@ -820,45 +820,50 @@ static constexpr int MAX_PARSE_RECURSION = 201;
 
 //! Parse a miniscript from its textual descriptor form.
 template<typename Key, typename Ctx>
-inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_depth) {
+inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_depth, bool wrappers_parsed = false) {
     if (recursion_depth >= MAX_PARSE_RECURSION) {
         return {};
     }
     auto expr = Expr(in);
     // Parse wrappers
-    for (int i = 0; i < expr.size(); ++i) {
-        if (expr[i] == ':') {
-            auto in2 = expr.subspan(i + 1);
-            auto sub = Parse<Key>(in2, ctx, recursion_depth + 1);
-            if (!sub || in2.size()) return {};
-            for (int j = i; j-- > 0; ) {
-                if (expr[j] == 'a') {
-                    sub = MakeNodeRef<Key>(NodeType::WRAP_A, Vector(std::move(sub)));
-                } else if (expr[j] == 's') {
-                    sub = MakeNodeRef<Key>(NodeType::WRAP_S, Vector(std::move(sub)));
-                } else if (expr[j] == 'c') {
-                    sub = MakeNodeRef<Key>(NodeType::WRAP_C, Vector(std::move(sub)));
-                } else if (expr[j] == 'd') {
-                    sub = MakeNodeRef<Key>(NodeType::WRAP_D, Vector(std::move(sub)));
-                } else if (expr[j] == 'j') {
-                    sub = MakeNodeRef<Key>(NodeType::WRAP_J, Vector(std::move(sub)));
-                } else if (expr[j] == 'n') {
-                    sub = MakeNodeRef<Key>(NodeType::WRAP_N, Vector(std::move(sub)));
-                } else if (expr[j] == 'v') {
-                    sub = MakeNodeRef<Key>(NodeType::WRAP_V, Vector(std::move(sub)));
-                } else if (expr[j] == 't') {
-                    sub = MakeNodeRef<Key>(NodeType::AND_V, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::JUST_1)));
-                } else if (expr[j] == 'u') {
-                    sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::JUST_0)));
-                } else if (expr[j] == 'l') {
-                    sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(MakeNodeRef<Key>(NodeType::JUST_0), std::move(sub)));
-                } else {
-                    return {};
+    if (!wrappers_parsed) {
+        // colon cannot be the first character
+        //`:pk()` is invalid miniscript
+        for (int i = 1; i < expr.size(); ++i) {
+            if (expr[i] == ':') {
+                auto in2 = expr.subspan(i + 1);
+                // pass wrappers_parsed = true to avoid multi-colons
+                auto sub = Parse<Key>(in2, ctx, recursion_depth + 1, true);
+                if (!sub || in2.size()) return {};
+                for (int j = i; j-- > 0; ) {
+                    if (expr[j] == 'a') {
+                        sub = MakeNodeRef<Key>(NodeType::WRAP_A, Vector(std::move(sub)));
+                    } else if (expr[j] == 's') {
+                        sub = MakeNodeRef<Key>(NodeType::WRAP_S, Vector(std::move(sub)));
+                    } else if (expr[j] == 'c') {
+                        sub = MakeNodeRef<Key>(NodeType::WRAP_C, Vector(std::move(sub)));
+                    } else if (expr[j] == 'd') {
+                        sub = MakeNodeRef<Key>(NodeType::WRAP_D, Vector(std::move(sub)));
+                    } else if (expr[j] == 'j') {
+                        sub = MakeNodeRef<Key>(NodeType::WRAP_J, Vector(std::move(sub)));
+                    } else if (expr[j] == 'n') {
+                        sub = MakeNodeRef<Key>(NodeType::WRAP_N, Vector(std::move(sub)));
+                    } else if (expr[j] == 'v') {
+                        sub = MakeNodeRef<Key>(NodeType::WRAP_V, Vector(std::move(sub)));
+                    } else if (expr[j] == 't') {
+                        sub = MakeNodeRef<Key>(NodeType::AND_V, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::JUST_1)));
+                    } else if (expr[j] == 'u') {
+                        sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::JUST_0)));
+                    } else if (expr[j] == 'l') {
+                        sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(MakeNodeRef<Key>(NodeType::JUST_0), std::move(sub)));
+                    } else {
+                        return {};
+                    }
                 }
+                return sub;
             }
-            return sub;
+            if (expr[i] < 'a' || expr[i] > 'z') break;
         }
-        if (expr[i] < 'a' || expr[i] > 'z') break;
     }
     // Parse the other node types
     NodeType nodetype;
