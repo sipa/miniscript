@@ -150,7 +150,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
         case NodeType::OR_C: return
             (y & "V"_mst).If(x << "Bdu"_mst) | // V=V_y*B_x*u_x*d_x
             (x & "o"_mst).If(y << "z"_mst) | // o=o_x*z_y
-            (x & y & "m"_mst).If(x << "e"_mst && (x | y) << "s"_mst) | // m=m_x*m_y*e_x*(s_x*s_y)
+            (x & y & "m"_mst).If(x << "e"_mst && (x | y) << "s"_mst) | // m=m_x*m_y*e_x*(s_x+s_y)
             (x & y & "zs"_mst) | // z=z_x*z_y, s=s_x*s_y
             "fx"_mst; // f, x
         case NodeType::OR_I: return
@@ -163,11 +163,11 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
         case NodeType::ANDOR: return
             (y & z & "BKV"_mst).If(x << "Bdu"_mst) | // B=B_x*d_x*u_x*B_y*B_z, K=B_x*d_x*u_x*K_y*K_z, V=B_x*d_x*u_x*V_y*V_z
             (x & y & z & "z"_mst) | // z=z_x*z_y*z_z
-            ((x | (y & z)) & "o"_mst).If((x | (y & z)) << "z"_mst) | // o=o_x*z_y*z_z+z_x+o_y*o_z
-            (y & z & "u"_mst) | // f=f_y*f_z, u=u_y*u_z
-            (z & "f"_mst).If((x << "s"_mst) || (y << "f"_mst)) |
-            (z & "d"_mst) | // d=d_x
-            (x & z & "e"_mst).If(x << "s"_mst || y << "f"_mst) | // e=e_x*e_z*(s_x+s_y)
+            ((x | (y & z)) & "o"_mst).If((x | (y & z)) << "z"_mst) | // o=o_x*z_y*z_z+z_x*o_y*o_z
+            (y & z & "u"_mst) | // u=u_y*u_z
+            (z & "f"_mst).If((x << "s"_mst) || (y << "f"_mst)) | // f=(s_x+f_y)*f_z
+            (z & "d"_mst) | // d=d_z
+            (x & z & "e"_mst).If(x << "s"_mst || y << "f"_mst) | // e=e_x*e_z*(s_x+f_y)
             (x & y & z & "m"_mst).If(x << "e"_mst && (x | y | z) << "s"_mst) | // m=m_x*m_y*m_z*e_x*(s_x+s_y+s_z)
             (z & (x | y) & "s"_mst) | // s=s_z*(s_x+s_y)
             "x"_mst; // x
