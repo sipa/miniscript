@@ -806,11 +806,11 @@ void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationK
             for (size_t i = 0; i < strat->sub.size(); ++i) {
                 const Compilation& comp = GetCompilation(strat->sub[i], pqs.first[i], pqs.second[i], cache);
                 auto res_B = comp.Query("Bemdu"_mstf);
-                if (res_B.size() == 0) {fprintf(stderr, "Cannot compile arg=%i as B\n", (int)i); return; }
+                if (res_B.size() == 0) { return; }
                 assert(res_B.size() == 1);
                 Bs.push_back(std::move(res_B[0]));
                 auto res_W = comp.Query("Wemdu"_mstf);
-                if (res_W.size() == 0) {fprintf(stderr, "Cannot compile arg=%i as W\n", (int)i); return; }
+                if (res_W.size() == 0) { return; }
                 assert(res_W.size() == 1);
                 Ws.push_back(std::move(res_W[0]));
                 if (Ws.back().cost - Bs.back().cost > cost_diff) {
