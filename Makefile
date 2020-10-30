@@ -1,4 +1,4 @@
-HEADERS := bitcoin/util/vector.h bitcoin/util/strencodings.h bitcoin/span.h bitcoin/util/spanparsing.h bitcoin/script/script.h bitcoin/script/miniscript.h compiler.h bitcoin/crypto/common.h bitcoin/serialize.h bitcoin/prevector.h bitcoin/compat/endian.h bitcoin/compat/byteswap.h bitcoin/attributes.h bitcoin/tinyformat.h
+HEADERS := bitcoin/util/vector.h bitcoin/util/strencodings.h bitcoin/span.h bitcoin/util/spanparsing.h bitcoin/script/script.h bitcoin/script/miniscript.h compiler.h bitcoin/crypto/common.h bitcoin/serialize.h bitcoin/prevector.h bitcoin/compat/endian.h bitcoin/compat/byteswap.h bitcoin/attributes.h bitcoin/tinyformat.h bitcoin/primitives/transaction.h
 SOURCES := bitcoin/util/strencodings.cpp bitcoin/util/spanparsing.cpp bitcoin/script/script.cpp bitcoin/script/miniscript.cpp compiler.cpp
 
 miniscript: $(HEADERS) $(SOURCES) main.cpp
