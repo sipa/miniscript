@@ -822,6 +822,9 @@ public:
     //! Check the maximum stack size for this script against the policy limit.
     bool CheckStackSize() const { return GetStackSize() <= MAX_STANDARD_P2WSH_STACK_ITEMS; }
 
+    //! Check whether there is atleast one satisfaction path that contains both timelocks and heightlocks.
+    bool CheckTimeLocks() const { return tl_info.is_combination; }
+
     //! Return the expression type.
     Type GetType() const { return typ; }
 
@@ -838,7 +841,7 @@ public:
     bool NeedsSignature() const { return GetType() << "s"_mst; }
 
     //! Do all sanity checks.
-    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckOpsLimit() && CheckStackSize(); }
+    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckOpsLimit() && CheckStackSize() && CheckTimeLocks(); }
 
     //! Construct the script for this miniscript (including subexpressions).
     template<typename Ctx>
