@@ -369,8 +369,8 @@ struct Result {
     int Compare(double other_cost, const Node& other_node) const {
         if (cost < other_cost) return -1;
         if (cost > other_cost) return 1;
-        if (node->ScriptSize() > other_node->ScriptSize()) return -1;
-        if (node->ScriptSize() < other_node->ScriptSize()) return 1;
+        if (node->GetScriptSize() > other_node->GetScriptSize()) return -1;
+        if (node->GetScriptSize() < other_node->GetScriptSize()) return 1;
         return 0;
     }
 
@@ -404,7 +404,7 @@ struct Compilation {
     ~Compilation() = default;
 
     double Cost(const CostPair& pair, const Node& node) {
-        return node->ScriptSize() + Mul(p, pair.sat) + Mul(q, pair.nsat);
+        return node->GetScriptSize() + Mul(p, pair.sat) + Mul(q, pair.nsat);
     }
 
     void Add(const CostPair& pair, Node node) {

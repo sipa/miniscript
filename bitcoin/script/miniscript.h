@@ -361,7 +361,7 @@ private:
     size_t CalcScriptLen() const {
         size_t subsize = 0;
         for (const auto& sub : subs) {
-            subsize += sub->ScriptSize();
+            subsize += sub->GetScriptSize();
         }
         Type sub0type = subs.size() > 0 ? subs[0]->GetType() : ""_mst;
         return internal::ComputeScriptLen(nodetype, sub0type, subsize, k, subs.size(), keys.size());
@@ -808,7 +808,10 @@ private:
 
 public:
     //! Return the size of the script for this expression (faster than ToString().size()).
-    size_t ScriptSize() const { return scriptlen; }
+    size_t GetScriptSize() const { return scriptlen; }
+
+    //! Check the size of the script against policy limits
+    bool CheckScriptSize() const { return GetScriptSize() <= MAX_STANDARD_P2WSH_SCRIPT_SIZE; }
 
     //! Return the maximum number of ops needed to satisfy this script non-malleably.
     uint32_t GetOps() const { return ops.stat + ops.sat.value; }
@@ -841,7 +844,7 @@ public:
     bool NeedsSignature() const { return GetType() << "s"_mst; }
 
     //! Do all sanity checks.
-    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckOpsLimit() && CheckStackSize() && CheckTimeLocks(); }
+    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckScriptSize() && CheckOpsLimit() && CheckStackSize() && CheckTimeLocks(); }
 
     //! Construct the script for this miniscript (including subexpressions).
     template<typename Ctx>
