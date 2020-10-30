@@ -784,7 +784,7 @@ public:
     bool NeedsSignature() const { return GetType() << "s"_mst; }
 
     //! Do all sanity checks.
-    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckOpsLimit() && CheckStackSize(); }
+    bool IsSafeTopLevel() const { return GetType() << "Bmsk"_mst && CheckOpsLimit() && CheckStackSize(); }
 
     //! Construct the script for this miniscript (including subexpressions).
     template<typename Ctx>
