@@ -485,7 +485,7 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <tr><td><code>c:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>d:<em>X</em></code></td><td>0</td><td>sat(<em>X</em>) 1</td></tr>
 <tr><td><code>v:<em>X</em></code></td><td>-</td><td>sat(<em>X</em>)</td></tr>
-<tr><td><code>j:<em>X</em></code></td><td>0; <span class="text-muted">[nsat(<em>X</em>) (if nonzero top stack)]</span></td><td>sat(<em>X</em>)</td></tr>
+<tr><td><code>j:<em>X</em></code></td><td>0; <span class="text-muted">[dsat(<em>X</em>) (if nonzero top stack)]</span></td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>n:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 </tbody>
 </table>
@@ -500,7 +500,7 @@ the failure upwards to a point where it either causes the script to abort, or re
 
 <p>
 A conservative simplification is made here, ignoring the existence of always-true expressions like <code>1</code>. This makes the typing rules incorrect in the following cases:<ul>
-<li><code>or_b(<em>X</em>,1)</code> and <code>or_b(1,<em>X</em>)</code> are complete when <em>X</em> is dissatisfiable ("d"). In that case, the condition is equivalent to 1 and is always met, and a satisfaction of the form "nsat(<em>X</em>)" exists.
+<li><code>or_b(<em>X</em>,1)</code> and <code>or_b(1,<em>X</em>)</code> are complete when <em>X</em> is dissatisfiable ("d"). In that case, the condition is equivalent to 1 and is always met, and a satisfaction of the form "dsat(<em>X</em>)" exists.
 <li><code>or_b(1,1)</code> is complete, as it is equivalent to 1 and "" is a valid satisfaction.</li>
 <li><code>and_b(<em>X</em>,1)</code> and <code>and_b(1,<em>X</em>)</code> are dissatisfiable ("d") when <em>X</em> is.
 <li><code>andor(1,1,<em>Z</em>)</code> is complete, as it is equivalent to 1 and "" is a valid satisfaction.</li>
