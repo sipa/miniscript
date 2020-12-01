@@ -97,7 +97,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
             (x & "udfemsx"_mst); // u=u_x, d=d_x, f=f_x, e=e_x, m=m_x, s=s_x, x=x_x
         case NodeType::WRAP_C: return
             "B"_mst.If(x << "K"_mst) | // B=K_x
-             (x & "ondfem"_mst) | // o=o_x, n=n_x, d=d_x, f=f_x, e=e_x, m=m_x
+             (x & "ondem"_mst) | // o=o_x, n=n_x, d=d_x, e=e_x, m=m_x
              "us"_mst; // u, s
         case NodeType::WRAP_D: return
             "B"_mst.If(x << "Vz"_mst) | // B=V_x*z_x
