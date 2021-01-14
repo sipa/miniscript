@@ -1,0 +1,4 @@
+.git
+.dockerignore
+contrib/docker
+miniscript
