@@ -48,7 +48,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
     } else if (nodetype == NodeType::MULTI) {
         assert(k >= 1 && k <= n_keys);
     } else if (nodetype == NodeType::THRESH) {
-        assert(k > 1 && k < n_subs);
+        assert(k >= 1 && k <= n_subs);
     } else {
         assert(k == 0);
     }

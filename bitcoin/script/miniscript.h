@@ -960,7 +960,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
             if (!sub) return {};
             subs.push_back(std::move(sub));
         }
-        if (count <= 1 || count >= (int64_t)subs.size()) return {};
+        if (count < 1 || count > (int64_t)subs.size()) return {};
         return MakeNodeRef<Key>(NodeType::THRESH, std::move(subs), count);
     } else if (Func("and_v", expr)) {
         nodetype = NodeType::AND_V;

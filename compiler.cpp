@@ -320,9 +320,6 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
                 }
                 strats.push_back(MakeStrat(store, Strat::Type::MULTI, std::move(keys), node.k));
             }
-            if (node.k > 1 && node.k < node.sub.size()) {
-                strats.push_back(MakeStrat(store, Strat::Type::THRESH, subs, node.k, (double)node.k / subs.size()));
-            }
             if (node.k == 1 || node.k == node.sub.size()) {
                 while (subs.size() > 1) {
                     auto rep = MakeStrat(store, node.k == 1 ? Strat::Type::OR : Strat::Type::AND, Vector(*(subs.rbegin() + 1), subs.back()), 1.0 / subs.size());
@@ -332,6 +329,7 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
                 }
                 strats.push_back(subs[0]);
             }
+            strats.push_back(MakeStrat(store, Strat::Type::THRESH, subs, node.k, (double)node.k / subs.size()));
             break;
         }
     }
