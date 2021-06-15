@@ -33,7 +33,7 @@ std::string Props(const miniscript::NodeRef<std::string>& node, std::string in) 
         if (node->GetType() << "u"_mst) ret += 'u';
         if (node->GetType() << "s"_mst) ret += 's';
     }
-    ret += "&#13;scriptlen: " + std::to_string(node->ScriptSize());
+    ret += "&#13;scriptlen: " + std::to_string(node->GetScriptSize());
     ret += "&#13;max ops: " + std::to_string(node->GetOps());
     ret += "&#13;max stack size: " + std::to_string(node->GetStackSize());
     return std::move(ret) + "\">" + std::move(in) + "</span>";
@@ -102,7 +102,7 @@ void miniscript_compile(const char* desc, char* msout, int msoutlen, char* costo
         }
         ret->ToString(COMPILER_CTX, str);
         Output(Abbreviate(std::move(str)), msout, msoutlen);
-        std::string coststr = "<ul><li>Script: " + std::to_string(ret->ScriptSize()) + " WU</li><li>Input: " + std::to_string(avgcost) + " WU</li><li>Total: " + std::to_string(ret->ScriptSize() + avgcost) + " WU</li></ul>";
+        std::string coststr = "<ul><li>Script: " + std::to_string(ret->GetScriptSize()) + " WU</li><li>Input: " + std::to_string(avgcost) + " WU</li><li>Total: " + std::to_string(ret->GetScriptSize() + avgcost) + " WU</li></ul>";
         Output(coststr, costout, costoutlen);
         Output(Disassemble(ret->ToScript(COMPILER_CTX)), asmout, asmoutlen);
     } catch (const std::exception& e) {
@@ -123,7 +123,7 @@ void miniscript_analyze(const char* ms, char* costout, int costoutlen, char* asm
             Output("[analysis error]", asmout, asmoutlen);
             return;
         }
-        std::string coststr = "Size: " + std::to_string(ret->ScriptSize()) + " bytes script<ul><li>" + Analyze(ret) + "</li></ul>";
+        std::string coststr = "Size: " + std::to_string(ret->GetScriptSize()) + " bytes script<ul><li>" + Analyze(ret) + "</li></ul>";
         Output(coststr, costout, costoutlen);
         Output(Disassemble(ret->ToScript(COMPILER_CTX)), asmout, asmoutlen);
     } catch (const std::exception& e) {

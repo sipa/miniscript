@@ -20,6 +20,7 @@
 #include <util/spanparsing.h>
 #include <util/strencodings.h>
 #include <util/vector.h>
+#include <primitives/transaction.h>
 
 namespace miniscript {
 
@@ -293,6 +294,41 @@ struct StackSize {
     StackSize(MaxInt<uint32_t> in_sat, MaxInt<uint32_t> in_dsat) : sat(in_sat), dsat(in_dsat) {};
 };
 
+struct TimeLockInfo {
+    //! csv with heights
+    bool csv_height;
+    //! csv with times
+    bool csv_time;
+    //! cltv with heights
+    bool cltv_height;
+    //! cltv with times
+    bool cltv_time;
+    //! combination of any heightlocks and timelocks
+    bool is_combo;
+
+    TimeLockInfo(bool csv_h, bool csv_t, bool cltv_h, bool cltv_t, bool is_combination) : csv_height(csv_h), csv_time(csv_t), cltv_height(cltv_h), cltv_time(cltv_t), is_combo(is_combination) {};
+
+    TimeLockInfo() : csv_height(false), csv_time(false), cltv_height(false), cltv_time(false), is_combo(false) {};
+
+    TimeLockInfo(uint32_t k, std::vector<TimeLockInfo> tl_info_vec) {
+        csv_height = csv_time = cltv_height = cltv_time = is_combo = false;
+        for (const auto sub_tl_info: tl_info_vec) {
+            if (k >= 2) {
+                is_combo |=
+                        (csv_height && sub_tl_info.csv_time)
+                    || (csv_time && sub_tl_info.csv_height)
+                    || (cltv_time && sub_tl_info.cltv_height)
+                    || (cltv_height && sub_tl_info.cltv_time);
+            }
+            csv_height |= sub_tl_info.csv_height;
+            csv_time |= sub_tl_info.csv_time;
+            cltv_height |= sub_tl_info.cltv_height;
+            cltv_time |= sub_tl_info.cltv_time;
+            is_combo |= sub_tl_info.is_combo;
+        }
+    };
+};
+
 } // namespace internal
 
 //! A node in a miniscript expression.
@@ -314,6 +350,8 @@ private:
     const internal::Ops ops;
     //! Cached stack size bounds.
     const internal::StackSize ss;
+    //! Cached information about timelocks
+    const internal::TimeLockInfo tl_info;
     //! Cached expression type (computed by CalcType and fed through SanitizeType).
     const Type typ;
     //! Cached script length (computed by CalcScriptLen).
@@ -323,7 +361,7 @@ private:
     size_t CalcScriptLen() const {
         size_t subsize = 0;
         for (const auto& sub : subs) {
-            subsize += sub->ScriptSize();
+            subsize += sub->GetScriptSize();
         }
         Type sub0type = subs.size() > 0 ? subs[0]->GetType() : ""_mst;
         return internal::ComputeScriptLen(nodetype, sub0type, subsize, k, subs.size(), keys.size());
@@ -568,6 +606,45 @@ private:
         return {{}, {}};
     }
 
+    internal::TimeLockInfo CalcTimeLockInfo() const {
+        switch (nodetype) {
+            case NodeType::PK_K:
+            case NodeType::PK_H: return internal::TimeLockInfo();
+            case NodeType::OLDER: return internal::TimeLockInfo(k < CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG, k >= CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG, false, false, false);
+            case NodeType::AFTER: return internal::TimeLockInfo(false, false, k < LOCKTIME_THRESHOLD, k >= LOCKTIME_THRESHOLD, false);
+            case NodeType::SHA256:
+            case NodeType::RIPEMD160:
+            case NodeType::HASH256:
+            case NodeType::HASH160: return internal::TimeLockInfo();
+            case NodeType::ANDOR: return internal::TimeLockInfo(1, Vector(internal::TimeLockInfo(2, Vector(subs[0]->tl_info, subs[1]->tl_info)), subs[2]->tl_info));
+            case NodeType::AND_V:
+            case NodeType::AND_B: return internal::TimeLockInfo(2, Vector(subs[0]->tl_info, subs[1]->tl_info));
+            case NodeType::OR_B:
+            case NodeType::OR_C:
+            case NodeType::OR_D:
+            case NodeType::OR_I: return internal::TimeLockInfo(1, Vector(subs[0]->tl_info, subs[1]->tl_info));
+            case NodeType::MULTI: return internal::TimeLockInfo();
+            case NodeType::WRAP_A:
+            case NodeType::WRAP_S:
+            case NodeType::WRAP_C:
+            case NodeType::WRAP_D:
+            case NodeType::WRAP_V:
+            case NodeType::WRAP_J:
+            case NodeType::WRAP_N: return subs[0]->tl_info;
+            case NodeType::JUST_1:
+            case NodeType::JUST_0: return internal::TimeLockInfo();
+            case NodeType::THRESH: {
+                std::vector<internal::TimeLockInfo> tl_info_vec;
+                for (const auto& sub : subs) {
+                    tl_info_vec.push_back(sub->tl_info);
+                }
+                return internal::TimeLockInfo(k, tl_info_vec);
+            }
+        }
+        assert(false);
+        return internal::TimeLockInfo();
+    }
+
     template<typename Ctx>
     internal::InputResult ProduceInput(const Ctx& ctx, bool nonmal) const {
         auto ret = ProduceInputHelper(ctx, nonmal);
@@ -731,7 +808,10 @@ private:
 
 public:
     //! Return the size of the script for this expression (faster than ToString().size()).
-    size_t ScriptSize() const { return scriptlen; }
+    size_t GetScriptSize() const { return scriptlen; }
+
+    //! Check the size of the script against policy limits
+    bool CheckScriptSize() const { return GetScriptSize() <= MAX_STANDARD_P2WSH_SCRIPT_SIZE; }
 
     //! Return the maximum number of ops needed to satisfy this script non-malleably.
     uint32_t GetOps() const { return ops.stat + ops.sat.value; }
@@ -744,6 +824,9 @@ public:
 
     //! Check the maximum stack size for this script against the policy limit.
     bool CheckStackSize() const { return GetStackSize() <= MAX_STANDARD_P2WSH_STACK_ITEMS; }
+
+    //! Check whether there is atleast one satisfaction path that contains both timelocks and heightlocks.
+    bool CheckTimeLocks() const { return tl_info.is_combination; }
 
     //! Return the expression type.
     Type GetType() const { return typ; }
@@ -761,7 +844,7 @@ public:
     bool NeedsSignature() const { return GetType() << "s"_mst; }
 
     //! Do all sanity checks.
-    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckOpsLimit() && CheckStackSize(); }
+    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckScriptSize() && CheckOpsLimit() && CheckStackSize() && CheckTimeLocks(); }
 
     //! Construct the script for this miniscript (including subexpressions).
     template<typename Ctx>
@@ -801,12 +884,12 @@ public:
     }
 
     // Constructors with various argument combinations.
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), tl_info(CalcTimeLockInfo()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), tl_info(CalcTimeLockInfo()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), tl_info(CalcTimeLockInfo()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), tl_info(CalcTimeLockInfo()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), tl_info(CalcTimeLockInfo()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), tl_info(CalcTimeLockInfo()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
 };
 
 namespace internal {

@@ -494,7 +494,7 @@ void Test(const std::string& ms, const std::string& hexscript, int mode, int ops
         BOOST_CHECK_MESSAGE(node->IsValid(), "Invalid: " + ms);
         BOOST_CHECK_MESSAGE(node->IsValidTopLevel(), "Invalid top level: " + ms);
         auto computed_script = node->ToScript(CONVERTER);
-        BOOST_CHECK_MESSAGE(node->ScriptSize() == computed_script.size(), "Script size mismatch: " + ms);
+        BOOST_CHECK_MESSAGE(node->GetScriptSize() == computed_script.size(), "Script size mismatch: " + ms);
         if (hexscript != "?") BOOST_CHECK_MESSAGE(HexStr(computed_script) == hexscript, "Script mismatch: " + ms + " (" + HexStr(computed_script) + " vs " + hexscript + ")");
         BOOST_CHECK_MESSAGE(node->IsNonMalleable() == !!(mode & TESTMODE_NONMAL), "Malleability mismatch: " + ms);
         BOOST_CHECK_MESSAGE(node->NeedsSignature() == !!(mode & TESTMODE_NEEDSIG), "Signature necessity mismatch: " + ms);
@@ -612,7 +612,7 @@ BOOST_AUTO_TEST_CASE(random_tests)
         auto node = RandomNode(safe ? "Bms"_mst : "B"_mst, 1 + InsecureRandRange(90));
         BOOST_CHECK(node && node->IsValid() && node->IsValidTopLevel());
         auto script = node->ToScript(CONVERTER);
-        BOOST_CHECK(node->ScriptSize() == script.size()); // Check consistency between script size estimation and real size
+        BOOST_CHECK(node->GetScriptSize() == script.size()); // Check consistency between script size estimation and real size
         // Check consistency of "x" property with the script (relying on the fact that no top-level scripts end with a hash or key push, whose last byte could match these opcodes).
         bool ends_in_verify = !(node->GetType() << "x"_mst);
         BOOST_CHECK(ends_in_verify == (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
