@@ -355,7 +355,7 @@ Every miniscript expression has one of four basic types:<ul>
 When dissatisfied, they push an exact 0 onto the stack (if dissatisfaction without aborting is possible at all).
 This type is used for most expressions, and required for the top level expression. An example is <code>older(n)</code> = <samp>&lt;n&gt; CHECKSEQUENCEVERIFY</samp>.</li>
 <li><b>"V"</b> Verify expressions. Like "B", these take their inputs from the top of the stack. Upon satisfaction however, they continue without pushing anything. They cannot be
-dissatisfied without aborting. A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.
+dissatisfied (will abort instead). A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.
 An example is <code>v:pk(key)</code> = <samp>&lt;key&gt; CHECKSIGVERIFY</samp>.</li>
 <li><b>"K"</b> Key expressions. They again take their inputs from the top of the stack, but instead of verifying a condition directly they always push a public key onto the stack, for
 which a signature is still required to satisfy the expression. A "K" can be converted into a "B" using the <code>c:</code> wrapper (<samp>CHECKSIG</samp>).
