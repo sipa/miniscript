@@ -190,7 +190,7 @@ wrapper applied to the <code>v:</code> wrapper applied to the <code>older</code>
 <div class="table-responsive">
 <table class="table table-sm">
 <thead class="thead-light">
-<tr><th scope="col">Semantics</th><th scope="col">Miniscript fragment</th><th scope="col">Bitcoin Script</th></tr></thead>
+<tr><th scope="col">Semantics<sup>*</sup></th><th scope="col">Miniscript fragment</th><th scope="col">Bitcoin Script</th></tr></thead>
 <tbody>
 <tr>
   <td>false</td>
@@ -332,6 +332,10 @@ wrapper applied to the <code>v:</code> wrapper applied to the <code>older</code>
 <tr>
   <td><code>u:<em>X</em></code> = <code>or_i(<em>X</em>,0)</code></td>
   <td><samp>IF <em>[X]</em> ELSE 0 ENDIF</samp></td>
+</tr>
+<tr><td colspan=3>
+<div class="text-muted">[*] Semantics are defined for canonical satisfaction/dissatisfaction options, and may not be valid for non-canonical options (see "Satisfaction and malleability" below)</div>
+</td>
 </tr>
 </tbody>
 </table>
