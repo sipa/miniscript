@@ -92,6 +92,7 @@ Policy ParseProb(Span<const char>& in, uint32_t& prob) {
 }
 
 Policy Parse(Span<const char>& in) {
+    using namespace spanparsing;
     auto expr = Expr(in);
     if (Func("pk", expr)) {
         CompilerContext::Key key;
