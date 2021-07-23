@@ -519,6 +519,7 @@ private:
                     next_sats.push_back(sats[sats.size() - 1] + sub->ops.sat);
                     sats = std::move(next_sats);
                 }
+                assert(k <= sats.size());
                 return {stat, sats[k], sats[0]};
             }
         }
@@ -561,6 +562,7 @@ private:
                     next_sats.push_back(sats[sats.size() - 1] + sub->ss.sat);
                     sats = std::move(next_sats);
                 }
+                assert(k <= sats.size());
                 return {sats[k], sats[0]};
             }
         }
@@ -627,6 +629,7 @@ private:
                 }
                 InputStack nsat = ZERO;
                 for (size_t i = 0; i < k; ++i) nsat = std::move(nsat) + ZERO;
+                assert(k <= sats.size());
                 return InputResult(std::move(nsat), std::move(sats[k]));
             }
             case NodeType::THRESH: {
@@ -643,6 +646,7 @@ private:
                 for (size_t i = 0; i < sats.size(); ++i) {
                     if (i != k) nsat = Choose(std::move(nsat), std::move(sats[i]), nonmal);
                 }
+                assert(k <= sats.size());
                 return InputResult(std::move(nsat), std::move(sats[k]));
             }
             case NodeType::OLDER: {
