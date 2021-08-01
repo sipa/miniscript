@@ -19,6 +19,7 @@ Type SanitizeType(Type e) {
     bool ok = // Work around a GCC 4.8 bug that breaks user-defined literals in macro calls.
         (!(e << "z"_mst) || !(e << "o"_mst)) && // z conflicts with o
         (!(e << "n"_mst) || !(e << "z"_mst)) && // n conflicts with z
+        (!(e << "n"_mst) || !(e << "W"_mst)) && // n conflicts with W
         (!(e << "V"_mst) || !(e << "d"_mst)) && // V conflicts with d
         (!(e << "K"_mst) ||  (e << "u"_mst)) && // K implies u
         (!(e << "V"_mst) || !(e << "u"_mst)) && // V conflicts with u
