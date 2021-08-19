@@ -301,7 +301,7 @@ InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
     }
 }
 
-bool DecomposeScript(const CScript& script, std::vector<std::pair<opcodetype, std::vector<unsigned char>>>& out)
+bool DecomposeScript(const CScript& script, std::vector<std::pair<opcodetype, std::vector<unsigned char>>>& out, int& out_pushops)
 {
     out.clear();
     CScript::const_iterator it = script.begin(), itend = script.end();
@@ -327,6 +327,7 @@ bool DecomposeScript(const CScript& script, std::vector<std::pair<opcodetype, st
             out.emplace_back(OP_EQUAL, std::vector<unsigned char>());
             opcode = OP_VERIFY;
         }
+        if (!push_data.empty()) out_pushops++;
         out.emplace_back(opcode, std::move(push_data));
     }
     std::reverse(out.begin(), out.end());

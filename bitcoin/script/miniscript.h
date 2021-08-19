@@ -1009,7 +1009,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
  * and OP_EQUALVERIFY are decomposed into OP_CHECKSIG, OP_CHECKMULTISIG, OP_EQUAL
  * respectively, plus OP_VERIFY.
  */
-bool DecomposeScript(const CScript& script, std::vector<std::pair<opcodetype, std::vector<unsigned char>>>& out);
+bool DecomposeScript(const CScript& script, std::vector<std::pair<opcodetype, std::vector<unsigned char>>>& out, int& out_pushops);
 
 /** Determine whether the passed pair (created by DecomposeScript) is pushing a number. */
 bool ParseScriptNumber(const std::pair<opcodetype, std::vector<unsigned char>>& in, int64_t& k);
@@ -1249,7 +1249,9 @@ template<typename Ctx>
 inline NodeRef<typename Ctx::Key> FromScript(const CScript& script, const Ctx& ctx) {
     using namespace internal;
     std::vector<std::pair<opcodetype, std::vector<unsigned char>>> decomposed;
-    if (!DecomposeScript(script, decomposed)) return {};
+    int pushops = 0;
+    if (!DecomposeScript(script, decomposed, pushops)) return {};
+    if (decomposed.size() - pushops > 201) return {};
     auto it = decomposed.begin();
     auto ret = DecodeMulti<typename Ctx::Key>(it, decomposed.end(), ctx);
     if (!ret) return {};
