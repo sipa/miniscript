@@ -519,6 +519,7 @@ private:
                     next_sats.push_back(sats[sats.size() - 1] + sub->ops.sat);
                     sats = std::move(next_sats);
                 }
+                assert(k <= sats.size());
                 return {stat, sats[k], sats[0]};
             }
         }
@@ -561,6 +562,7 @@ private:
                     next_sats.push_back(sats[sats.size() - 1] + sub->ss.sat);
                     sats = std::move(next_sats);
                 }
+                assert(k <= sats.size());
                 return {sats[k], sats[0]};
             }
         }
@@ -627,6 +629,7 @@ private:
                 }
                 InputStack nsat = ZERO;
                 for (size_t i = 0; i < k; ++i) nsat = std::move(nsat) + ZERO;
+                assert(k <= sats.size());
                 return InputResult(std::move(nsat), std::move(sats[k]));
             }
             case NodeType::THRESH: {
@@ -643,6 +646,7 @@ private:
                 for (size_t i = 0; i < sats.size(); ++i) {
                     if (i != k) nsat = Choose(std::move(nsat), std::move(sats[i]), nonmal);
                 }
+                assert(k <= sats.size());
                 return InputResult(std::move(nsat), std::move(sats[k]));
             }
             case NodeType::OLDER: {
@@ -1175,6 +1179,9 @@ inline NodeRef<Key> DecodeSingle(I& in, I last, const Ctx& ctx) {
     }
     subs.clear();
     if (last - in >= 3 && in[0].first == OP_EQUAL && ParseScriptNumber(in[1], k)) {
+        if (k < 1) {
+            return {};
+        }
         in += 2;
         while (last - in >= 2 && in[0].first == OP_ADD) {
             ++in;
@@ -1185,6 +1192,9 @@ inline NodeRef<Key> DecodeSingle(I& in, I last, const Ctx& ctx) {
         auto sub = DecodeSingle<Key>(in, last, ctx);
         if (!sub) return {};
         subs.push_back(std::move(sub));
+        if (static_cast<unsigned int>(k) > subs.size()) {
+            return {};
+        }
         std::reverse(subs.begin(), subs.end());
         return MakeNodeRef<Key>(NodeType::THRESH, std::move(subs), k);
     }
