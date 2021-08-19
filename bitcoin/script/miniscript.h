@@ -900,19 +900,27 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
     } else if (expr == MakeSpan("1")) {
         return MakeNodeRef<Key>(NodeType::JUST_1);
     } else if (Func("sha256", expr)) {
-        auto hash = ParseHex(std::string(expr.begin(), expr.end()));
+        std::string val = std::string(expr.begin(), expr.end());
+        if (!IsHex(val)) return {};
+        auto hash = ParseHex(val);
         if (hash.size() != 32) return {};
         return MakeNodeRef<Key>(NodeType::SHA256, std::move(hash));
     } else if (Func("ripemd160", expr)) {
-        auto hash = ParseHex(std::string(expr.begin(), expr.end()));
+        std::string val = std::string(expr.begin(), expr.end());
+        if (!IsHex(val)) return {};
+        auto hash = ParseHex(val);
         if (hash.size() != 20) return {};
         return MakeNodeRef<Key>(NodeType::RIPEMD160, std::move(hash));
     } else if (Func("hash256", expr)) {
-        auto hash = ParseHex(std::string(expr.begin(), expr.end()));
+        std::string val = std::string(expr.begin(), expr.end());
+        if (!IsHex(val)) return {};
+        auto hash = ParseHex(val);
         if (hash.size() != 32) return {};
         return MakeNodeRef<Key>(NodeType::HASH256, std::move(hash));
     } else if (Func("hash160", expr)) {
-        auto hash = ParseHex(std::string(expr.begin(), expr.end()));
+        std::string val = std::string(expr.begin(), expr.end());
+        if (!IsHex(val)) return {};
+        auto hash = ParseHex(val);
         if (hash.size() != 20) return {};
         return MakeNodeRef<Key>(NodeType::HASH160, std::move(hash));
     } else if (Func("after", expr)) {
