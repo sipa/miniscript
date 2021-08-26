@@ -230,24 +230,24 @@ wrapper applied to the <code>v:</code> wrapper applied to the <code>older</code>
   <td><samp>&lt;n&gt; CHECKLOCKTIMEVERIFY</samp></td>
 </tr>
 <tr>
-  <td>len(x) = 32 and SHA256(x) = h</td>
+  <td>len(x) = 32 bytes and SHA256(x) = h</td>
   <td><code>sha256(h)</code></td>
   <td><samp>SIZE &lt;32&gt; EQUALVERIFY SHA256 &lt;h&gt; EQUAL</samp></td>
 </tr>
 <tr>
-  <td>len(x) = 32 and HASH256(x) = h</td>
+  <td>len(x) = 32 bytes and HASH256(x) = h</td>
   <td><code>hash256(h)</code></td>
   <td><samp>SIZE &lt;32&gt; EQUALVERIFY HASH256 &lt;h&gt; EQUAL</samp></td>
 </tr>
 <tr>
-  <td>len(x) = 32 and RIPEMD160(x) = h</td>
+  <td>len(x) = 20 bytes and RIPEMD160(x) = h</td>
   <td><code>ripemd160(h)</code></td>
-  <td><samp>SIZE &lt;32&gt; EQUALVERIFY RIPEMD160 &lt;h&gt; EQUAL</samp></td>
+  <td><samp>SIZE &lt;20&gt; EQUALVERIFY RIPEMD160 &lt;h&gt; EQUAL</samp></td>
 </tr>
 <tr>
-  <td>len(x) = 32 and HASH160(x) = h</td>
+  <td>len(x) = 20 bytes and HASH160(x) = h</td>
   <td><code>hash160(h)</code></td>
-  <td><samp>SIZE &lt;32&gt; EQUALVERIFY HASH160 &lt;h&gt; EQUAL</samp></td>
+  <td><samp>SIZE &lt;20&gt; EQUALVERIFY HASH160 &lt;h&gt; EQUAL</samp></td>
 <tr>
   <td>(<em>X</em> and <em>Y</em>) or <em>Z</em></td>
   <td><code>andor(<em>X</em>,<em>Y</em>,<em>Z</em>)</code></td>
