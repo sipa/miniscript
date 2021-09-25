@@ -585,4 +585,6 @@ struct CScriptWitness
     std::string ToString() const;
 };
 
+bool CheckMinimalPush(const std::vector<unsigned char>& data, opcodetype opcode);
+
 #endif // BITCOIN_SCRIPT_SCRIPT_H
