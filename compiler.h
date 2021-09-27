@@ -38,7 +38,7 @@ struct CompilerContext {
 
 extern const CompilerContext COMPILER_CTX;
 
-bool Compile(const std::string& policy, miniscript::NodeRef<std::string>& ret, double& avgcost);
+bool Compile(const std::string& policy, miniscript::NodeRef<CompilerContext::Key>& ret, double& avgcost);
 
 std::string Expand(std::string str);
 std::string Abbreviate(std::string str);

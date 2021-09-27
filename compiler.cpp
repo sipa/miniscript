@@ -18,12 +18,12 @@ const CompilerContext COMPILER_CTX;
 
 namespace {
 
-using Node = miniscript::NodeRef<std::string>;
+using Node = miniscript::NodeRef<CompilerContext::Key>;
 using NodeType = miniscript::NodeType;
 using miniscript::operator"" _mst;
 
 template<typename... Args>
-Node MakeNode(Args&&... args) { return miniscript::MakeNodeRef<std::string>(std::forward<Args>(args)...); }
+Node MakeNode(Args&&... args) { return miniscript::MakeNodeRef<CompilerContext::Key>(std::forward<Args>(args)...); }
 
 struct Policy {
     enum class Type {
@@ -44,7 +44,7 @@ struct Policy {
     Type node_type = Type::NONE;
     std::vector<Policy> sub;
     std::vector<unsigned char> data;
-    std::vector<std::string> keys;
+    std::vector<CompilerContext::Key> keys;
     std::vector<uint32_t> prob;
     uint32_t k = 0;
 
@@ -59,10 +59,10 @@ struct Policy {
     explicit Policy(Type nt, std::vector<unsigned char>&& dat) : node_type(nt), data(std::move(dat)) {}
     explicit Policy(Type nt, std::vector<unsigned char>&& dat, uint32_t kv) : node_type(nt), data(std::move(dat)), k(kv) {}
     explicit Policy(Type nt, std::vector<Policy>&& subs) : node_type(nt), sub(std::move(subs)) {}
-    explicit Policy(Type nt, std::vector<std::string>&& key) : node_type(nt), keys(std::move(key)) {}
+    explicit Policy(Type nt, std::vector<CompilerContext::Key>&& key) : node_type(nt), keys(std::move(key)) {}
     explicit Policy(Type nt, std::vector<Policy>&& subs, std::vector<uint32_t>&& probs) : node_type(nt), sub(std::move(subs)), prob(std::move(probs)) {}
     explicit Policy(Type nt, std::vector<Policy>&& subs, uint32_t kv) : node_type(nt), sub(std::move(subs)), k(kv) {}
-    explicit Policy(Type nt, std::vector<std::string>&& key, uint32_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
+    explicit Policy(Type nt, std::vector<CompilerContext::Key>&& key, uint32_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
 
     bool operator()() const { return node_type != Type::NONE; }
 };
@@ -94,7 +94,7 @@ Policy ParseProb(Span<const char>& in, uint32_t& prob) {
 Policy Parse(Span<const char>& in) {
     auto expr = Expr(in);
     if (Func("pk", expr)) {
-        std::string key;
+        CompilerContext::Key key;
         if (COMPILER_CTX.FromString(expr.begin(), expr.end(), key)) {
             return Policy(Policy::Type::PK_K, Vector(std::move(key)));
         }
@@ -202,7 +202,7 @@ struct Strat {
 
     Type node_type;
     std::vector<const Strat*> sub;
-    std::vector<std::string> keys;
+    std::vector<CompilerContext::Key> keys;
     std::vector<unsigned char> data;
     int64_t k = 0;
     double prob;
@@ -212,11 +212,11 @@ struct Strat {
     explicit Strat(Type nt, std::vector<unsigned char> dat) : node_type(nt), data(std::move(dat)) {}
     explicit Strat(Type nt, std::vector<unsigned char> dat, int64_t kv) : node_type(nt), data(std::move(dat)), k(kv) {}
     explicit Strat(Type nt, std::vector<const Strat*> subs) : node_type(nt), sub(std::move(subs)) {}
-    explicit Strat(Type nt, std::vector<std::string> key) : node_type(nt), keys(std::move(key)) {}
+    explicit Strat(Type nt, std::vector<CompilerContext::Key> key) : node_type(nt), keys(std::move(key)) {}
     explicit Strat(Type nt, std::vector<const Strat*> subs, double probs) : node_type(nt), sub(std::move(subs)), prob(probs) {}
     explicit Strat(Type nt, std::vector<const Strat*> subs, int64_t kv, double probs) : node_type(nt), sub(std::move(subs)), k(kv), prob(probs) {}
     explicit Strat(Type nt, std::vector<const Strat*> subs, int64_t kv) : node_type(nt), sub(std::move(subs)), k(kv) {}
-    explicit Strat(Type nt, std::vector<std::string> key, int64_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
+    explicit Strat(Type nt, std::vector<CompilerContext::Key> key, int64_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
 };
 
 typedef std::vector<std::unique_ptr<Strat>> StratStore;
@@ -314,7 +314,7 @@ const Strat* ComputeStrategy(const Policy& node, std::unordered_map<const Policy
                 if (!s) return {};
             }
             if (node.sub.size() <= 20 && std::all_of(node.sub.begin(), node.sub.end(), [&](const Policy& x){ return x.node_type == Policy::Type::PK_K; })) {
-                std::vector<std::string> keys;
+                std::vector<CompilerContext::Key> keys;
                 for (const Policy& x : node.sub) {
                     keys.push_back(x.keys[0]);
                 }
@@ -934,7 +934,7 @@ void PrintCompilationResult(int level, const Result& res) {
 
 } // namespace
 
-bool Compile(const std::string& policy, miniscript::NodeRef<std::string>& ret, double& avgcost) {
+bool Compile(const std::string& policy, miniscript::NodeRef<CompilerContext::Key>& ret, double& avgcost) {
     Policy pol = Parse(policy);
     if (!pol()) return false;
 
