@@ -1208,9 +1208,13 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
         }
         }
     }
+
+    // Sanity checks on the produced miniscript
     assert(constructed.size() == 1);
     if (iter != in.end()) return {};
-    return constructed.front();
+    const NodeRef<Key> tl_node = std::move(constructed.front());
+    if (!tl_node->IsValidTopLevel()) return {};
+    return tl_node;
 }
 
 /** Decode a script into opcode/push pairs.
