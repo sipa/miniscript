@@ -1089,6 +1089,8 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
     to_parse.emplace_back(DecodeContext::BKV_EXPR, -1, -1);
 
     while (!to_parse.empty()) {
+        // Exit early if the Miniscript is not going to be valid.
+        if (!constructed.empty() && !constructed.back()->IsValid()) return {};
 
         // Get the current context we are decoding within
         auto [cur_context, n, k] = to_parse.back();
@@ -1408,7 +1410,11 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
         }
     }
     if (constructed.size() != 1) return {};
-    return constructed.front();
+    const NodeRef<Key> tl_node = std::move(constructed.front());
+    // Note that due to how ComputeType works (only assign the type to the node if the
+    // subs' types are valid) this would fail if any node of tree is badly typed.
+    if (!tl_node->IsValidTopLevel()) return {};
+    return tl_node;
 }
 
 } // namespace internal
