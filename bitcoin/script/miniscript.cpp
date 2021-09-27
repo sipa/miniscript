@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <script/script.h>
+#include <script/standard.h>
 #include <script/miniscript.h>
 
 #include <assert.h>
@@ -327,6 +328,8 @@ bool DecomposeScript(const CScript& script, std::vector<std::pair<opcodetype, st
             // Decompose OP_EQUALVERIFY into OP_EQUAL OP_VERIFY
             out.emplace_back(OP_EQUAL, std::vector<unsigned char>());
             opcode = OP_VERIFY;
+        } else if (IsPushdataOp(opcode)) {
+            if (!CheckMinimalPush(push_data, opcode)) return false;
         }
         out.emplace_back(opcode, std::move(push_data));
     }
@@ -340,6 +343,7 @@ bool ParseScriptNumber(const std::pair<opcodetype, std::vector<unsigned char>>& 
         return true;
     }
     if (!in.second.empty()) {
+        if (IsPushdataOp(in.first) && !CheckMinimalPush(in.second, in.first)) return false;
         try {
             k = CScriptNum(in.second, true).GetInt64();
             return true;
