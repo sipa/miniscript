@@ -744,7 +744,7 @@ public:
     bool CheckOpsLimit() const { return GetOps() <= MAX_OPS_PER_SCRIPT; }
 
     //! Return the maximum number of stack elements needed to satisfy this script non-malleably.
-    uint32_t GetStackSize() const { return ss.sat.value; }
+    uint32_t GetStackSize() const { return ss.sat.value + 1; }
 
     //! Check the maximum stack size for this script against the policy limit.
     bool CheckStackSize() const { return GetStackSize() <= MAX_STANDARD_P2WSH_STACK_ITEMS; }
