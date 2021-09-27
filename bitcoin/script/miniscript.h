@@ -105,7 +105,7 @@ class Type {
     //! Internal bitmap of properties (see ""_mst operator for details).
     uint16_t m_flags;
 
-    //! Internal constructed used by the ""_mst operator.
+    //! Internal constructor used by the ""_mst operator.
     explicit constexpr Type(uint16_t flags) : m_flags(flags) {}
 
 public:
@@ -753,10 +753,10 @@ public:
     Type GetType() const { return typ; }
 
     //! Check whether this node is valid at all.
-    bool IsValid() const { return !(GetType() == ""_mst); }
+    bool IsValid() const { return !(GetType() == ""_mst) && ScriptSize() <= MAX_STANDARD_P2WSH_SCRIPT_SIZE; }
 
     //! Check whether this node is valid as a script on its own.
-    bool IsValidTopLevel() const { return GetType() << "B"_mst; }
+    bool IsValidTopLevel() const { return IsValid() && GetType() << "B"_mst; }
 
     //! Check whether this script can always be satisfied in a non-malleable way.
     bool IsNonMalleable() const { return GetType() << "m"_mst; }
