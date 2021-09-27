@@ -1338,6 +1338,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
             break;
         }
         case DecodeContext::THRESH_E: {
+            if (k < 1 || k > n) return {};
             std::vector<NodeRef<Key>> subs;
             for (int i = 0; i < n; ++i) {
                 NodeRef<Key> sub = std::move(constructed.back());
