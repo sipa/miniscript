@@ -753,7 +753,7 @@ private:
     }
 
 public:
-    //! Return the size of the script for this expression (faster than ToString().size()).
+    //! Return the size of the script for this expression (faster than ToScript().size()).
     size_t ScriptSize() const { return scriptlen; }
 
     //! Return the maximum number of ops needed to satisfy this script non-malleably.
