@@ -105,7 +105,7 @@ class Type {
     //! Internal bitmap of properties (see ""_mst operator for details).
     uint16_t m_flags;
 
-    //! Internal constructed used by the ""_mst operator.
+    //! Internal constructor used by the ""_mst operator.
     explicit constexpr Type(uint16_t flags) : m_flags(flags) {}
 
 public:
@@ -753,10 +753,10 @@ public:
     Type GetType() const { return typ; }
 
     //! Check whether this node is valid at all.
-    bool IsValid() const { return !(GetType() == ""_mst); }
+    bool IsValid() const { return !(GetType() == ""_mst) && ScriptSize() <= MAX_STANDARD_P2WSH_SCRIPT_SIZE; }
 
     //! Check whether this node is valid as a script on its own.
-    bool IsValidTopLevel() const { return GetType() << "B"_mst; }
+    bool IsValidTopLevel() const { return IsValid() && GetType() << "B"_mst; }
 
     //! Check whether this script can always be satisfied in a non-malleable way.
     bool IsNonMalleable() const { return GetType() << "m"_mst; }
@@ -1089,6 +1089,8 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
     to_parse.emplace_back(DecodeContext::BKV_EXPR, -1, -1);
 
     while (!to_parse.empty()) {
+        // Exit early if the Miniscript is not going to be valid.
+        if (!constructed.empty() && !constructed.back()->IsValid()) return {};
 
         // Get the current context we are decoding within
         auto [cur_context, n, k] = to_parse.back();
@@ -1408,7 +1410,11 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
         }
     }
     if (constructed.size() != 1) return {};
-    return constructed.front();
+    const NodeRef<Key> tl_node = std::move(constructed.front());
+    // Note that due to how ComputeType works (only assign the type to the node if the
+    // subs' types are valid) this would fail if any node of tree is badly typed.
+    if (!tl_node->IsValidTopLevel()) return {};
+    return tl_node;
 }
 
 } // namespace internal
