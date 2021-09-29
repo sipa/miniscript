@@ -20,6 +20,7 @@
 #include <util/spanparsing.h>
 #include <util/strencodings.h>
 #include <util/vector.h>
+#include <primitives/transaction.h>
 
 namespace miniscript {
 
@@ -92,21 +93,34 @@ namespace miniscript {
  *   - This generally requires 'm' for all subexpressions, and 'e' for all subexpressions
  *     which are dissatisfied when satisfying the parent.
  *
- * One final type property is an implementation detail:
+ * One type property is an implementation detail:
  * - "x" Expensive verify:
  *   - Expressions with this property have a script whose last opcode is not EQUAL, CHECKSIG, or CHECKMULTISIG.
  *   - Not having this property means that it can be converted to a V at no cost (by switching to the
  *     -VERIFY version of the last opcode).
  *
+ * Five more type properties for representing timelock information. Spend paths
+ * in miniscripts containing conflicting timelocks and heightlocks cannot be spent together.
+ * This helps users detect if miniscript does not match the semantic behaviour the
+ * user expects.
+ * - "g" Whether the branch contains a relative time timelock
+ * - "h" Whether the branch contains a relative height timelock
+ * - "i" Whether the branch contains a absolute time timelock
+ * - "j" Whether the branch contains a absolute time heightlock
+ * - "k"
+ *   - Whether all satisfactions of this expression don't contain a mix of heightlock and timelock
+ *     of the same type.
+ *   - If the miniscript does not have the "k" property, the miniscript template will not match
+ *     the user expectation of the corresponding spending policy.
  * For each of these properties the subset rule holds: an expression with properties X, Y, and Z, is also
  * valid in places where an X, a Y, a Z, an XY, ... is expected.
 */
 class Type {
     //! Internal bitmap of properties (see ""_mst operator for details).
-    uint16_t m_flags;
+    uint32_t m_flags;
 
     //! Internal constructor used by the ""_mst operator.
-    explicit constexpr Type(uint16_t flags) : m_flags(flags) {}
+    explicit constexpr Type(uint32_t flags) : m_flags(flags) {}
 
 public:
     //! The only way to publicly construct a Type is using this literal operator.
@@ -148,6 +162,11 @@ inline constexpr Type operator"" _mst(const char* c, size_t l) {
         *c == 's' ? 1 << 11 : // Safe property
         *c == 'm' ? 1 << 12 : // Nonmalleable property
         *c == 'x' ? 1 << 13 : // Expensive verify
+        *c == 'g' ? 1 << 14 : // older: contains relative time timelock   (csv_time)
+        *c == 'h' ? 1 << 15 : // older: contains relative height timelock (csv_height)
+        *c == 'i' ? 1 << 16 : // after: contains time timelock   (cltv_time)
+        *c == 'j' ? 1 << 17 : // after: contains height timelock   (cltv_height)
+        *c == 'k' ? 1 << 18 : // does not contain a combination of height and time locks
         (throw std::logic_error("Unknown character in _mst literal"), 0)
     );
 }
@@ -734,7 +753,7 @@ private:
     }
 
 public:
-    //! Return the size of the script for this expression (faster than ToString().size()).
+    //! Return the size of the script for this expression (faster than ToScript().size()).
     size_t ScriptSize() const { return scriptlen; }
 
     //! Return the maximum number of ops needed to satisfy this script non-malleably.
@@ -765,7 +784,7 @@ public:
     bool NeedsSignature() const { return GetType() << "s"_mst; }
 
     //! Do all sanity checks.
-    bool IsSafeTopLevel() const { return GetType() << "Bms"_mst && CheckOpsLimit() && CheckStackSize(); }
+    bool IsSafeTopLevel() const { return GetType() << "Bmsk"_mst && CheckOpsLimit() && CheckStackSize(); }
 
     //! Construct the script for this miniscript (including subexpressions).
     template<typename Ctx>
@@ -1196,7 +1215,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
                 to_parse.emplace_back(DecodeContext::BKV_EXPR, -1, -1);
             }
             /** In and_b and or_b nodes, we only look for SINGLE_BKV_EXPR, because
-             * or_b(and_v(X,Y),Z) has script [X] [Y] [Z] OP_BOOLOR, the same as 
+             * or_b(and_v(X,Y),Z) has script [X] [Y] [Z] OP_BOOLOR, the same as
              * and_v(X,or_b(Y,Z)). In this example, the former of these is invalid as
              * miniscript, while the latter is valid. So we leave the and_v "outside"
              * while decoding. */

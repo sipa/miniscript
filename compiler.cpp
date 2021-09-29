@@ -222,14 +222,14 @@ struct Strat {
 typedef std::vector<std::unique_ptr<Strat>> StratStore;
 
 template <typename... X>
-const Strat* MakeStrat(StratStore& store, X&&... args) { 
+const Strat* MakeStrat(StratStore& store, X&&... args) {
     Strat* ret = new Strat(std::forward<X>(args)...);
     store.emplace_back(ret);
     return ret;
 }
 
 template <typename... X>
-Strat* MakeMutStrat(StratStore& store, X&&... args) { 
+Strat* MakeMutStrat(StratStore& store, X&&... args) {
     Strat* ret = new Strat(std::forward<X>(args)...);
     store.emplace_back(ret);
     return ret;
@@ -410,7 +410,7 @@ struct Compilation {
         double cost = Cost(pair, node);
         if (!node->CheckOpsLimit()) return;
         if (node->GetStackSize() > MAX_STANDARD_P2WSH_STACK_ITEMS) return;
-        if (!(new_typ << "m"_mst)) return;
+        if (!(new_typ << "mk"_mst)) return;
         if (cost > 10000) return;
         for (const Result& x : results) {
             auto old_typ = x.node->GetType();

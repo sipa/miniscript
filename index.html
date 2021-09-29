@@ -411,6 +411,14 @@ This tables lists the correctness requirements for each of the Miniscript expres
 </div>
 
 
+<h4>Detecting timelock mixing</h4>
+<p>
+The <samp>nSequence</samp> field in a transaction input, or the <samp>nLockTime</samp> field in transaction can be specified either as a time or height but not both.
+Therefore it is not possible to spend scripts that require satisfaction of both, height based timelock and time based timelock of the same type.
+<ul>
+<li><b>"k"</b> No timelock mixing. This expression does not contain a mix of heightlock and timelock of the same type. If the miniscript does not have the "k" property, the miniscript template will not match the user expectation of the corresponding spending policy.</li>
+</ul>
+
 <h4>Resource limitations</h4>
 
 <p>
@@ -433,7 +441,7 @@ satisfy both, the limit does not prevent satisfaction.
 <h4>Security properties</h4>
 <p>
 The type system above guarantees that the corresponding Bitcoin Scripts are:<ul>
-  <li><b>consensus and standardness complete</b>: Assuming the resource limits listed in the previous section are not violated, for every set of met conditions that are permitted by the semantics, a witness can be constructed that passes Bitcoin's consensus rules and common standardness rules.</li>
+  <li><b>consensus and standardness complete</b>: Assuming the resource limits listed in the previous section are not violated and there is no timelock mixing, for every set of met conditions that are permitted by the semantics, a witness can be constructed that passes Bitcoin's consensus rules and common standardness rules.</li>
   <li><b>consensus sound</b>: It is not possible to construct a witness that is consensus valid for a Script unless the spending conditions are met. Since standardness rules permit only a subset of consensus-valid satisfactions (by definition), this property also implies <b>standardness soundness</b>.
 </ul>
 
