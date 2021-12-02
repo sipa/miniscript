@@ -766,7 +766,7 @@ public:
     uint32_t GetStackSize() const { return ss.sat.value + 1; }
 
     //! Check the maximum stack size for this script against the policy limit.
-    bool CheckStackSize() const { return GetStackSize() <= MAX_STANDARD_P2WSH_STACK_ITEMS; }
+    bool CheckStackSize() const { return GetStackSize() - 1 <= MAX_STANDARD_P2WSH_STACK_ITEMS; }
 
     //! Return the expression type.
     Type GetType() const { return typ; }
