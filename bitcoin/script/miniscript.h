@@ -464,10 +464,10 @@ private:
             }
             case NodeType::AFTER: return std::move(ret) + "after(" + std::to_string(k) + ")";
             case NodeType::OLDER: return std::move(ret) + "older(" + std::to_string(k) + ")";
-            case NodeType::HASH256: return std::move(ret) + "hash256(" + HexStr(data.begin(), data.end()) + ")";
-            case NodeType::HASH160: return std::move(ret) + "hash160(" + HexStr(data.begin(), data.end()) + ")";
-            case NodeType::SHA256: return std::move(ret) + "sha256(" + HexStr(data.begin(), data.end()) + ")";
-            case NodeType::RIPEMD160: return std::move(ret) + "ripemd160(" + HexStr(data.begin(), data.end()) + ")";
+            case NodeType::HASH256: return std::move(ret) + "hash256(" + HexStr(data) + ")";
+            case NodeType::HASH160: return std::move(ret) + "hash160(" + HexStr(data) + ")";
+            case NodeType::SHA256: return std::move(ret) + "sha256(" + HexStr(data) + ")";
+            case NodeType::RIPEMD160: return std::move(ret) + "ripemd160(" + HexStr(data) + ")";
             case NodeType::JUST_1: return std::move(ret) + "1";
             case NodeType::JUST_0: return std::move(ret) + "0";
             case NodeType::AND_V: return std::move(ret) + "and_v(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
@@ -847,6 +847,7 @@ static constexpr int MAX_PARSE_RECURSION = 201;
 //! Parse a miniscript from its textual descriptor form.
 template<typename Key, typename Ctx>
 inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_depth, bool wrappers_parsed = false) {
+    using namespace spanparsing;
     if (recursion_depth >= MAX_PARSE_RECURSION) {
         return {};
     }
@@ -855,7 +856,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_de
     if (!wrappers_parsed) {
         // colon cannot be the first character
         //`:pk()` is invalid miniscript
-        for (int i = 1; i < expr.size(); ++i) {
+        for (unsigned int i = 1; i < expr.size(); ++i) {
             if (expr[i] == ':') {
                 auto in2 = expr.subspan(i + 1);
                 // pass wrappers_parsed = true to avoid multi-colons
