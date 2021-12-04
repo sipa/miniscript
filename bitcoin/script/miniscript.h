@@ -17,6 +17,7 @@
 #include <policy/policy.h>
 #include <script/script.h>
 #include <span.h>
+#include <util/spanparsing.h>
 #include <util/strencodings.h>
 #include <util/vector.h>
 #include <primitives/transaction.h>
@@ -891,8 +892,7 @@ enum class ParseContext {
 };
 
 
-int FindNextChar(const char*& iter, const char* const& end, const char m);
-bool StartsWith(const std::string& str, const char*& iter, const char* const& end);
+int FindNextChar(Span<const char> in, const char m);
 
 /** BuildBack pops the last two elements off `constructed` and wraps them in the specified NodeType */
 template<typename Key>
@@ -911,12 +911,13 @@ void BuildBack(NodeType nt, std::vector<NodeRef<Key>>& constructed, const bool r
 template<typename Key, typename Ctx>
 inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
 {
+    using namespace spanparsing;
+
     // The two integers are used to hold state for thresh()
     std::vector<std::tuple<ParseContext, int64_t, int64_t>> to_parse;
     std::vector<NodeRef<Key>> constructed;
 
     to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
-    auto iter = in.begin();
 
     while (!to_parse.empty()) {
         // Get the current context we are decoding within
@@ -926,149 +927,159 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
         switch (cur_context) {
         case ParseContext::WRAPPED_EXPR: {
             int colon_index = -1;
-            for (int i = 1; iter + i < in.end(); ++i) {
-                if (iter[i] == ':') {
+            for (int i = 1; i < (int)in.size(); ++i) {
+                if (in[i] == ':') {
                     colon_index = i;
                     break;
                 }
-                if (iter[i] < 'a' || iter[i] > 'z') break;
+                if (in[i] < 'a' || in[i] > 'z') break;
             }
             // If there is no colon, this loop won't execute
             for (int j = 0; j < colon_index; ++j) {
-                if (iter[j] == 'a') to_parse.emplace_back(ParseContext::ALT, -1, -1);
-                else if (iter[j] == 's') to_parse.emplace_back(ParseContext::SWAP, -1, -1);
-                else if (iter[j] == 'c') to_parse.emplace_back(ParseContext::CHECK, -1, -1);
-                else if (iter[j] == 'd') to_parse.emplace_back(ParseContext::DUP_IF, -1, -1);
-                else if (iter[j] == 'j') to_parse.emplace_back(ParseContext::NON_ZERO, -1, -1);
-                else if (iter[j] == 'n') to_parse.emplace_back(ParseContext::ZERO_NOTEQUAL, -1, -1);
-                else if (iter[j] == 'v') to_parse.emplace_back(ParseContext::VERIFY, -1, -1);
-                else if (iter[j] == 'u') to_parse.emplace_back(ParseContext::WRAP_U, -1, -1);
-                else if (iter[j] == 't') to_parse.emplace_back(ParseContext::WRAP_T, -1, -1);
-                else if (iter[j] == 'l') {
+                if (in[j] == 'a') {
+                    to_parse.emplace_back(ParseContext::ALT, -1, -1);
+                } else if (in[j] == 's') {
+                    to_parse.emplace_back(ParseContext::SWAP, -1, -1);
+                } else if (in[j] == 'c') {
+                    to_parse.emplace_back(ParseContext::CHECK, -1, -1);
+                } else if (in[j] == 'd') {
+                    to_parse.emplace_back(ParseContext::DUP_IF, -1, -1);
+                } else if (in[j] == 'j') {
+                    to_parse.emplace_back(ParseContext::NON_ZERO, -1, -1);
+                } else if (in[j] == 'n') {
+                    to_parse.emplace_back(ParseContext::ZERO_NOTEQUAL, -1, -1);
+                } else if (in[j] == 'v') {
+                    to_parse.emplace_back(ParseContext::VERIFY, -1, -1);
+                } else if (in[j] == 'u') {
+                    to_parse.emplace_back(ParseContext::WRAP_U, -1, -1);
+                } else if (in[j] == 't') {
+                    to_parse.emplace_back(ParseContext::WRAP_T, -1, -1);
+                } else if (in[j] == 'l') {
                     // The l: wrapper is equivalent to or_i(0,X)
                     constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_0));
                     to_parse.emplace_back(ParseContext::OR_I, -1, -1);
+                } else {
+                    return {};
                 }
-                else return {};
             }
             to_parse.emplace_back(ParseContext::EXPR, -1, -1);
-            iter += colon_index + 1;
+            in = in.subspan(colon_index + 1);
             break;
         }
         case ParseContext::EXPR: {
-            if (StartsWith("0", iter, in.end())) {
+            if (Const("0", in)) {
                 constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_0));
-            } else if (StartsWith("1", iter, in.end())) {
+            } else if (Const("1", in)) {
                 constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_1));
-            } else if (StartsWith("pk(", iter, in.end())) {
+            } else if (Const("pk(", in)) {
                 Key key;
-                int key_size = FindNextChar(iter, in.end(), ')');
+                int key_size = FindNextChar(in, ')');
                 if (key_size < 1) return {};
-                if (!ctx.FromString(iter, iter+key_size, key)) return {};
+                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key))))));
-                iter += key_size + 1;
-            } else if (StartsWith("pkh(", iter, in.end())) {
+                in = in.subspan(key_size + 1);
+            } else if (Const("pkh(", in)) {
                 Key key;
-                int key_size = FindNextChar(iter, in.end(), ')');
+                int key_size = FindNextChar(in, ')');
                 if (key_size < 1) return {};
-                if (!ctx.FromString(iter, iter+key_size, key)) return {};
+                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key))))));
-                iter += key_size + 1;
-            } else if (StartsWith("pk_k(", iter, in.end())) {
+                in = in.subspan(key_size + 1);
+            } else if (Const("pk_k(", in)) {
                 Key key;
-                int key_size = FindNextChar(iter, in.end(), ')');
+                int key_size = FindNextChar(in, ')');
                 if (key_size < 1) return {};
-                if (!ctx.FromString(iter, iter+key_size, key)) return {};
+                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key))));
-                iter += key_size + 1;
-            } else if (StartsWith("pk_h(", iter, in.end())) {
+                in = in.subspan(key_size + 1);
+            } else if (Const("pk_h(", in)) {
                 Key key;
-                int key_size = FindNextChar(iter, in.end(), ')');
+                int key_size = FindNextChar(in, ')');
                 if (key_size < 1) return {};
-                if (!ctx.FromString(iter, iter+key_size, key)) return {};
+                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key))));
-                iter += key_size + 1;
-            } else if (StartsWith("sha256(", iter, in.end())) {
-                int hash_size = FindNextChar(iter, in.end(), ')');
+                in = in.subspan(key_size + 1);
+            } else if (Const("sha256(", in)) {
+                int hash_size = FindNextChar(in, ')');
                 if (hash_size < 1) return {};
-                std::string val = std::string(iter, iter+hash_size);
+                std::string val = std::string(in.begin(), in.begin() + hash_size);
                 if (!IsHex(val)) return {};
                 auto hash = ParseHex(val);
                 if (hash.size() != 32) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::SHA256, std::move(hash)));
-                iter += hash_size + 1;
-            } else if (StartsWith("ripemd160(", iter, in.end())) {
-                int hash_size = FindNextChar(iter, in.end(), ')');
+                in = in.subspan(hash_size + 1);
+            } else if (Const("ripemd160(", in)) {
+                int hash_size = FindNextChar(in, ')');
                 if (hash_size < 1) return {};
-                std::string val = std::string(iter, iter+hash_size);
+                std::string val = std::string(in.begin(), in.begin() + hash_size);
                 if (!IsHex(val)) return {};
                 auto hash = ParseHex(val);
                 if (hash.size() != 20) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::RIPEMD160, std::move(hash)));
-                iter += hash_size + 1;
-            } else if (StartsWith("hash256(", iter, in.end())) {
-                int hash_size = FindNextChar(iter, in.end(), ')');
+                in = in.subspan(hash_size + 1);
+            } else if (Const("hash256(", in)) {
+                int hash_size = FindNextChar(in, ')');
                 if (hash_size < 1) return {};
-                std::string val = std::string(iter, iter+hash_size);
+                std::string val = std::string(in.begin(), in.begin() + hash_size);
                 if (!IsHex(val)) return {};
                 auto hash = ParseHex(val);
                 if (hash.size() != 32) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::HASH256, std::move(hash)));
-                iter += hash_size + 1;
-            } else if (StartsWith("hash160(", iter, in.end())) {
-                int hash_size = FindNextChar(iter, in.end(), ')');
+                in = in.subspan(hash_size + 1);
+            } else if (Const("hash160(", in)) {
+                int hash_size = FindNextChar(in, ')');
                 if (hash_size < 1) return {};
-                std::string val = std::string(iter, iter+hash_size);
+                std::string val = std::string(in.begin(), in.begin() + hash_size);
                 if (!IsHex(val)) return {};
                 auto hash = ParseHex(val);
                 if (hash.size() != 20) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::HASH160, std::move(hash)));
-                iter += hash_size + 1;
-            } else if (StartsWith("after(", iter, in.end())) {
-                int arg_size = FindNextChar(iter, in.end(), ')');
+                in = in.subspan(hash_size + 1);
+            } else if (Const("after(", in)) {
+                int arg_size = FindNextChar(in, ')');
                 if (arg_size < 1) return {};
                 int64_t num;
-                if (!ParseInt64(std::string(iter, iter+arg_size), &num)) return {};
+                if (!ParseInt64(std::string(in.begin(), in.begin() + arg_size), &num)) return {};
                 if (num < 1 || num >= 0x80000000L) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::AFTER, num));
-                iter += arg_size + 1;
-            } else if (StartsWith("older(", iter, in.end())) {
-                int arg_size = FindNextChar(iter, in.end(), ')');
+                in = in.subspan(arg_size + 1);
+            } else if (Const("older(", in)) {
+                int arg_size = FindNextChar(in, ')');
                 if (arg_size < 1) return {};
                 int64_t num;
-                if (!ParseInt64(std::string(iter, iter+arg_size), &num)) return {};
+                if (!ParseInt64(std::string(in.begin(), in.begin() + arg_size), &num)) return {};
                 if (num < 1 || num >= 0x80000000L) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::OLDER, num));
-                iter += arg_size + 1;
-            } else if (StartsWith("multi(", iter, in.end())) {
+                in = in.subspan(arg_size + 1);
+            } else if (Const("multi(", in)) {
                 // Get threshold
-                int next_comma = FindNextChar(iter, in.end(), ',');
+                int next_comma = FindNextChar(in, ',');
                 if (next_comma < 1) return {};
-                if (!ParseInt64(std::string(iter, iter+next_comma), &k)) return {};
-                iter += next_comma + 1;
+                if (!ParseInt64(std::string(in.begin(), in.begin() + next_comma), &k)) return {};
+                in = in.subspan(next_comma + 1);
                 // Get keys
                 std::vector<Key> keys;
                 while (next_comma != -1) {
                     Key key;
-                    next_comma = FindNextChar(iter, in.end(), ',');
-                    int key_length = (next_comma == -1) ? FindNextChar(iter, in.end(), ')') : next_comma;
+                    next_comma = FindNextChar(in, ',');
+                    int key_length = (next_comma == -1) ? FindNextChar(in, ')') : next_comma;
                     if (key_length < 1) return {};
-                    if (!ctx.FromString(iter, iter+key_length, key)) return {};
+                    if (!ctx.FromString(in.begin(), in.begin() + key_length, key)) return {};
                     keys.push_back(std::move(key));
-                    iter += key_length + 1;
+                    in = in.subspan(key_length + 1);
                 }
                 if (keys.size() < 1 || keys.size() > 20) return {};
                 if (k < 1 || k > (int64_t)keys.size()) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::MULTI, std::move(keys), k));
-            } else if (StartsWith("thresh(", iter, in.end())) {
-                int next_comma = FindNextChar(iter, in.end(), ',');
+            } else if (Const("thresh(", in)) {
+                int next_comma = FindNextChar(in, ',');
                 if (next_comma < 1) return {};
-                if (!ParseInt64(std::string(iter, iter+next_comma), &k)) return {};
-                iter += next_comma + 1;
+                if (!ParseInt64(std::string(in.begin(), in.begin() + next_comma), &k)) return {};
+                in = in.subspan(next_comma + 1);
                 // n = 1 here because we read the first WRAPPED_EXPR before reaching THRESH
                 to_parse.emplace_back(ParseContext::THRESH, 1, k);
                 to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
-            } else if (StartsWith("andor(", iter, in.end())) {
+            } else if (Const("andor(", in)) {
                 to_parse.emplace_back(ParseContext::ANDOR, -1, -1);
                 to_parse.emplace_back(ParseContext::CLOSE_BRACKET, -1, -1);
                 to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
@@ -1077,19 +1088,19 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
                 to_parse.emplace_back(ParseContext::COMMA, -1, -1);
                 to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
             } else {
-                if (StartsWith("and_n(", iter, in.end())) {
+                if (Const("and_n(", in)) {
                     to_parse.emplace_back(ParseContext::AND_N, -1, -1);
-                } else if (StartsWith("and_b(", iter, in.end())) {
+                } else if (Const("and_b(", in)) {
                     to_parse.emplace_back(ParseContext::AND_B, -1, -1);
-                } else if (StartsWith("and_v(", iter, in.end())) {
+                } else if (Const("and_v(", in)) {
                     to_parse.emplace_back(ParseContext::AND_V, -1, -1);
-                } else if (StartsWith("or_b(", iter, in.end())) {
+                } else if (Const("or_b(", in)) {
                     to_parse.emplace_back(ParseContext::OR_B, -1, -1);
-                } else if (StartsWith("or_c(", iter, in.end())) {
+                } else if (Const("or_c(", in)) {
                     to_parse.emplace_back(ParseContext::OR_C, -1, -1);
-                } else if (StartsWith("or_d(", iter, in.end())) {
+                } else if (Const("or_d(", in)) {
                     to_parse.emplace_back(ParseContext::OR_D, -1, -1);
-                } else if (StartsWith("or_i(", iter, in.end())) {
+                } else if (Const("or_i(", in)) {
                     to_parse.emplace_back(ParseContext::OR_I, -1, -1);
                 } else {
                     return {};
@@ -1176,13 +1187,13 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
             break;
         }
         case ParseContext::THRESH: {
-            if (iter >= in.end()) return {};
-            if (*iter == ',') {
-                ++iter;
+            if (in.size() < 1) return {};
+            if (in[0] == ',') {
+                in = in.subspan(1);
                 to_parse.emplace_back(ParseContext::THRESH, n+1, k);
                 to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
-            } else if (*iter == ')') {
-                ++iter;
+            } else if (in[0] == ')') {
+                in = in.subspan(1);
                 // Children are constructed in reverse order, so iterate from end to beginning
                 std::vector<NodeRef<Key>> subs;
                 for (int i = 0; i < n; ++i) {
@@ -1197,13 +1208,13 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
             break;
         }
         case ParseContext::COMMA: {
-            if (iter >= in.end() || *iter != ',') return {};
-            ++iter;
+            if (in.size() < 1 || in[0] != ',') return {};
+            in = in.subspan(1);
             break;
         }
         case ParseContext::CLOSE_BRACKET: {
-            if (iter >= in.end() || *iter != ')') return {};
-            ++iter;
+            if (in.size() < 1 || in[0] != ')') return {};
+            in = in.subspan(1);
             break;
         }
         }
@@ -1211,7 +1222,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
 
     // Sanity checks on the produced miniscript
     assert(constructed.size() == 1);
-    if (iter != in.end()) return {};
+    if (in.size() > 0) return {};
     const NodeRef<Key> tl_node = std::move(constructed.front());
     if (!tl_node->IsValidTopLevel()) return {};
     return tl_node;

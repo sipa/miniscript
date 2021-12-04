@@ -402,23 +402,14 @@ bool ParseScriptNumber(const std::pair<opcodetype, std::vector<unsigned char>>& 
     return false;
 }
 
-int FindNextChar(const char*& iter, const char* const& end, const char m)
+int FindNextChar(Span<const char> sp, const char m)
 {
-    for (int i = 0; iter + i < end; ++i) {
-        if (iter[i] == m) return i;
+    for (int i = 0; i < (int)sp.size(); ++i) {
+        if (sp[i] == m) return i;
         // We only search within the current parentheses
-        if (iter[i] == ')') break;
+        if (sp[i] == ')') break;
     }
     return -1;
-}
-
-bool StartsWith(const std::string& str, const char*& iter, const char* const& end)
-{
-    if (iter + str.size() <= end && std::equal(str.begin(), str.end(), iter)) {
-        iter += str.size();
-        return true;
-    }
-    return false;
 }
 
 } // namespace internal
