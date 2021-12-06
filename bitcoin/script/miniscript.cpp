@@ -402,5 +402,15 @@ bool ParseScriptNumber(const std::pair<opcodetype, std::vector<unsigned char>>& 
     return false;
 }
 
+int FindNextChar(Span<const char> sp, const char m)
+{
+    for (int i = 0; i < (int)sp.size(); ++i) {
+        if (sp[i] == m) return i;
+        // We only search within the current parentheses
+        if (sp[i] == ')') break;
+    }
+    return -1;
+}
+
 } // namespace internal
 } // namespace miniscript

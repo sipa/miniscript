@@ -837,187 +837,395 @@ public:
 
 namespace internal {
 
-// Parse(...) is recursive. Recursion depth is limited to MAX_PARSE_RECURSION to avoid
-// running out of stack space at run-time. It is impossible to create a valid Miniscript
-// with a nesting depth higher than 402 (any such script will trivially exceed the ops
-// limit of 201). Those 402 consist of 201 v: wrappers and 201 other nodes. The Parse
-// functions don't use recursion for wrappers, so the recursion limit can be 201.
-static constexpr int MAX_PARSE_RECURSION = 201;
+enum class ParseContext {
+    /** An expression which may be begin with wrappers followed by a colon. */
+    WRAPPED_EXPR,
+    /** A miniscript expression which does not begin with wrappers. */
+    EXPR,
+
+    /** SWAP wraps the top constructed node with s: */
+    SWAP,
+    /** ALT wraps the top constructed node with a: */
+    ALT,
+    /** CHECK wraps the top constructed node with c: */
+    CHECK,
+    /** DUP_IF wraps the top constructed node with d: */
+    DUP_IF,
+    /** VERIFY wraps the top constructed node with v: */
+    VERIFY,
+    /** NON_ZERO wraps the top constructed node with j: */
+    NON_ZERO,
+    /** ZERO_NOTEQUAL wraps the top constructed node with n: */
+    ZERO_NOTEQUAL,
+    /** WRAP_U will construct an or_i(X,0) node from the top constructed node. */
+    WRAP_U,
+    /** WRAP_T will construct an and_v(X,1) node from the top constructed node. */
+    WRAP_T,
+
+    /** AND_N will construct an andor(X,Y,0) node from the last two constructed nodes. */
+    AND_N,
+    /** AND_V will construct an and_v node from the last two constructed nodes. */
+    AND_V,
+    /** AND_B will construct an and_b node from the last two constructed nodes. */
+    AND_B,
+    /** ANDOR will construct an andor node from the last three constructed nodes. */
+    ANDOR,
+    /** OR_B will construct an or_b node from the last two constructed nodes. */
+    OR_B,
+    /** OR_C will construct an or_c node from the last two constructed nodes. */
+    OR_C,
+    /** OR_D will construct an or_d node from the last two constructed nodes. */
+    OR_D,
+    /** OR_I will construct an or_i node from the last two constructed nodes. */
+    OR_I,
+
+    /** THRESH will read a wrapped expression, and then look for a COMMA. If
+     * no comma follows, it will construct a thresh node from the appropriate
+     * number of constructed children. Otherwise, it will recurse with another
+     * THRESH. */
+    THRESH,
+
+    /** COMMA expects the next element to be ',' and fails if not. */
+    COMMA,
+    /** CLOSE_BRACKET expects the next element to be ')' and fails if not. */
+    CLOSE_BRACKET,
+};
+
+
+int FindNextChar(Span<const char> in, const char m);
+
+/** BuildBack pops the last two elements off `constructed` and wraps them in the specified NodeType */
+template<typename Key>
+void BuildBack(NodeType nt, std::vector<NodeRef<Key>>& constructed, const bool reverse = false)
+{
+    NodeRef<Key> child = std::move(constructed.back());
+    constructed.pop_back();
+    if (reverse) {
+        constructed.back() = MakeNodeRef<Key>(nt, Vector(std::move(child), std::move(constructed.back())));
+    } else {
+        constructed.back() = MakeNodeRef<Key>(nt, Vector(std::move(constructed.back()), std::move(child)));
+    }
+}
 
 //! Parse a miniscript from its textual descriptor form.
 template<typename Key, typename Ctx>
-inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx, int recursion_depth, bool wrappers_parsed = false) {
+inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
+{
     using namespace spanparsing;
-    if (recursion_depth >= MAX_PARSE_RECURSION) {
-        return {};
-    }
-    auto expr = Expr(in);
-    // Parse wrappers
-    if (!wrappers_parsed) {
-        // colon cannot be the first character
-        //`:pk()` is invalid miniscript
-        for (unsigned int i = 1; i < expr.size(); ++i) {
-            if (expr[i] == ':') {
-                auto in2 = expr.subspan(i + 1);
-                // pass wrappers_parsed = true to avoid multi-colons
-                auto sub = Parse<Key>(in2, ctx, recursion_depth + 1, true);
-                if (!sub || in2.size()) return {};
-                for (int j = i; j-- > 0; ) {
-                    if (expr[j] == 'a') {
-                        sub = MakeNodeRef<Key>(NodeType::WRAP_A, Vector(std::move(sub)));
-                    } else if (expr[j] == 's') {
-                        sub = MakeNodeRef<Key>(NodeType::WRAP_S, Vector(std::move(sub)));
-                    } else if (expr[j] == 'c') {
-                        sub = MakeNodeRef<Key>(NodeType::WRAP_C, Vector(std::move(sub)));
-                    } else if (expr[j] == 'd') {
-                        sub = MakeNodeRef<Key>(NodeType::WRAP_D, Vector(std::move(sub)));
-                    } else if (expr[j] == 'j') {
-                        sub = MakeNodeRef<Key>(NodeType::WRAP_J, Vector(std::move(sub)));
-                    } else if (expr[j] == 'n') {
-                        sub = MakeNodeRef<Key>(NodeType::WRAP_N, Vector(std::move(sub)));
-                    } else if (expr[j] == 'v') {
-                        sub = MakeNodeRef<Key>(NodeType::WRAP_V, Vector(std::move(sub)));
-                    } else if (expr[j] == 't') {
-                        sub = MakeNodeRef<Key>(NodeType::AND_V, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::JUST_1)));
-                    } else if (expr[j] == 'u') {
-                        sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(std::move(sub), MakeNodeRef<Key>(NodeType::JUST_0)));
-                    } else if (expr[j] == 'l') {
-                        sub = MakeNodeRef<Key>(NodeType::OR_I, Vector(MakeNodeRef<Key>(NodeType::JUST_0), std::move(sub)));
-                    } else {
-                        return {};
-                    }
+
+    // The two integers are used to hold state for thresh()
+    std::vector<std::tuple<ParseContext, int64_t, int64_t>> to_parse;
+    std::vector<NodeRef<Key>> constructed;
+
+    to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
+
+    while (!to_parse.empty()) {
+        // Get the current context we are decoding within
+        auto [cur_context, n, k] = to_parse.back();
+        to_parse.pop_back();
+
+        switch (cur_context) {
+        case ParseContext::WRAPPED_EXPR: {
+            int colon_index = -1;
+            for (int i = 1; i < (int)in.size(); ++i) {
+                if (in[i] == ':') {
+                    colon_index = i;
+                    break;
                 }
-                return sub;
+                if (in[i] < 'a' || in[i] > 'z') break;
             }
-            if (expr[i] < 'a' || expr[i] > 'z') break;
+            // If there is no colon, this loop won't execute
+            for (int j = 0; j < colon_index; ++j) {
+                if (in[j] == 'a') {
+                    to_parse.emplace_back(ParseContext::ALT, -1, -1);
+                } else if (in[j] == 's') {
+                    to_parse.emplace_back(ParseContext::SWAP, -1, -1);
+                } else if (in[j] == 'c') {
+                    to_parse.emplace_back(ParseContext::CHECK, -1, -1);
+                } else if (in[j] == 'd') {
+                    to_parse.emplace_back(ParseContext::DUP_IF, -1, -1);
+                } else if (in[j] == 'j') {
+                    to_parse.emplace_back(ParseContext::NON_ZERO, -1, -1);
+                } else if (in[j] == 'n') {
+                    to_parse.emplace_back(ParseContext::ZERO_NOTEQUAL, -1, -1);
+                } else if (in[j] == 'v') {
+                    to_parse.emplace_back(ParseContext::VERIFY, -1, -1);
+                } else if (in[j] == 'u') {
+                    to_parse.emplace_back(ParseContext::WRAP_U, -1, -1);
+                } else if (in[j] == 't') {
+                    to_parse.emplace_back(ParseContext::WRAP_T, -1, -1);
+                } else if (in[j] == 'l') {
+                    // The l: wrapper is equivalent to or_i(0,X)
+                    constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_0));
+                    to_parse.emplace_back(ParseContext::OR_I, -1, -1);
+                } else {
+                    return {};
+                }
+            }
+            to_parse.emplace_back(ParseContext::EXPR, -1, -1);
+            in = in.subspan(colon_index + 1);
+            break;
+        }
+        case ParseContext::EXPR: {
+            if (Const("0", in)) {
+                constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_0));
+            } else if (Const("1", in)) {
+                constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_1));
+            } else if (Const("pk(", in)) {
+                Key key;
+                int key_size = FindNextChar(in, ')');
+                if (key_size < 1) return {};
+                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key))))));
+                in = in.subspan(key_size + 1);
+            } else if (Const("pkh(", in)) {
+                Key key;
+                int key_size = FindNextChar(in, ')');
+                if (key_size < 1) return {};
+                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key))))));
+                in = in.subspan(key_size + 1);
+            } else if (Const("pk_k(", in)) {
+                Key key;
+                int key_size = FindNextChar(in, ')');
+                if (key_size < 1) return {};
+                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key))));
+                in = in.subspan(key_size + 1);
+            } else if (Const("pk_h(", in)) {
+                Key key;
+                int key_size = FindNextChar(in, ')');
+                if (key_size < 1) return {};
+                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key))));
+                in = in.subspan(key_size + 1);
+            } else if (Const("sha256(", in)) {
+                int hash_size = FindNextChar(in, ')');
+                if (hash_size < 1) return {};
+                std::string val = std::string(in.begin(), in.begin() + hash_size);
+                if (!IsHex(val)) return {};
+                auto hash = ParseHex(val);
+                if (hash.size() != 32) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::SHA256, std::move(hash)));
+                in = in.subspan(hash_size + 1);
+            } else if (Const("ripemd160(", in)) {
+                int hash_size = FindNextChar(in, ')');
+                if (hash_size < 1) return {};
+                std::string val = std::string(in.begin(), in.begin() + hash_size);
+                if (!IsHex(val)) return {};
+                auto hash = ParseHex(val);
+                if (hash.size() != 20) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::RIPEMD160, std::move(hash)));
+                in = in.subspan(hash_size + 1);
+            } else if (Const("hash256(", in)) {
+                int hash_size = FindNextChar(in, ')');
+                if (hash_size < 1) return {};
+                std::string val = std::string(in.begin(), in.begin() + hash_size);
+                if (!IsHex(val)) return {};
+                auto hash = ParseHex(val);
+                if (hash.size() != 32) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::HASH256, std::move(hash)));
+                in = in.subspan(hash_size + 1);
+            } else if (Const("hash160(", in)) {
+                int hash_size = FindNextChar(in, ')');
+                if (hash_size < 1) return {};
+                std::string val = std::string(in.begin(), in.begin() + hash_size);
+                if (!IsHex(val)) return {};
+                auto hash = ParseHex(val);
+                if (hash.size() != 20) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::HASH160, std::move(hash)));
+                in = in.subspan(hash_size + 1);
+            } else if (Const("after(", in)) {
+                int arg_size = FindNextChar(in, ')');
+                if (arg_size < 1) return {};
+                int64_t num;
+                if (!ParseInt64(std::string(in.begin(), in.begin() + arg_size), &num)) return {};
+                if (num < 1 || num >= 0x80000000L) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::AFTER, num));
+                in = in.subspan(arg_size + 1);
+            } else if (Const("older(", in)) {
+                int arg_size = FindNextChar(in, ')');
+                if (arg_size < 1) return {};
+                int64_t num;
+                if (!ParseInt64(std::string(in.begin(), in.begin() + arg_size), &num)) return {};
+                if (num < 1 || num >= 0x80000000L) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::OLDER, num));
+                in = in.subspan(arg_size + 1);
+            } else if (Const("multi(", in)) {
+                // Get threshold
+                int next_comma = FindNextChar(in, ',');
+                if (next_comma < 1) return {};
+                if (!ParseInt64(std::string(in.begin(), in.begin() + next_comma), &k)) return {};
+                in = in.subspan(next_comma + 1);
+                // Get keys
+                std::vector<Key> keys;
+                while (next_comma != -1) {
+                    Key key;
+                    next_comma = FindNextChar(in, ',');
+                    int key_length = (next_comma == -1) ? FindNextChar(in, ')') : next_comma;
+                    if (key_length < 1) return {};
+                    if (!ctx.FromString(in.begin(), in.begin() + key_length, key)) return {};
+                    keys.push_back(std::move(key));
+                    in = in.subspan(key_length + 1);
+                }
+                if (keys.size() < 1 || keys.size() > 20) return {};
+                if (k < 1 || k > (int64_t)keys.size()) return {};
+                constructed.push_back(MakeNodeRef<Key>(NodeType::MULTI, std::move(keys), k));
+            } else if (Const("thresh(", in)) {
+                int next_comma = FindNextChar(in, ',');
+                if (next_comma < 1) return {};
+                if (!ParseInt64(std::string(in.begin(), in.begin() + next_comma), &k)) return {};
+                in = in.subspan(next_comma + 1);
+                // n = 1 here because we read the first WRAPPED_EXPR before reaching THRESH
+                to_parse.emplace_back(ParseContext::THRESH, 1, k);
+                to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
+            } else if (Const("andor(", in)) {
+                to_parse.emplace_back(ParseContext::ANDOR, -1, -1);
+                to_parse.emplace_back(ParseContext::CLOSE_BRACKET, -1, -1);
+                to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
+                to_parse.emplace_back(ParseContext::COMMA, -1, -1);
+                to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
+                to_parse.emplace_back(ParseContext::COMMA, -1, -1);
+                to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
+            } else {
+                if (Const("and_n(", in)) {
+                    to_parse.emplace_back(ParseContext::AND_N, -1, -1);
+                } else if (Const("and_b(", in)) {
+                    to_parse.emplace_back(ParseContext::AND_B, -1, -1);
+                } else if (Const("and_v(", in)) {
+                    to_parse.emplace_back(ParseContext::AND_V, -1, -1);
+                } else if (Const("or_b(", in)) {
+                    to_parse.emplace_back(ParseContext::OR_B, -1, -1);
+                } else if (Const("or_c(", in)) {
+                    to_parse.emplace_back(ParseContext::OR_C, -1, -1);
+                } else if (Const("or_d(", in)) {
+                    to_parse.emplace_back(ParseContext::OR_D, -1, -1);
+                } else if (Const("or_i(", in)) {
+                    to_parse.emplace_back(ParseContext::OR_I, -1, -1);
+                } else {
+                    return {};
+                }
+                to_parse.emplace_back(ParseContext::CLOSE_BRACKET, -1, -1);
+                to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
+                to_parse.emplace_back(ParseContext::COMMA, -1, -1);
+                to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
+            }
+            break;
+        }
+        case ParseContext::ALT: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_A, Vector(std::move(constructed.back())));
+            break;
+        }
+        case ParseContext::SWAP: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_S, Vector(std::move(constructed.back())));
+            break;
+        }
+        case ParseContext::CHECK: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_C, Vector(std::move(constructed.back())));
+            break;
+        }
+        case ParseContext::DUP_IF: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_D, Vector(std::move(constructed.back())));
+            break;
+        }
+        case ParseContext::NON_ZERO: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_J, Vector(std::move(constructed.back())));
+            break;
+        }
+        case ParseContext::ZERO_NOTEQUAL: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_N, Vector(std::move(constructed.back())));
+            break;
+        }
+        case ParseContext::VERIFY: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_V, Vector(std::move(constructed.back())));
+            break;
+        }
+        case ParseContext::WRAP_U: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::OR_I, Vector(std::move(constructed.back()), MakeNodeRef<Key>(NodeType::JUST_0)));
+            break;
+        }
+        case ParseContext::WRAP_T: {
+            constructed.back() = MakeNodeRef<Key>(NodeType::AND_V, Vector(std::move(constructed.back()), MakeNodeRef<Key>(NodeType::JUST_1)));
+            break;
+        }
+        case ParseContext::AND_B: {
+            BuildBack(NodeType::AND_B, constructed);
+            break;
+        }
+        case ParseContext::AND_N: {
+            auto mid = std::move(constructed.back());
+            constructed.pop_back();
+            constructed.back() = MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(constructed.back()), std::move(mid), MakeNodeRef<Key>(NodeType::JUST_0)));
+            break;
+        }
+        case ParseContext::AND_V: {
+            BuildBack(NodeType::AND_V, constructed);
+            break;
+        }
+        case ParseContext::OR_B: {
+            BuildBack(NodeType::OR_B, constructed);
+            break;
+        }
+        case ParseContext::OR_C: {
+            BuildBack(NodeType::OR_C, constructed);
+            break;
+        }
+        case ParseContext::OR_D: {
+            BuildBack(NodeType::OR_D, constructed);
+            break;
+        }
+        case ParseContext::OR_I: {
+            BuildBack(NodeType::OR_I, constructed);
+            break;
+        }
+        case ParseContext::ANDOR: {
+            auto right = std::move(constructed.back());
+            constructed.pop_back();
+            auto mid = std::move(constructed.back());
+            constructed.pop_back();
+            constructed.back() = MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(constructed.back()), std::move(mid), std::move(right)));
+            break;
+        }
+        case ParseContext::THRESH: {
+            if (in.size() < 1) return {};
+            if (in[0] == ',') {
+                in = in.subspan(1);
+                to_parse.emplace_back(ParseContext::THRESH, n+1, k);
+                to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
+            } else if (in[0] == ')') {
+                in = in.subspan(1);
+                // Children are constructed in reverse order, so iterate from end to beginning
+                std::vector<NodeRef<Key>> subs;
+                for (int i = 0; i < n; ++i) {
+                    subs.push_back(std::move(constructed.back()));
+                    constructed.pop_back();
+                }
+                std::reverse(subs.begin(), subs.end());
+                constructed.push_back(MakeNodeRef<Key>(NodeType::THRESH, std::move(subs), k));
+            } else {
+                return {};
+            }
+            break;
+        }
+        case ParseContext::COMMA: {
+            if (in.size() < 1 || in[0] != ',') return {};
+            in = in.subspan(1);
+            break;
+        }
+        case ParseContext::CLOSE_BRACKET: {
+            if (in.size() < 1 || in[0] != ')') return {};
+            in = in.subspan(1);
+            break;
+        }
         }
     }
-    // Parse the other node types
-    NodeType nodetype;
-    if (expr == Span<const char>("0", 1)) {
-        return MakeNodeRef<Key>(NodeType::JUST_0);
-    } else if (expr == Span<const char>("1", 1)) {
-        return MakeNodeRef<Key>(NodeType::JUST_1);
-    } else if (Func("pk", expr)) {
-        Key key;
-        if (ctx.FromString(expr.begin(), expr.end(), key)) {
-            return MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key)))));
-        }
-        return {};
-    } else if (Func("pkh", expr)) {
-        Key key;
-        if (ctx.FromString(expr.begin(), expr.end(), key)) {
-            return MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key)))));
-        }
-        return {};
-    } else if (Func("pk_k", expr)) {
-        Key key;
-        if (ctx.FromString(expr.begin(), expr.end(), key)) {
-            return MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key)));
-        }
-        return {};
-    } else if (Func("pk_h", expr)) {
-        Key key;
-        if (ctx.FromString(expr.begin(), expr.end(), key)) {
-            return MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key)));
-        }
-        return {};
-    } else if (Func("sha256", expr)) {
-        std::string val = std::string(expr.begin(), expr.end());
-        if (!IsHex(val)) return {};
-        auto hash = ParseHex(val);
-        if (hash.size() != 32) return {};
-        return MakeNodeRef<Key>(NodeType::SHA256, std::move(hash));
-    } else if (Func("ripemd160", expr)) {
-        std::string val = std::string(expr.begin(), expr.end());
-        if (!IsHex(val)) return {};
-        auto hash = ParseHex(val);
-        if (hash.size() != 20) return {};
-        return MakeNodeRef<Key>(NodeType::RIPEMD160, std::move(hash));
-    } else if (Func("hash256", expr)) {
-        std::string val = std::string(expr.begin(), expr.end());
-        if (!IsHex(val)) return {};
-        auto hash = ParseHex(val);
-        if (hash.size() != 32) return {};
-        return MakeNodeRef<Key>(NodeType::HASH256, std::move(hash));
-    } else if (Func("hash160", expr)) {
-        std::string val = std::string(expr.begin(), expr.end());
-        if (!IsHex(val)) return {};
-        auto hash = ParseHex(val);
-        if (hash.size() != 20) return {};
-        return MakeNodeRef<Key>(NodeType::HASH160, std::move(hash));
-    } else if (Func("after", expr)) {
-        int64_t num;
-        if (!ParseInt64(std::string(expr.begin(), expr.end()), &num)) return {};
-        if (num < 1 || num >= 0x80000000L) return {};
-        return MakeNodeRef<Key>(NodeType::AFTER, num);
-    } else if (Func("older", expr)) {
-        int64_t num;
-        if (!ParseInt64(std::string(expr.begin(), expr.end()), &num)) return {};
-        if (num < 1 || num >= 0x80000000L) return {};
-        return MakeNodeRef<Key>(NodeType::OLDER, num);
-    } else if (Func("and_n", expr)) {
-        auto left = Parse<Key>(expr, ctx, recursion_depth + 1);
-        if (!left || !Const(",", expr)) return {};
-        auto right = Parse<Key>(expr, ctx, recursion_depth + 1);
-        if (!right || expr.size()) return {};
-        return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(right), MakeNodeRef<Key>(NodeType::JUST_0)));
-    } else if (Func("andor", expr)) {
-        auto left = Parse<Key>(expr, ctx, recursion_depth + 1);
-        if (!left || !Const(",", expr)) return {};
-        auto mid = Parse<Key>(expr, ctx, recursion_depth + 1);
-        if (!mid || !Const(",", expr)) return {};
-        auto right = Parse<Key>(expr, ctx, recursion_depth + 1);
-        if (!right || expr.size()) return {};
-        return MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(mid), std::move(right)));
-    } else if (Func("multi", expr)) {
-        auto arg = Expr(expr);
-        int64_t count;
-        if (!ParseInt64(std::string(arg.begin(), arg.end()), &count)) return {};
-        std::vector<Key> keys;
-        while (expr.size()) {
-            if (!Const(",", expr)) return {};
-            auto keyarg = Expr(expr);
-            Key key;
-            if (!ctx.FromString(keyarg.begin(), keyarg.end(), key)) return {};
-            keys.push_back(std::move(key));
-        }
-        if (keys.size() < 1 || keys.size() > 20) return {};
-        if (count < 1 || count > (int64_t)keys.size()) return {};
-        return MakeNodeRef<Key>(NodeType::MULTI, std::move(keys), count);
-    } else if (Func("thresh", expr)) {
-        auto arg = Expr(expr);
-        int64_t count;
-        if (!ParseInt64(std::string(arg.begin(), arg.end()), &count)) return {};
-        std::vector<NodeRef<Key>> subs;
-        while (expr.size()) {
-            if (!Const(",", expr)) return {};
-            auto sub = Parse<Key>(expr, ctx, recursion_depth + 1);
-            if (!sub) return {};
-            subs.push_back(std::move(sub));
-        }
-        if (count < 1 || count > (int64_t)subs.size()) return {};
-        return MakeNodeRef<Key>(NodeType::THRESH, std::move(subs), count);
-    } else if (Func("and_v", expr)) {
-        nodetype = NodeType::AND_V;
-    } else if (Func("and_b", expr)) {
-        nodetype = NodeType::AND_B;
-    } else if (Func("or_c", expr)) {
-        nodetype = NodeType::OR_C;
-    } else if (Func("or_b", expr)) {
-        nodetype = NodeType::OR_B;
-    } else if (Func("or_d", expr)) {
-        nodetype = NodeType::OR_D;
-    } else if (Func("or_i", expr)) {
-        nodetype = NodeType::OR_I;
-    } else {
-        return {};
-    }
-    auto left = Parse<Key>(expr, ctx, recursion_depth + 1);
-    if (!left || !Const(",", expr)) return {};
-    auto right = Parse<Key>(expr, ctx, recursion_depth + 1);
-    if (!right || expr.size()) return {};
-    return MakeNodeRef<Key>(nodetype, Vector(std::move(left), std::move(right)));
+
+    // Sanity checks on the produced miniscript
+    assert(constructed.size() == 1);
+    if (in.size() > 0) return {};
+    const NodeRef<Key> tl_node = std::move(constructed.front());
+    if (!tl_node->IsValidTopLevel()) return {};
+    return tl_node;
 }
 
 /** Decode a script into opcode/push pairs.
@@ -1101,8 +1309,10 @@ enum class DecodeContext {
     ENDIF_ELSE,
 };
 
+//! Parse a miniscript from a bitcoin script
 template<typename Key, typename Ctx, typename I>
-inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
+inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
+{
     // The two integers are used to hold state for thresh()
     std::vector<std::tuple<DecodeContext, int64_t, int64_t>> to_parse;
     std::vector<NodeRef<Key>> constructed;
@@ -1302,38 +1512,23 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
             break;
         }
         case DecodeContext::AND_V: {
-            NodeRef<Key> left = std::move(constructed.back());
-            constructed.pop_back();
-            NodeRef<Key> right = std::move(constructed.back());
-            constructed.back() = MakeNodeRef<Key>(NodeType::AND_V, Vector(std::move(left), std::move(right)));
+            BuildBack(NodeType::AND_V, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::AND_B: {
-            NodeRef<Key> left = std::move(constructed.back());
-            constructed.pop_back();
-            NodeRef<Key> right = std::move(constructed.back());
-            constructed.back() = MakeNodeRef<Key>(NodeType::AND_B, Vector(std::move(left), std::move(right)));
+            BuildBack(NodeType::AND_B, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_B: {
-            NodeRef<Key> left = std::move(constructed.back());
-            constructed.pop_back();
-            NodeRef<Key> right = std::move(constructed.back());
-            constructed.back() = MakeNodeRef<Key>(NodeType::OR_B, Vector(std::move(left), std::move(right)));
+            BuildBack(NodeType::OR_B, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_C: {
-            NodeRef<Key> left = std::move(constructed.back());
-            constructed.pop_back();
-            NodeRef<Key> right = std::move(constructed.back());
-            constructed.back() = MakeNodeRef<Key>(NodeType::OR_C, Vector(std::move(left), std::move(right)));
+            BuildBack(NodeType::OR_C, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_D: {
-            NodeRef<Key> left = std::move(constructed.back());
-            constructed.pop_back();
-            NodeRef<Key> right = std::move(constructed.back());
-            constructed.back() = MakeNodeRef<Key>(NodeType::OR_D, Vector(std::move(left), std::move(right)));
+            BuildBack(NodeType::OR_D, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::ANDOR: {
@@ -1416,10 +1611,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx) {
             if (in >= last) return {};
             if (in[0].first == OP_IF) {
                 ++in;
-                NodeRef<Key> left = std::move(constructed.back());
-                constructed.pop_back();
-                NodeRef<Key> right = std::move(constructed.back());
-                constructed.back() = MakeNodeRef<Key>(NodeType::OR_I, Vector(std::move(left), std::move(right)));
+                BuildBack(NodeType::OR_I, constructed, /* reverse */ true);
             } else if (in[0].first == OP_NOTIF) {
                 ++in;
                 to_parse.emplace_back(DecodeContext::ANDOR, -1, -1);
@@ -1446,8 +1638,8 @@ template<typename Ctx>
 inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& ctx) {
     using namespace internal;
     Span<const char> span = MakeSpan(str);
-    auto ret = Parse<typename Ctx::Key>(span, ctx, 0);
-    if (!ret || span.size()) return {};
+    auto ret = Parse<typename Ctx::Key>(span, ctx);
+    if (!ret) return {};
     return ret;
 }
 

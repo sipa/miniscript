@@ -8,6 +8,7 @@
 #include <script/script.h>
 #include <script/miniscript.h>
 #include <span.h>
+#include <util/spanparsing.h>
 #include <util/strencodings.h>
 
 #include "compiler.h"
