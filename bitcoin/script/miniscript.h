@@ -909,7 +909,7 @@ void BuildBack(NodeType nt, std::vector<NodeRef<Key>>& constructed, const bool r
 
 //! Parse a miniscript from its textual descriptor form.
 template<typename Key, typename Ctx>
-inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
+inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
 {
     using namespace spanparsing;
 
@@ -1638,9 +1638,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
 
 template<typename Ctx>
 inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& ctx) {
-    using namespace internal;
-    Span<const char> span = MakeSpan(str);
-    return Parse<typename Ctx::Key>(span, ctx);
+    return internal::Parse<typename Ctx::Key>(str, ctx);
 }
 
 template<typename Ctx>
