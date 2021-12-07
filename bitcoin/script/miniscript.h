@@ -1640,9 +1640,7 @@ template<typename Ctx>
 inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& ctx) {
     using namespace internal;
     Span<const char> span = MakeSpan(str);
-    auto ret = Parse<typename Ctx::Key>(span, ctx);
-    if (!ret) return {};
-    return ret;
+    return Parse<typename Ctx::Key>(span, ctx);
 }
 
 template<typename Ctx>
