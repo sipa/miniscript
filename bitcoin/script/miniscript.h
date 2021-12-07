@@ -1075,6 +1075,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
                 int next_comma = FindNextChar(in, ',');
                 if (next_comma < 1) return {};
                 if (!ParseInt64(std::string(in.begin(), in.begin() + next_comma), &k)) return {};
+                if (k < 1) return {};
                 in = in.subspan(next_comma + 1);
                 // n = 1 here because we read the first WRAPPED_EXPR before reaching THRESH
                 to_parse.emplace_back(ParseContext::THRESH, 1, k);
@@ -1193,6 +1194,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
                 to_parse.emplace_back(ParseContext::THRESH, n+1, k);
                 to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
             } else if (in[0] == ')') {
+                if (k > n) return {};
                 in = in.subspan(1);
                 // Children are constructed in reverse order, so iterate from end to beginning
                 std::vector<NodeRef<Key>> subs;
