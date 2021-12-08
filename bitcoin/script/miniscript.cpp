@@ -380,6 +380,9 @@ bool DecomposeScript(const CScript& script, std::vector<std::pair<opcodetype, st
             opcode = OP_VERIFY;
         } else if (IsPushdataOp(opcode)) {
             if (!CheckMinimalPush(push_data, opcode)) return false;
+        } else if (it != itend && (opcode == OP_CHECKSIG || opcode == OP_CHECKMULTISIG || opcode == OP_EQUAL) && (*it == OP_VERIFY)) {
+            // Rule out non minimal VERIFY sequences
+            return false;
         }
         out.emplace_back(opcode, std::move(push_data));
     }

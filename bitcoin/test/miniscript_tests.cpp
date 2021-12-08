@@ -609,6 +609,10 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     std::vector<unsigned char> nonminpush = ParseHex("0000210232780000feff00ffffffffffff21ff005f00ae21ae00000000060602060406564c2102320000060900fe00005f00ae21ae00100000060606060606000000000000000000000000000000000000000000000000000000000000000000");
     const CScript nonminpush_script(nonminpush.begin(), nonminpush.end());
     BOOST_CHECK(miniscript::FromScript(nonminpush_script, CONVERTER) == nullptr);
+    // A non-minimal VERIFY (<key> CHECKSIG VERIFY 1)
+    std::vector<unsigned char> nonminverify = ParseHex("2103a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7ac6951");
+    const CScript nonminverify_script(nonminverify.begin(), nonminverify.end());
+    BOOST_CHECK(miniscript::FromScript(nonminverify_script, CONVERTER) == nullptr);
     // A threshold as large as the number of subs is valid.
     Test("thresh(2,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),altv:after(100))", "2103d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac6b6300670164b16951686c935287", TESTMODE_VALID | TESTMODE_NEEDSIG | TESTMODE_NONMAL);
     // A threshold of 1 is valid.
