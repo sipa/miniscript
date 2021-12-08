@@ -909,7 +909,7 @@ void BuildBack(NodeType nt, std::vector<NodeRef<Key>>& constructed, const bool r
 
 //! Parse a miniscript from its textual descriptor form.
 template<typename Key, typename Ctx>
-inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
+inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
 {
     using namespace spanparsing;
 
@@ -1075,6 +1075,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
                 int next_comma = FindNextChar(in, ',');
                 if (next_comma < 1) return {};
                 if (!ParseInt64(std::string(in.begin(), in.begin() + next_comma), &k)) return {};
+                if (k < 1) return {};
                 in = in.subspan(next_comma + 1);
                 // n = 1 here because we read the first WRAPPED_EXPR before reaching THRESH
                 to_parse.emplace_back(ParseContext::THRESH, 1, k);
@@ -1193,6 +1194,7 @@ inline NodeRef<Key> Parse(Span<const char>& in, const Ctx& ctx)
                 to_parse.emplace_back(ParseContext::THRESH, n+1, k);
                 to_parse.emplace_back(ParseContext::WRAPPED_EXPR, -1, -1);
             } else if (in[0] == ')') {
+                if (k > n) return {};
                 in = in.subspan(1);
                 // Children are constructed in reverse order, so iterate from end to beginning
                 std::vector<NodeRef<Key>> subs;
@@ -1636,11 +1638,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
 
 template<typename Ctx>
 inline NodeRef<typename Ctx::Key> FromString(const std::string& str, const Ctx& ctx) {
-    using namespace internal;
-    Span<const char> span = MakeSpan(str);
-    auto ret = Parse<typename Ctx::Key>(span, ctx);
-    if (!ret) return {};
-    return ret;
+    return internal::Parse<typename Ctx::Key>(str, ctx);
 }
 
 template<typename Ctx>
