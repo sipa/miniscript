@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <numeric>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -348,6 +349,107 @@ private:
         return internal::ComputeScriptLen(nodetype, sub0type, subsize, k, subs.size(), keys.size());
     }
 
+    /* Apply a recursive algorithm to a Miniscript tree, without actual recursive calls.
+     *
+     * The algorithm is defined by two functions: downfn and upfn. Conceptually, the
+     * result can be thought of as first using downfn to compute a "state" for each node,
+     * from the root down to the leaves. Then upfn is used to compute a "result" for each
+     * node, from the leaves back up to the root, which is then returned. In the actual
+     * implementation, both functions are invoked in an interleaved fashion, performing a
+     * depth-first traversal of the tree.
+     *
+     * In more detail, it is invoked as node.TreeEvalMaybe<Result>(root, downfn, upfn):
+     * - root is the state of the root node, of type State.
+     * - downfn is a callable (const State&, const Node&, size_t) -> State, which given a
+     *   node, its state, and an index of one of its children, computes the state of that
+     *   child.
+     * - upfn is a callable (State&&, const Node&, Span<Result>) -> std::optional<Result>,
+     *   which given a node, its state, and a Span of the results of its children,
+     *   computes the result of the node. If std::nullopt is returned by upfn,
+     *   TreeEvalMaybe() immediately returns std::nullopt.
+     * The return value of TreeEvalMaybe is the result of the root node.
+     */
+    template<typename Result, typename State, typename DownFn, typename UpFn>
+    std::optional<Result> TreeEvalMaybe(State root_state, DownFn downfn, UpFn upfn) const
+    {
+        /** Entries of the explicit stack tracked in this algorithm. */
+        struct StackElem
+        {
+            const Node& node; //!< The node being evaluated.
+            bool expanded; //!< Whether the children of this node have been added.
+            State state; //!< The state for that node.
+
+            StackElem(const Node& node_, bool exp_, State&& state_) :
+                node(node_), expanded(exp_), state(std::move(state_)) {}
+        };
+        /* Stack of tree nodes being explored. */
+        std::vector<StackElem> stack;
+        /* Results of subtrees so far. Their order and mapping to tree nodes
+         * is implicitly defined by stack. */
+        std::vector<Result> results;
+        stack.emplace_back(*this, false, std::move(root_state));
+
+        /* Here is a demonstration of the algorithm, for an example tree A(B,C(D,E),F).
+         * State variables are omitted for simplicity.
+         *
+         * First: stack=[(A,false)] results=[].
+         *        stack=[(A,true),(F,false),(C,false),(B,false)] results=[]
+         *        stack=[(A,true),(F,false),(C,false)] results=[B]
+         *        stack=[(A,true),(F,false),(C,true),(E,false),(D,false)] results=[B]
+         *        stack=[(A,true),(F,false),(C,true),(E,false)] results=[B,D]
+         *        stack=[(A,true),(F,false),(C,true)] results=[B,D,E]
+         *        stack=[(A,true),(F,false)] results=[B,C]
+         *        stack=[(A,true)] results=[B,C,F]
+         * Final: stack=[] results=[A]
+         */
+        while (stack.size()) {
+            const Node& node = stack.back().node;
+            if (!stack.back().expanded && !node.subs.empty()) {
+                /* We encounter an unexpanded tree node with children. Mark it as
+                 * expanded, and add its children in reverse order. By the time we
+                 * process this node again, the results of the children will be
+                 * at the end of results in normal order. */
+                stack.back().expanded = true;
+                stack.reserve(stack.size() + node.subs.size());
+                const auto& parent_state = stack.back().state;
+                for (size_t i = 0; i < node.subs.size(); ++i) {
+                    size_t index = node.subs.size() - i - 1;
+                    stack.emplace_back(**(node.subs.rbegin() + i), false,
+                        downfn(parent_state, node, index));
+                }
+                continue;
+            }
+            // Invoke upfn with the last node.subs.size() elements of results as input.
+            assert(results.size() >= node.subs.size());
+            std::optional<Result> result{upfn(std::move(stack.back().state), node,
+                Span<Result>{results}.last(node.subs.size()))};
+            // If evaluation returns std::nullopt, abort immediately.
+            if (!result) return {};
+            // Replace the last node.subs.size() elements of results with the new result.
+            results.resize(results.size() - node.subs.size() + 1);
+            results.back() = std::move(*result);
+            stack.pop_back();
+        }
+        // The final remaining results element is the root result, return it.
+        assert(results.size() == 1);
+        return std::move(results[0]);
+    }
+
+    /** Like TreeEvalMaybe, but always produces a result. upfn must return Result. */
+    template<typename Result, typename State, typename DownFn, typename UpFn>
+    Result TreeEval(State root_state, DownFn&& downfn, UpFn upfn) const
+    {
+        // Invoke TreeEvalMaybe with upfn wrapped to return std::optional<Result>, and then
+        // unconditionally dereference the result (it cannot be std::nullopt).
+        return std::move(*TreeEvalMaybe<Result>(std::move(root_state),
+            std::forward<DownFn>(downfn),
+            [&upfn](State&& state, const Node& node, Span<Result> subs) {
+                Result res{upfn(std::move(state), node, subs)};
+                return std::optional<Result>(std::move(res));
+            }
+        ));
+    }
+
     //! Compute the type for this miniscript.
     Type CalcType() const {
         using namespace internal;
@@ -365,142 +467,177 @@ private:
         return SanitizeType(ComputeType(nodetype, x, y, z, sub_types, k, data.size(), subs.size(), keys.size()));
     }
 
-    //! Internal code for ToScript.
+public:
     template<typename Ctx>
-    CScript MakeScript(const Ctx& ctx, bool verify = false) const {
-        std::vector<unsigned char> bytes;
-        switch (nodetype) {
-            case NodeType::PK_K: return CScript() << ctx.ToPKBytes(keys[0]);
-            case NodeType::PK_H: return CScript() << OP_DUP << OP_HASH160 << ctx.ToPKHBytes(keys[0]) << OP_EQUALVERIFY;
-            case NodeType::OLDER: return CScript() << k << OP_CHECKSEQUENCEVERIFY;
-            case NodeType::AFTER: return CScript() << k << OP_CHECKLOCKTIMEVERIFY;
-            case NodeType::SHA256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_SHA256 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-            case NodeType::RIPEMD160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_RIPEMD160 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-            case NodeType::HASH256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH256 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-            case NodeType::HASH160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH160 << data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-            case NodeType::WRAP_A: return (CScript() << OP_TOALTSTACK) + subs[0]->MakeScript(ctx) + (CScript() << OP_FROMALTSTACK);
-            case NodeType::WRAP_S: return (CScript() << OP_SWAP) + subs[0]->MakeScript(ctx, verify);
-            case NodeType::WRAP_C: return subs[0]->MakeScript(ctx) + CScript() << (verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
-            case NodeType::WRAP_D: return (CScript() << OP_DUP << OP_IF) + subs[0]->MakeScript(ctx) + (CScript() << OP_ENDIF);
-            case NodeType::WRAP_V: return subs[0]->MakeScript(ctx, true) + (subs[0]->GetType() << "x"_mst ? (CScript() << OP_VERIFY) : CScript());
-            case NodeType::WRAP_J: return (CScript() << OP_SIZE << OP_0NOTEQUAL << OP_IF) + subs[0]->MakeScript(ctx) + (CScript() << OP_ENDIF);
-            case NodeType::WRAP_N: return subs[0]->MakeScript(ctx) + CScript() << OP_0NOTEQUAL;
-            case NodeType::JUST_1: return CScript() << OP_1;
-            case NodeType::JUST_0: return CScript() << OP_0;
-            case NodeType::AND_V: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx, verify);
-            case NodeType::AND_B: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx) + (CScript() << OP_BOOLAND);
-            case NodeType::OR_B: return subs[0]->MakeScript(ctx) + subs[1]->MakeScript(ctx) + (CScript() << OP_BOOLOR);
-            case NodeType::OR_D: return subs[0]->MakeScript(ctx) + (CScript() << OP_IFDUP << OP_NOTIF) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
-            case NodeType::OR_C: return subs[0]->MakeScript(ctx) + (CScript() << OP_NOTIF) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
-            case NodeType::OR_I: return (CScript() << OP_IF) + subs[0]->MakeScript(ctx) + (CScript() << OP_ELSE) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
-            case NodeType::ANDOR: return subs[0]->MakeScript(ctx) + (CScript() << OP_NOTIF) + subs[2]->MakeScript(ctx) + (CScript() << OP_ELSE) + subs[1]->MakeScript(ctx) + (CScript() << OP_ENDIF);
-            case NodeType::MULTI: {
-                CScript script = CScript() << k;
-                for (const auto& key : keys) {
-                    script << ctx.ToPKBytes(key);
+    CScript ToScript(const Ctx& ctx) const
+    {
+        // To construct the CScript for a Miniscript object, we use the TreeEval algorithm.
+        // The State is a boolean: whether or not the node's script expansion is followed
+        // by an OP_VERIFY (which may need to be combined with the last script opcode).
+        auto downfn = [](bool verify, const Node& node, size_t index) {
+            // For WRAP_V, the subexpression is certainly followed by OP_VERIFY.
+            if (node.nodetype == NodeType::WRAP_V) return true;
+            // The subexpression of WRAP_S, and the last subexpression of AND_V
+            // inherit the followed-by-OP_VERIFY property from the parent.
+            if (node.nodetype == NodeType::WRAP_S ||
+                (node.nodetype == NodeType::AND_V && index == 1)) return verify;
+            return false;
+        };
+        // The upward function computes for a node, given its followed-by-OP_VERIFY status
+        // and the CScripts of its child nodes, the CScript of the node.
+        auto upfn = [&ctx](bool verify, const Node& node, Span<CScript> subs) -> CScript {
+            switch (node.nodetype) {
+                case NodeType::PK_K: return CScript() << ctx.ToPKBytes(node.keys[0]);
+                case NodeType::PK_H: return CScript() << OP_DUP << OP_HASH160 << ctx.ToPKHBytes(node.keys[0]) << OP_EQUALVERIFY;
+                case NodeType::OLDER: return CScript() << node.k << OP_CHECKSEQUENCEVERIFY;
+                case NodeType::AFTER: return CScript() << node.k << OP_CHECKLOCKTIMEVERIFY;
+                case NodeType::SHA256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_SHA256 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case NodeType::RIPEMD160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_RIPEMD160 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case NodeType::HASH256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH256 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case NodeType::HASH160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH160 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case NodeType::WRAP_A: return (CScript() << OP_TOALTSTACK) + std::move(subs[0]) + (CScript() << OP_FROMALTSTACK);
+                case NodeType::WRAP_S: return (CScript() << OP_SWAP) + std::move(subs[0]);
+                case NodeType::WRAP_C: return std::move(subs[0]) + CScript() << (verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
+                case NodeType::WRAP_D: return (CScript() << OP_DUP << OP_IF) + std::move(subs[0]) + (CScript() << OP_ENDIF);
+                case NodeType::WRAP_V: return std::move(subs[0]) + (node.subs[0]->GetType() << "x"_mst ? (CScript() << OP_VERIFY) : CScript());
+                case NodeType::WRAP_J: return (CScript() << OP_SIZE << OP_0NOTEQUAL << OP_IF) + std::move(subs[0]) + (CScript() << OP_ENDIF);
+                case NodeType::WRAP_N: return std::move(subs[0]) + CScript() << OP_0NOTEQUAL;
+                case NodeType::JUST_1: return CScript() << OP_1;
+                case NodeType::JUST_0: return CScript() << OP_0;
+                case NodeType::AND_V: return std::move(subs[0]) + std::move(subs[1]);
+                case NodeType::AND_B: return std::move(subs[0]) + std::move(subs[1]) + (CScript() << OP_BOOLAND);
+                case NodeType::OR_B: return std::move(subs[0]) + std::move(subs[1]) + (CScript() << OP_BOOLOR);
+                case NodeType::OR_D: return std::move(subs[0]) + (CScript() << OP_IFDUP << OP_NOTIF) + std::move(subs[1]) + (CScript() << OP_ENDIF);
+                case NodeType::OR_C: return std::move(subs[0]) + (CScript() << OP_NOTIF) + std::move(subs[1]) + (CScript() << OP_ENDIF);
+                case NodeType::OR_I: return (CScript() << OP_IF) + std::move(subs[0]) + (CScript() << OP_ELSE) + std::move(subs[1]) + (CScript() << OP_ENDIF);
+                case NodeType::ANDOR: return std::move(subs[0]) + (CScript() << OP_NOTIF) + std::move(subs[2]) + (CScript() << OP_ELSE) + std::move(subs[1]) + (CScript() << OP_ENDIF);
+                case NodeType::MULTI: {
+                    CScript script = CScript() << node.k;
+                    for (const auto& key : node.keys) {
+                        script << ctx.ToPKBytes(key);
+                    }
+                    return std::move(script) << node.keys.size() << (verify ? OP_CHECKMULTISIGVERIFY : OP_CHECKMULTISIG);
                 }
-                return script << keys.size() << (verify ? OP_CHECKMULTISIGVERIFY : OP_CHECKMULTISIG);
-            }
-            case NodeType::THRESH: {
-                CScript script = subs[0]->MakeScript(ctx);
-                for (size_t i = 1; i < subs.size(); ++i) {
-                    script = (script + subs[i]->MakeScript(ctx)) << OP_ADD;
+                case NodeType::THRESH: {
+                    CScript script = std::move(subs[0]);
+                    for (size_t i = 1; i < subs.size(); ++i) {
+                        script = (std::move(script) + std::move(subs[i])) << OP_ADD;
+                    }
+                    return std::move(script) << node.k << (verify ? OP_EQUALVERIFY : OP_EQUAL);
                 }
-                return script << k << (verify ? OP_EQUALVERIFY : OP_EQUAL);
             }
-        }
-        assert(false);
-        return {};
+            assert(false);
+            return {};
+        };
+        return TreeEval<CScript>(false, downfn, upfn);
     }
 
-    //! Internal code for ToString.
-    template<typename Ctx>
-    std::string MakeString(const Ctx& ctx, bool& success, bool wrapped = false) const {
-        std::string ret = wrapped ? ":" : "";
+    template<typename CTx>
+    bool ToString(const CTx& ctx, std::string& ret) const {
+        // To construct the std::string representation for a Miniscript object, we use
+        // the TreeEvalMaybe algorithm. The State is a boolean: whether the parent node is a
+        // wrapper. If so, non-wrapper expressions must be prefixed with a ":".
+        auto downfn = [](bool, const Node& node, size_t) {
+            return (node.nodetype == NodeType::WRAP_A || node.nodetype == NodeType::WRAP_S ||
+                    node.nodetype == NodeType::WRAP_D || node.nodetype == NodeType::WRAP_V ||
+                    node.nodetype == NodeType::WRAP_J || node.nodetype == NodeType::WRAP_N ||
+                    node.nodetype == NodeType::WRAP_C ||
+                    (node.nodetype == NodeType::AND_V && node.subs[1]->nodetype == NodeType::JUST_1) ||
+                    (node.nodetype == NodeType::OR_I && node.subs[0]->nodetype == NodeType::JUST_0) ||
+                    (node.nodetype == NodeType::OR_I && node.subs[1]->nodetype == NodeType::JUST_0));
+        };
+        // The upward function computes for a node, given whether its parent is a wrapper,
+        // and the string representations of its child nodes, the string representation of the node.
+        auto upfn = [&ctx](bool wrapped, const Node& node, Span<std::string> subs) -> std::optional<std::string> {
+            std::string ret = wrapped ? ":" : "";
 
-        switch (nodetype) {
-            case NodeType::WRAP_A: return "a" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::WRAP_S: return "s" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::WRAP_C:
-                if (subs[0]->nodetype == NodeType::PK_K) {
-                    // pk(K) is syntactic sugar for c:pk_k(K)
+            switch (node.nodetype) {
+                case NodeType::WRAP_A: return "a" + std::move(subs[0]);
+                case NodeType::WRAP_S: return "s" + std::move(subs[0]);
+                case NodeType::WRAP_C:
+                    if (node.subs[0]->nodetype == NodeType::PK_K) {
+                        // pk(K) is syntactic sugar for c:pk_k(K)
+                        std::string key_str;
+                        if (!ctx.ToString(node.subs[0]->keys[0], key_str)) return {};
+                        return std::move(ret) + "pk(" + std::move(key_str) + ")";
+                    }
+                    if (node.subs[0]->nodetype == NodeType::PK_H) {
+                        // pkh(K) is syntactic sugar for c:pk_h(K)
+                        std::string key_str;
+                        if (!ctx.ToString(node.subs[0]->keys[0], key_str)) return {};
+                        return std::move(ret) + "pkh(" + std::move(key_str) + ")";
+                    }
+                    return "c" + std::move(subs[0]);
+                case NodeType::WRAP_D: return "d" + std::move(subs[0]);
+                case NodeType::WRAP_V: return "v" + std::move(subs[0]);
+                case NodeType::WRAP_J: return "j" + std::move(subs[0]);
+                case NodeType::WRAP_N: return "n" + std::move(subs[0]);
+                case NodeType::AND_V:
+                    // t:X is syntactic sugar for and_v(X,1).
+                    if (node.subs[1]->nodetype == NodeType::JUST_1) return "t" + std::move(subs[0]);
+                    break;
+                case NodeType::OR_I:
+                    if (node.subs[0]->nodetype == NodeType::JUST_0) return "l" + std::move(subs[1]);
+                    if (node.subs[1]->nodetype == NodeType::JUST_0) return "u" + std::move(subs[0]);
+                    break;
+                default: break;
+            }
+            switch (node.nodetype) {
+                case NodeType::PK_K: {
                     std::string key_str;
-                    success = ctx.ToString(subs[0]->keys[0], key_str);
-                    return std::move(ret) + "pk(" + std::move(key_str) + ")";
+                    if (!ctx.ToString(node.keys[0], key_str)) return {};
+                    return std::move(ret) + "pk_k(" + std::move(key_str) + ")";
                 }
-                if (subs[0]->nodetype == NodeType::PK_H) {
-                    // pkh(K) is syntactic sugar for c:pk_h(K)
+                case NodeType::PK_H: {
                     std::string key_str;
-                    success = ctx.ToString(subs[0]->keys[0], key_str);
-                    return std::move(ret) + "pkh(" + std::move(key_str) + ")";
+                    if (!ctx.ToString(node.keys[0], key_str)) return {};
+                    return std::move(ret) + "pk_h(" + std::move(key_str) + ")";
                 }
-                return "c" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::WRAP_D: return "d" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::WRAP_V: return "v" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::WRAP_J: return "j" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::WRAP_N: return "n" + subs[0]->MakeString(ctx, success, true);
-            case NodeType::AND_V:
-                // t:X is syntactic sugar for and_v(X,1).
-                if (subs[1]->nodetype == NodeType::JUST_1) return "t" + subs[0]->MakeString(ctx, success, true);
-                break;
-            case NodeType::OR_I:
-                if (subs[0]->nodetype == NodeType::JUST_0) return "l" + subs[1]->MakeString(ctx, success, true);
-                if (subs[1]->nodetype == NodeType::JUST_0) return "u" + subs[0]->MakeString(ctx, success, true);
-                break;
-            default:
-                break;
-        }
+                case NodeType::AFTER: return std::move(ret) + "after(" + std::to_string(node.k) + ")";
+                case NodeType::OLDER: return std::move(ret) + "older(" + std::to_string(node.k) + ")";
+                case NodeType::HASH256: return std::move(ret) + "hash256(" + HexStr(node.data) + ")";
+                case NodeType::HASH160: return std::move(ret) + "hash160(" + HexStr(node.data) + ")";
+                case NodeType::SHA256: return std::move(ret) + "sha256(" + HexStr(node.data) + ")";
+                case NodeType::RIPEMD160: return std::move(ret) + "ripemd160(" + HexStr(node.data) + ")";
+                case NodeType::JUST_1: return std::move(ret) + "1";
+                case NodeType::JUST_0: return std::move(ret) + "0";
+                case NodeType::AND_V: return std::move(ret) + "and_v(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case NodeType::AND_B: return std::move(ret) + "and_b(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case NodeType::OR_B: return std::move(ret) + "or_b(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case NodeType::OR_D: return std::move(ret) + "or_d(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case NodeType::OR_C: return std::move(ret) + "or_c(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case NodeType::OR_I: return std::move(ret) + "or_i(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case NodeType::ANDOR:
+                    // and_n(X,Y) is syntactic sugar for andor(X,Y,0).
+                    if (node.subs[2]->nodetype == NodeType::JUST_0) return std::move(ret) + "and_n(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                    return std::move(ret) + "andor(" + std::move(subs[0]) + "," + std::move(subs[1]) + "," + std::move(subs[2]) + ")";
+                case NodeType::MULTI: {
+                    auto str = std::move(ret) + "multi(" + std::to_string(node.k);
+                    for (const auto& key : node.keys) {
+                        std::string key_str;
+                        if (!ctx.ToString(key, key_str)) return {};
+                        str += "," + std::move(key_str);
+                    }
+                    return std::move(str) + ")";
+                }
+                case NodeType::THRESH: {
+                    auto str = std::move(ret) + "thresh(" + std::to_string(node.k);
+                    for (auto& sub : subs) {
+                        str += "," + std::move(sub);
+                    }
+                    return std::move(str) + ")";
+                }
+                default: assert(false);
+            }
+            return ""; // Should never be reached.
+        };
 
-        switch (nodetype) {
-            case NodeType::PK_K: {
-                std::string key_str;
-                success = ctx.ToString(keys[0], key_str);
-                return std::move(ret) + "pk_k(" + std::move(key_str) + ")";
-            }
-            case NodeType::PK_H: {
-                std::string key_str;
-                success = ctx.ToString(keys[0], key_str);
-                return std::move(ret) + "pk_h(" + std::move(key_str) + ")";
-            }
-            case NodeType::AFTER: return std::move(ret) + "after(" + std::to_string(k) + ")";
-            case NodeType::OLDER: return std::move(ret) + "older(" + std::to_string(k) + ")";
-            case NodeType::HASH256: return std::move(ret) + "hash256(" + HexStr(data) + ")";
-            case NodeType::HASH160: return std::move(ret) + "hash160(" + HexStr(data) + ")";
-            case NodeType::SHA256: return std::move(ret) + "sha256(" + HexStr(data) + ")";
-            case NodeType::RIPEMD160: return std::move(ret) + "ripemd160(" + HexStr(data) + ")";
-            case NodeType::JUST_1: return std::move(ret) + "1";
-            case NodeType::JUST_0: return std::move(ret) + "0";
-            case NodeType::AND_V: return std::move(ret) + "and_v(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
-            case NodeType::AND_B: return std::move(ret) + "and_b(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
-            case NodeType::OR_B: return std::move(ret) + "or_b(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
-            case NodeType::OR_D: return std::move(ret) + "or_d(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
-            case NodeType::OR_C: return std::move(ret) + "or_c(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
-            case NodeType::OR_I: return std::move(ret) + "or_i(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
-            case NodeType::ANDOR:
-                // and_n(X,Y) is syntactic sugar for andor(X,Y,0).
-                if (subs[2]->nodetype == NodeType::JUST_0) return std::move(ret) + "and_n(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + ")";
-                return std::move(ret) + "andor(" + subs[0]->MakeString(ctx, success) + "," + subs[1]->MakeString(ctx, success) + "," + subs[2]->MakeString(ctx, success) + ")";
-            case NodeType::MULTI: {
-                auto str = std::move(ret) + "multi(" + std::to_string(k);
-                for (const auto& key : keys) {
-                    std::string key_str;
-                    success &= ctx.ToString(key, key_str);
-                    str += "," + std::move(key_str);
-                }
-                return std::move(str) + ")";
-            }
-            case NodeType::THRESH: {
-                auto str = std::move(ret) + "thresh(" + std::to_string(k);
-                for (const auto& sub : subs) {
-                    str += "," + sub->MakeString(ctx, success);
-                }
-                return std::move(str) + ")";
-            }
-            default: assert(false); // Wrappers should have been handled above
-        }
-        return "";
+        auto res = TreeEvalMaybe<std::string>(false, downfn, upfn);
+        if (res.has_value()) ret = std::move(*res);
+        return res.has_value();
     }
 
+private:
     internal::Ops CalcOps() const {
         switch (nodetype) {
             case NodeType::PK_K: return {0, 0, 0};
@@ -788,19 +925,6 @@ public:
 
     //! Check whether this node is safe as a script on its own.
     bool IsSaneTopLevel() const { return GetType() << "Bs"_mst && IsSane() && IsValidTopLevel(); }
-
-    //! Construct the script for this miniscript (including subexpressions).
-    template<typename Ctx>
-    CScript ToScript(const Ctx& ctx) const { return MakeScript(ctx); }
-
-    //! Convert this miniscript to its textual descriptor notation.
-    template<typename Ctx>
-    bool ToString(const Ctx& ctx, std::string& out) const {
-        bool ret = true;
-        out = MakeString(ctx, ret);
-        if (!ret) out = "";
-        return ret;
-    }
 
     template<typename Ctx>
     Availability Satisfy(const Ctx& ctx, std::vector<std::vector<unsigned char>>& stack, bool nonmalleable = true) const {
