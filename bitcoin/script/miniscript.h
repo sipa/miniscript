@@ -266,6 +266,12 @@ struct InputStack {
     friend InputStack Choose(InputStack a, InputStack b, bool nonmalleable);
 };
 
+static const auto ZERO = InputStack(std::vector<unsigned char>());
+static const auto ZERO32 = InputStack(std::vector<unsigned char>(32, 0)).Malleable();
+static const auto ONE = InputStack(Vector((unsigned char)1));
+static const auto EMPTY = InputStack();
+static const auto INVALID = InputStack().Available(Availability::NO);
+
 //! A pair of a satisfaction and a dissatisfaction InputStack.
 struct InputResult {
     InputStack nsat, sat;
@@ -443,6 +449,21 @@ private:
             std::forward<DownFn>(downfn),
             [&upfn](State&& state, const Node& node, Span<Result> subs) {
                 Result res{upfn(std::move(state), node, subs)};
+                return std::optional<Result>(std::move(res));
+            }
+        ));
+    }
+
+    /** Like TreeEval, but without downfn or State type.
+     *  upfn takes (const Node&, Span<Result>) and returns Result. */
+    template<typename Result, typename UpFn>
+    Result TreeEval(UpFn upfn) const
+    {
+        struct DummyState {};
+        return std::move(*TreeEvalMaybe<Result>(DummyState{},
+            [](DummyState, const Node&, size_t) { return DummyState{}; },
+            [&upfn](DummyState, const Node& node, Span<Result> subs) {
+                Result res{upfn(node, subs)};
                 return std::optional<Result>(std::move(res));
             }
         ));
@@ -724,167 +745,164 @@ private:
         return {{}, {}};
     }
 
+
     template<typename Ctx>
     internal::InputResult ProduceInput(const Ctx& ctx, bool nonmal) const {
-        auto ret = ProduceInputHelper(ctx, nonmal);
-        // Do a consistency check between the satisfaction code and the type checker
-        // (the actual satisfaction code in ProduceInputHelper does not use GetType)
-        if (GetType() << "z"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.stack.size() == 0);
-        if (GetType() << "z"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.size() == 0);
-        if (GetType() << "o"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.stack.size() == 1);
-        if (GetType() << "o"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.size() == 1);
-        if (GetType() << "n"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.back().size() != 0);
-        if (GetType() << "d"_mst) assert(ret.nsat.available != Availability::NO);
-        if (GetType() << "f"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.has_sig);
-        if (GetType() << "s"_mst && ret.sat.available != Availability::NO) assert(ret.sat.has_sig);
-        if (nonmal) {
-            if (GetType() << "d"_mst) assert(!ret.nsat.has_sig);
-            if (GetType() << "d"_mst && !ret.nsat.malleable) assert(!ret.nsat.non_canon);
-            if (GetType() << "e"_mst) assert(!ret.nsat.malleable);
-            if (GetType() << "m"_mst && ret.sat.available != Availability::NO) assert(!ret.sat.malleable);
-            if (ret.sat.available != Availability::NO && !ret.sat.malleable) assert(!ret.sat.non_canon);
-        }
-        return ret;
-    }
-
-    template<typename Ctx>
-    internal::InputResult ProduceInputHelper(const Ctx& ctx, bool nonmal) const {
         using namespace internal;
 
-        const auto ZERO = InputStack(std::vector<unsigned char>());
-        const auto ZERO32 = InputStack(std::vector<unsigned char>(32, 0)).Malleable();
-        const auto ONE = InputStack(Vector((unsigned char)1));
-        const auto EMPTY = InputStack();
-        const auto MALLEABLE_EMPTY = InputStack().Malleable();
-        const auto INVALID = InputStack().Available(Availability::NO);
-
-        switch (nodetype) {
-            case NodeType::PK_K: {
-                std::vector<unsigned char> sig;
-                Availability avail = ctx.Sign(keys[0], sig);
-                return InputResult(ZERO, InputStack(std::move(sig)).WithSig().Available(avail));
-            }
-            case NodeType::PK_H: {
-                std::vector<unsigned char> key = ctx.ToPKBytes(keys[0]), sig;
-                Availability avail = ctx.Sign(keys[0], sig);
-                return InputResult(ZERO + InputStack(key), (InputStack(std::move(sig)).WithSig() + InputStack(key)).Available(avail));
-            }
-            case NodeType::MULTI: {
-                std::vector<InputStack> sats = Vector(ZERO);
-                for (size_t i = 0; i < keys.size(); ++i) {
+        auto helper = [&ctx, nonmal](const Node& node, Span<InputResult> subres) -> InputResult {
+            switch (node.nodetype) {
+                case NodeType::PK_K: {
                     std::vector<unsigned char> sig;
-                    Availability avail = ctx.Sign(keys[i], sig);
-                    auto sat = InputStack(std::move(sig)).WithSig().Available(avail);
-                    std::vector<InputStack> next_sats;
-                    next_sats.push_back(sats[0]);
-                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j], std::move(sats[j - 1]) + sat, nonmal));
-                    next_sats.push_back(std::move(sats[sats.size() - 1]) + std::move(sat));
-                    sats = std::move(next_sats);
+                    Availability avail = ctx.Sign(node.keys[0], sig);
+                    return InputResult(ZERO, InputStack(std::move(sig)).WithSig().Available(avail));
                 }
-                InputStack nsat = ZERO;
-                for (size_t i = 0; i < k; ++i) nsat = std::move(nsat) + ZERO;
-                assert(k <= sats.size());
-                return InputResult(std::move(nsat), std::move(sats[k]));
-            }
-            case NodeType::THRESH: {
-                std::vector<InputStack> sats = Vector(EMPTY);
-                for (size_t i = 0; i < subs.size(); ++i) {
-                    auto res = subs[subs.size() - i - 1]->ProduceInput(ctx, nonmal);
-                    std::vector<InputStack> next_sats;
-                    next_sats.push_back(sats[0] + res.nsat);
-                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + res.nsat, std::move(sats[j - 1]) + res.sat, nonmal));
-                    next_sats.push_back(std::move(sats[sats.size() - 1]) + std::move(res.sat));
-                    sats = std::move(next_sats);
+                case NodeType::PK_H: {
+                    std::vector<unsigned char> key = ctx.ToPKBytes(node.keys[0]), sig;
+                    Availability avail = ctx.Sign(node.keys[0], sig);
+                    return InputResult(ZERO + InputStack(key), (InputStack(std::move(sig)).WithSig() + InputStack(key)).Available(avail));
                 }
-                InputStack nsat = INVALID;
-                for (size_t i = 0; i < sats.size(); ++i) {
-                    if (i != k) nsat = Choose(std::move(nsat), std::move(sats[i]), nonmal);
+                case NodeType::MULTI: {
+                    std::vector<InputStack> sats = Vector(ZERO);
+                    for (size_t i = 0; i < node.keys.size(); ++i) {
+                        std::vector<unsigned char> sig;
+                        Availability avail = ctx.Sign(node.keys[i], sig);
+                        auto sat = InputStack(std::move(sig)).WithSig().Available(avail);
+                        std::vector<InputStack> next_sats;
+                        next_sats.push_back(sats[0]);
+                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j], std::move(sats[j - 1]) + sat, nonmal));
+                        next_sats.push_back(std::move(sats[sats.size() - 1]) + std::move(sat));
+                        sats = std::move(next_sats);
+                    }
+                    InputStack nsat = ZERO;
+                    for (size_t i = 0; i < node.k; ++i) nsat = std::move(nsat) + ZERO;
+                    assert(node.k <= sats.size());
+                    return InputResult(std::move(nsat), std::move(sats[node.k]));
                 }
-                assert(k <= sats.size());
-                return InputResult(std::move(nsat), std::move(sats[k]));
+                case NodeType::THRESH: {
+                    std::vector<InputStack> sats = Vector(EMPTY);
+                    for (size_t i = 0; i < subres.size(); ++i) {
+                        auto& res = subres[subres.size() - i - 1];
+                        std::vector<InputStack> next_sats;
+                        next_sats.push_back(sats[0] + res.nsat);
+                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + res.nsat, std::move(sats[j - 1]) + res.sat, nonmal));
+                        next_sats.push_back(std::move(sats[sats.size() - 1]) + std::move(res.sat));
+                        sats = std::move(next_sats);
+                    }
+                    InputStack nsat = INVALID;
+                    for (size_t i = 0; i < sats.size(); ++i) {
+                        if (i != node.k) nsat = Choose(std::move(nsat), std::move(sats[i]), nonmal);
+                    }
+                    assert(node.k <= sats.size());
+                    return InputResult(std::move(nsat), std::move(sats[node.k]));
+                }
+                case NodeType::OLDER: {
+                    return InputResult(INVALID, ctx.CheckOlder(node.k) ? EMPTY : INVALID);
+                }
+                case NodeType::AFTER: {
+                    return InputResult(INVALID, ctx.CheckAfter(node.k) ? EMPTY : INVALID);
+                }
+                case NodeType::SHA256: {
+                    std::vector<unsigned char> preimage;
+                    Availability avail = ctx.SatSHA256(node.data, preimage);
+                    return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
+                }
+                case NodeType::RIPEMD160: {
+                    std::vector<unsigned char> preimage;
+                    Availability avail = ctx.SatRIPEMD160(node.data, preimage);
+                    return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
+                }
+                case NodeType::HASH256: {
+                    std::vector<unsigned char> preimage;
+                    Availability avail = ctx.SatHASH256(node.data, preimage);
+                    return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
+                }
+                case NodeType::HASH160: {
+                    std::vector<unsigned char> preimage;
+                    Availability avail = ctx.SatHASH160(node.data, preimage);
+                    return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
+                }
+                case NodeType::AND_V: {
+                    auto& x = subres[0], &y = subres[1];
+                    return InputResult((y.nsat + x.sat).NonCanon(), y.sat + x.sat);
+                }
+                case NodeType::AND_B: {
+                    auto& x = subres[0], &y = subres[1];
+                    return InputResult(Choose(Choose(y.nsat + x.nsat, (y.sat + x.nsat).NonCanon(), nonmal), (y.nsat + x.sat).NonCanon(), nonmal), y.sat + x.sat);
+                }
+                case NodeType::OR_B: {
+                    auto& x = subres[0], &z = subres[1];
+                    return InputResult(z.nsat + x.nsat, Choose(Choose(z.nsat + x.sat, z.sat + x.nsat, nonmal), (z.sat + x.sat).NonCanon(), nonmal));
+                }
+                case NodeType::OR_C: {
+                    auto& x = subres[0], &z = subres[1];
+                    return InputResult(INVALID, Choose(std::move(x.sat), z.sat + x.nsat, nonmal));
+                }
+                case NodeType::OR_D: {
+                    auto& x = subres[0], &z = subres[1];
+                    auto nsat = z.nsat + x.nsat, sat_l = x.sat, sat_r = z.sat + x.nsat;
+                    return InputResult(z.nsat + x.nsat, Choose(std::move(x.sat), z.sat + x.nsat, nonmal));
+                }
+                case NodeType::OR_I: {
+                    auto& x = subres[0], &z = subres[1];
+                    return InputResult(Choose(x.nsat + ONE, z.nsat + ZERO, nonmal), Choose(x.sat + ONE, z.sat + ZERO, nonmal));
+                }
+                case NodeType::ANDOR: {
+                    auto& x = subres[0], &y = subres[1], &z = subres[2];
+                    return InputResult(Choose((y.nsat + x.sat).NonCanon(), z.nsat + x.nsat, nonmal), Choose(y.sat + x.sat, z.sat + x.nsat, nonmal));
+                }
+                case NodeType::WRAP_A:
+                case NodeType::WRAP_S:
+                case NodeType::WRAP_C:
+                case NodeType::WRAP_N:
+                    return std::move(subres[0]);
+                case NodeType::WRAP_D: {
+                    auto &x = subres[0];
+                    return InputResult(ZERO, x.sat + ONE);
+                }
+                case NodeType::WRAP_J: {
+                    auto &x = subres[0];
+                    // If a dissatisfaction with a nonzero top stack element exists, an alternative dissatisfaction exists.
+                    // As the dissatisfaction logic currently doesn't keep track of this nonzeroness property, and thus even
+                    // if a dissatisfaction with a top zero element is found, we don't know whether another one with a
+                    // nonzero top stack element exists. Make the conservative assumption that whenever the subexpression is weakly
+                    // dissatisfiable, this alternative dissatisfaction exists and leads to malleability.
+                    return InputResult(InputStack(ZERO).Malleable(x.nsat.available != Availability::NO && !x.nsat.has_sig), std::move(x.sat));
+                }
+                case NodeType::WRAP_V: {
+                    auto &x = subres[0];
+                    return InputResult(INVALID, std::move(x.sat));
+                }
+                case NodeType::JUST_0: return InputResult(EMPTY, INVALID);
+                case NodeType::JUST_1: return InputResult(INVALID, EMPTY);
             }
-            case NodeType::OLDER: {
-                return InputResult(INVALID, ctx.CheckOlder(k) ? EMPTY : INVALID);
+            assert(false);
+            return InputResult(INVALID, INVALID);
+        };
+
+        auto tester = [&helper, nonmal](const Node& node, Span<InputResult> subres) -> InputResult {
+            auto ret = helper(node, subres);
+            // Do a consistency check between the satisfaction code and the type checker
+            // (the actual satisfaction code in ProduceInputHelper does not use GetType)
+            if (node.GetType() << "z"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.stack.size() == 0);
+            if (node.GetType() << "z"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.size() == 0);
+            if (node.GetType() << "o"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.stack.size() == 1);
+            if (node.GetType() << "o"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.size() == 1);
+            if (node.GetType() << "n"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.back().size() != 0);
+            if (node.GetType() << "d"_mst) assert(ret.nsat.available != Availability::NO);
+            if (node.GetType() << "f"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.has_sig);
+            if (node.GetType() << "s"_mst && ret.sat.available != Availability::NO) assert(ret.sat.has_sig);
+            if (nonmal) {
+                if (node.GetType() << "d"_mst) assert(!ret.nsat.has_sig);
+                if (node.GetType() << "d"_mst && !ret.nsat.malleable) assert(!ret.nsat.non_canon);
+                if (node.GetType() << "e"_mst) assert(!ret.nsat.malleable);
+                if (node.GetType() << "m"_mst && ret.sat.available != Availability::NO) assert(!ret.sat.malleable);
+                if (ret.sat.available != Availability::NO && !ret.sat.malleable) assert(!ret.sat.non_canon);
             }
-            case NodeType::AFTER: {
-                return InputResult(INVALID, ctx.CheckAfter(k) ? EMPTY : INVALID);
-            }
-            case NodeType::SHA256: {
-                std::vector<unsigned char> preimage;
-                Availability avail = ctx.SatSHA256(data, preimage);
-                return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
-            }
-            case NodeType::RIPEMD160: {
-                std::vector<unsigned char> preimage;
-                Availability avail = ctx.SatRIPEMD160(data, preimage);
-                return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
-            }
-            case NodeType::HASH256: {
-                std::vector<unsigned char> preimage;
-                Availability avail = ctx.SatHASH256(data, preimage);
-                return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
-            }
-            case NodeType::HASH160: {
-                std::vector<unsigned char> preimage;
-                Availability avail = ctx.SatHASH160(data, preimage);
-                return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
-            }
-            case NodeType::AND_V: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult((y.nsat + x.sat).NonCanon(), y.sat + x.sat);
-            }
-            case NodeType::AND_B: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(Choose(Choose(y.nsat + x.nsat, (y.sat + x.nsat).NonCanon(), nonmal), (y.nsat + x.sat).NonCanon(), nonmal), y.sat + x.sat);
-            }
-            case NodeType::OR_B: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal), z = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(z.nsat + x.nsat, Choose(Choose(z.nsat + x.sat, z.sat + x.nsat, nonmal), (z.sat + x.sat).NonCanon(), nonmal));
-            }
-            case NodeType::OR_C: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal), z = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(INVALID, Choose(x.sat, z.sat + x.nsat, nonmal));
-            }
-            case NodeType::OR_D: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal), z = subs[1]->ProduceInput(ctx, nonmal);
-                auto nsat = z.nsat + x.nsat, sat_l = x.sat, sat_r = z.sat + x.nsat;
-                return InputResult(z.nsat + x.nsat, Choose(x.sat, z.sat + x.nsat, nonmal));
-            }
-            case NodeType::OR_I: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal), z = subs[1]->ProduceInput(ctx, nonmal);
-                return InputResult(Choose(x.nsat + ONE, z.nsat + ZERO, nonmal), Choose(x.sat + ONE, z.sat + ZERO, nonmal));
-            }
-            case NodeType::ANDOR: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal), y = subs[1]->ProduceInput(ctx, nonmal), z = subs[2]->ProduceInput(ctx, nonmal);
-                return InputResult(Choose((y.nsat + x.sat).NonCanon(), z.nsat + x.nsat, nonmal), Choose(y.sat + x.sat, z.sat + x.nsat, nonmal));
-            }
-            case NodeType::WRAP_A:
-            case NodeType::WRAP_S:
-            case NodeType::WRAP_C:
-            case NodeType::WRAP_N:
-                return subs[0]->ProduceInput(ctx, nonmal);
-            case NodeType::WRAP_D: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal);
-                return InputResult(ZERO, x.sat + ONE);
-            }
-            case NodeType::WRAP_J: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal);
-                // If a dissatisfaction with a nonzero top stack element exists, an alternative dissatisfaction exists.
-                // As the dissatisfaction logic currently doesn't keep track of this nonzeroness property, and thus even
-                // if a dissatisfaction with a top zero element is found, we don't know whether another one with a
-                // nonzero top stack element exists. Make the conservative assumption that whenever the subexpression is weakly
-                // dissatisfiable, this alternative dissatisfaction exists and leads to malleability.
-                return InputResult(InputStack(ZERO).Malleable(x.nsat.available != Availability::NO && !x.nsat.has_sig), x.sat);
-            }
-            case NodeType::WRAP_V: {
-                auto x = subs[0]->ProduceInput(ctx, nonmal);
-                return InputResult(INVALID, x.sat);
-            }
-            case NodeType::JUST_0: return InputResult(EMPTY, INVALID);
-            case NodeType::JUST_1: return InputResult(INVALID, EMPTY);
-        }
-        assert(false);
-        return InputResult(INVALID, INVALID);
+            return ret;
+        };
+
+        return TreeEval<InputResult>(tester);
     }
 
 public:
