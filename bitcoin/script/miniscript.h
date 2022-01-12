@@ -360,9 +360,10 @@ private:
      *
      * In more detail, it is invoked as node.TreeEvalMaybe<Result>(root, downfn, upfn):
      * - root is the state of the root node, of type State.
-     * - downfn is a callable (const State&, const Node&, size_t) -> State, which given a
+     * - downfn is a callable (State&, const Node&, size_t) -> State, which given a
      *   node, its state, and an index of one of its children, computes the state of that
-     *   child.
+     *   child. It can modify the state. Children of a given node will have downfn()
+     *   called in order.
      * - upfn is a callable (State&&, const Node&, Span<Result>) -> std::optional<Result>,
      *   which given a node, its state, and a Span of the results of its children,
      *   computes the result of the node. If std::nullopt is returned by upfn,
@@ -376,7 +377,7 @@ private:
         struct StackElem
         {
             const Node& node; //!< The node being evaluated.
-            bool expanded; //!< Whether the children of this node have been added.
+            size_t expanded; //!< How many children of this node have been expanded.
             State state; //!< The state for that node.
 
             StackElem(const Node& node_, bool exp_, State&& state_) :
@@ -387,36 +388,33 @@ private:
         /* Results of subtrees so far. Their order and mapping to tree nodes
          * is implicitly defined by stack. */
         std::vector<Result> results;
-        stack.emplace_back(*this, false, std::move(root_state));
+        stack.emplace_back(*this, 0, std::move(root_state));
 
         /* Here is a demonstration of the algorithm, for an example tree A(B,C(D,E),F).
          * State variables are omitted for simplicity.
          *
-         * First: stack=[(A,false)] results=[].
-         *        stack=[(A,true),(F,false),(C,false),(B,false)] results=[]
-         *        stack=[(A,true),(F,false),(C,false)] results=[B]
-         *        stack=[(A,true),(F,false),(C,true),(E,false),(D,false)] results=[B]
-         *        stack=[(A,true),(F,false),(C,true),(E,false)] results=[B,D]
-         *        stack=[(A,true),(F,false),(C,true)] results=[B,D,E]
-         *        stack=[(A,true),(F,false)] results=[B,C]
-         *        stack=[(A,true)] results=[B,C,F]
+         * First: stack=[(A,0)] results=[]
+         *        stack=[(A,1),(B,0)] results=[]
+         *        stack=[(A,1)] results=[B]
+         *        stack=[(A,2),(C,0)] results=[B]
+         *        stack=[(A,2),(C,1),(D,0)] results=[B]
+         *        stack=[(A,2),(C,1)] results=[B,D]
+         *        stack=[(A,2),(C,2),(E,0)] results=[B,D]
+         *        stack=[(A,2),(C,2)] results=[B,D,E]
+         *        stack=[(A,2)] results=[B,C]
+         *        stack=[(A,3),(F,0)] results=[B,C]
+         *        stack=[(A,3)] results=[B,C,F]
          * Final: stack=[] results=[A]
          */
         while (stack.size()) {
             const Node& node = stack.back().node;
-            if (!stack.back().expanded && !node.subs.empty()) {
-                /* We encounter an unexpanded tree node with children. Mark it as
-                 * expanded, and add its children in reverse order. By the time we
-                 * process this node again, the results of the children will be
-                 * at the end of results in normal order. */
-                stack.back().expanded = true;
-                stack.reserve(stack.size() + node.subs.size());
-                const auto& parent_state = stack.back().state;
-                for (size_t i = 0; i < node.subs.size(); ++i) {
-                    size_t index = node.subs.size() - i - 1;
-                    stack.emplace_back(**(node.subs.rbegin() + i), false,
-                        downfn(parent_state, node, index));
-                }
+            if (stack.back().expanded < node.subs.size()) {
+                /* We encounter a tree node with at least one unexpanded child.
+                 * Expand it. By the time we hit this node again, the result of
+                 * that child (and all earlier children) will be on the stack. */
+                size_t child_index = stack.back().expanded++;
+                State child_state = downfn(stack.back().state, node, child_index);
+                stack.emplace_back(*node.subs[child_index], 0, std::move(child_state));
                 continue;
             }
             // Invoke upfn with the last node.subs.size() elements of results as input.
