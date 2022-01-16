@@ -424,8 +424,8 @@ private:
             // If evaluation returns std::nullopt, abort immediately.
             if (!result) return {};
             // Replace the last node.subs.size() elements of results with the new result.
-            results.resize(results.size() - node.subs.size() + 1);
-            results.back() = std::move(*result);
+            results.erase(results.end() - node.subs.size(), results.end());
+            results.push_back(std::move(*result));
             stack.pop_back();
         }
         // The final remaining results element is the root result, return it.
