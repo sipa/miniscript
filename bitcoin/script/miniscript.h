@@ -386,7 +386,7 @@ private:
             size_t expanded; //!< How many children of this node have been expanded.
             State state; //!< The state for that node.
 
-            StackElem(const Node& node_, bool exp_, State&& state_) :
+            StackElem(const Node& node_, size_t exp_, State&& state_) :
                 node(node_), expanded(exp_), state(std::move(state_)) {}
         };
         /* Stack of tree nodes being explored. */
