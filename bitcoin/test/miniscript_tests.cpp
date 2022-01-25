@@ -503,12 +503,11 @@ void Test(const std::string& ms, const std::string& hexscript, int mode, int ops
         auto inferred_miniscript = miniscript::FromScript(computed_script, CONVERTER);
         BOOST_CHECK_MESSAGE(inferred_miniscript, "Cannot infer miniscript from script: " + ms);
         BOOST_CHECK_MESSAGE(inferred_miniscript->ToScript(CONVERTER) == computed_script, "Roundtrip failure: miniscript->script != miniscript->script->miniscript->script: " + ms);
-        if (opslimit != -1) BOOST_CHECK_MESSAGE((int)node->GetOps() == opslimit, "Ops limit mismatch: " + ms + " (" + std::to_string(node->GetOps()) + " vs " + std::to_string(opslimit) + ")");
-        if (stacklimit != -1) BOOST_CHECK_MESSAGE((int)node->GetStackSize() == stacklimit, "Stack limit mismatch: " + ms + " (" + std::to_string(node->GetStackSize()) + " vs " + std::to_string(stacklimit) + ")");
+        if (opslimit != -1) BOOST_CHECK_MESSAGE((int)node->GetOps() == opslimit, "Ops limit mismatch: " << ms << " (" << node->GetOps() << " vs " << opslimit << ")");
+        if (stacklimit != -1) BOOST_CHECK_MESSAGE((int)node->GetStackSize() == stacklimit, "Stack limit mismatch: " << ms << " (" << node->GetStackSize() << " vs " << stacklimit << ")");
         TestSatisfy(ms, node);
     }
 }
-
 } // namespace
 
 BOOST_FIXTURE_TEST_SUITE(miniscript_tests, BasicTestingSetup)
