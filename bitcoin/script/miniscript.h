@@ -20,6 +20,7 @@
 #include <span.h>
 #include <util/spanparsing.h>
 #include <util/strencodings.h>
+#include <util/string.h>
 #include <util/vector.h>
 #include <primitives/transaction.h>
 
@@ -624,8 +625,8 @@ public:
                     if (!ctx.ToString(node.keys[0], key_str)) return {};
                     return std::move(ret) + "pk_h(" + std::move(key_str) + ")";
                 }
-                case NodeType::AFTER: return std::move(ret) + "after(" + std::to_string(node.k) + ")";
-                case NodeType::OLDER: return std::move(ret) + "older(" + std::to_string(node.k) + ")";
+                case NodeType::AFTER: return std::move(ret) + "after(" + ::ToString(node.k) + ")";
+                case NodeType::OLDER: return std::move(ret) + "older(" + ::ToString(node.k) + ")";
                 case NodeType::HASH256: return std::move(ret) + "hash256(" + HexStr(node.data) + ")";
                 case NodeType::HASH160: return std::move(ret) + "hash160(" + HexStr(node.data) + ")";
                 case NodeType::SHA256: return std::move(ret) + "sha256(" + HexStr(node.data) + ")";
@@ -643,7 +644,7 @@ public:
                     if (node.subs[2]->nodetype == NodeType::JUST_0) return std::move(ret) + "and_n(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
                     return std::move(ret) + "andor(" + std::move(subs[0]) + "," + std::move(subs[1]) + "," + std::move(subs[2]) + ")";
                 case NodeType::MULTI: {
-                    auto str = std::move(ret) + "multi(" + std::to_string(node.k);
+                    auto str = std::move(ret) + "multi(" + ::ToString(node.k);
                     for (const auto& key : node.keys) {
                         std::string key_str;
                         if (!ctx.ToString(key, key_str)) return {};
@@ -652,7 +653,7 @@ public:
                     return std::move(str) + ")";
                 }
                 case NodeType::THRESH: {
-                    auto str = std::move(ret) + "thresh(" + std::to_string(node.k);
+                    auto str = std::move(ret) + "thresh(" + ::ToString(node.k);
                     for (auto& sub : subs) {
                         str += "," + std::move(sub);
                     }
