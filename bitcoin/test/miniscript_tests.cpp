@@ -648,7 +648,7 @@ BOOST_AUTO_TEST_CASE(random_tests)
     for (int i = 0; i < 1000; ++i) {
         bool safe = InsecureRandRange(20) == 0; // In 5% of the cases, generate safe top-level expressions.
         // Generate a random B (or Bms) node of variable complexity, which should be valid as a top-level expression.
-        auto node = RandomNode(safe ? "Bms"_mst : "B"_mst, 1 + InsecureRandRange(90));
+        auto node = RandomNode(safe ? "Bmsk"_mst : "B"_mst, 1 + InsecureRandRange(90));
         BOOST_CHECK(node && node->IsValid() && node->IsValidTopLevel());
         auto script = node->ToScript(CONVERTER);
         BOOST_CHECK(node->ScriptSize() == script.size()); // Check consistency between script size estimation and real size
