@@ -148,28 +148,34 @@ public:
 
 //! Literal operator to construct Type objects.
 inline constexpr Type operator"" _mst(const char* c, size_t l) {
-    return l == 0 ? Type(0) : operator"" _mst(c + 1, l - 1) | Type(
-        *c == 'B' ? 1 << 0 : // Base type
-        *c == 'V' ? 1 << 1 : // Verify type
-        *c == 'K' ? 1 << 2 : // Key type
-        *c == 'W' ? 1 << 3 : // Wrapped type
-        *c == 'z' ? 1 << 4 : // Zero-arg property
-        *c == 'o' ? 1 << 5 : // One-arg property
-        *c == 'n' ? 1 << 6 : // Nonzero arg property
-        *c == 'd' ? 1 << 7 : // Dissatisfiable property
-        *c == 'u' ? 1 << 8 : // Unit property
-        *c == 'e' ? 1 << 9 : // Expression property
-        *c == 'f' ? 1 << 10 : // Forced property
-        *c == 's' ? 1 << 11 : // Safe property
-        *c == 'm' ? 1 << 12 : // Nonmalleable property
-        *c == 'x' ? 1 << 13 : // Expensive verify
-        *c == 'g' ? 1 << 14 : // older: contains relative time timelock   (csv_time)
-        *c == 'h' ? 1 << 15 : // older: contains relative height timelock (csv_height)
-        *c == 'i' ? 1 << 16 : // after: contains time timelock   (cltv_time)
-        *c == 'j' ? 1 << 17 : // after: contains height timelock   (cltv_height)
-        *c == 'k' ? 1 << 18 : // does not contain a combination of height and time locks
-        (throw std::logic_error("Unknown character in _mst literal"), 0)
-    );
+    Type typ{0};
+
+    for (const char *p = c; p < c + l; p++) {
+        typ = typ | Type(
+            *p == 'B' ? 1 << 0 : // Base type
+            *p == 'V' ? 1 << 1 : // Verify type
+            *p == 'K' ? 1 << 2 : // Key type
+            *p == 'W' ? 1 << 3 : // Wrapped type
+            *p == 'z' ? 1 << 4 : // Zero-arg property
+            *p == 'o' ? 1 << 5 : // One-arg property
+            *p == 'n' ? 1 << 6 : // Nonzero arg property
+            *p == 'd' ? 1 << 7 : // Dissatisfiable property
+            *p == 'u' ? 1 << 8 : // Unit property
+            *p == 'e' ? 1 << 9 : // Expression property
+            *p == 'f' ? 1 << 10 : // Forced property
+            *p == 's' ? 1 << 11 : // Safe property
+            *p == 'm' ? 1 << 12 : // Nonmalleable property
+            *p == 'x' ? 1 << 13 : // Expensive verify
+            *p == 'g' ? 1 << 14 : // older: contains relative time timelock   (csv_time)
+            *p == 'h' ? 1 << 15 : // older: contains relative height timelock (csv_height)
+            *p == 'i' ? 1 << 16 : // after: contains time timelock   (cltv_time)
+            *p == 'j' ? 1 << 17 : // after: contains height timelock   (cltv_height)
+            *p == 'k' ? 1 << 18 : // does not contain a combination of height and time locks
+            (throw std::logic_error("Unknown character in _mst literal"), 0)
+        );
+    }
+
+    return typ;
 }
 
 template<typename Key> struct Node;
