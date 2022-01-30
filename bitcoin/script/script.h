@@ -421,20 +421,6 @@ public:
         READWRITEAS(CScriptBase, *this);
     }
 
-    CScript& operator+=(const CScript& b)
-    {
-        reserve(size() + b.size());
-        insert(end(), b.begin(), b.end());
-        return *this;
-    }
-
-    friend CScript operator+(const CScript& a, const CScript& b)
-    {
-        CScript ret = a;
-        ret += b;
-        return ret;
-    }
-
     CScript(int64_t b)        { operator<<(b); }
 
     explicit CScript(opcodetype b)     { operator<<(b); }
@@ -586,5 +572,29 @@ struct CScriptWitness
 };
 
 bool CheckMinimalPush(const std::vector<unsigned char>& data, opcodetype opcode);
+
+/** Build a script by concatenating other scripts, or any argument accepted by CScript::operator<<. */
+template<typename... Ts>
+CScript BuildScript(Ts&&... inputs)
+{
+    CScript ret;
+    size_t cnt{0}; // Try to optimize over repeatedly calling ret.empty()
+
+    ([&] (Ts&& input) {
+        if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<Ts>>, CScript>) {
+            // If it is a CScript, extend ret with it. Move or copy the first element instead.
+            if (cnt++ == 0) {
+                ret = std::forward<Ts>(input);
+            } else {
+                ret.insert(ret.end(), input.begin(), input.end());
+            }
+        } else {
+            // Otherwise invoke CScript::operator<<.
+            ret << input;
+        }
+    } (std::forward<Ts>(inputs)), ...);
+
+    return ret;
+}
 
 #endif // BITCOIN_SCRIPT_SCRIPT_H

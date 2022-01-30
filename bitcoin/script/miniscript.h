@@ -520,22 +520,22 @@ public:
                 case NodeType::RIPEMD160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_RIPEMD160 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
                 case NodeType::HASH256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH256 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
                 case NodeType::HASH160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH160 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-                case NodeType::WRAP_A: return (CScript() << OP_TOALTSTACK) + std::move(subs[0]) + (CScript() << OP_FROMALTSTACK);
-                case NodeType::WRAP_S: return (CScript() << OP_SWAP) + std::move(subs[0]);
-                case NodeType::WRAP_C: return std::move(subs[0]) + CScript() << (verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
-                case NodeType::WRAP_D: return (CScript() << OP_DUP << OP_IF) + std::move(subs[0]) + (CScript() << OP_ENDIF);
-                case NodeType::WRAP_V: return std::move(subs[0]) + (node.subs[0]->GetType() << "x"_mst ? (CScript() << OP_VERIFY) : CScript());
-                case NodeType::WRAP_J: return (CScript() << OP_SIZE << OP_0NOTEQUAL << OP_IF) + std::move(subs[0]) + (CScript() << OP_ENDIF);
-                case NodeType::WRAP_N: return std::move(subs[0]) + CScript() << OP_0NOTEQUAL;
+                case NodeType::WRAP_A: return BuildScript(OP_TOALTSTACK, subs[0], OP_FROMALTSTACK);
+                case NodeType::WRAP_S: return BuildScript(OP_SWAP, subs[0]);
+                case NodeType::WRAP_C: return BuildScript(std::move(subs[0]), verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
+                case NodeType::WRAP_D: return BuildScript(OP_DUP, OP_IF, subs[0], OP_ENDIF);
+                case NodeType::WRAP_V: return BuildScript(std::move(subs[0]), node.subs[0]->GetType() << "x"_mst ? CScript(OP_VERIFY) : CScript());
+                case NodeType::WRAP_J: return BuildScript(OP_SIZE, OP_0NOTEQUAL, OP_IF, subs[0], OP_ENDIF);
+                case NodeType::WRAP_N: return BuildScript(std::move(subs[0]), OP_0NOTEQUAL);
                 case NodeType::JUST_1: return CScript() << OP_1;
                 case NodeType::JUST_0: return CScript() << OP_0;
-                case NodeType::AND_V: return std::move(subs[0]) + std::move(subs[1]);
-                case NodeType::AND_B: return std::move(subs[0]) + std::move(subs[1]) + (CScript() << OP_BOOLAND);
-                case NodeType::OR_B: return std::move(subs[0]) + std::move(subs[1]) + (CScript() << OP_BOOLOR);
-                case NodeType::OR_D: return std::move(subs[0]) + (CScript() << OP_IFDUP << OP_NOTIF) + std::move(subs[1]) + (CScript() << OP_ENDIF);
-                case NodeType::OR_C: return std::move(subs[0]) + (CScript() << OP_NOTIF) + std::move(subs[1]) + (CScript() << OP_ENDIF);
-                case NodeType::OR_I: return (CScript() << OP_IF) + std::move(subs[0]) + (CScript() << OP_ELSE) + std::move(subs[1]) + (CScript() << OP_ENDIF);
-                case NodeType::ANDOR: return std::move(subs[0]) + (CScript() << OP_NOTIF) + std::move(subs[2]) + (CScript() << OP_ELSE) + std::move(subs[1]) + (CScript() << OP_ENDIF);
+                case NodeType::AND_V: return BuildScript(std::move(subs[0]), subs[1]);
+                case NodeType::AND_B: return BuildScript(std::move(subs[0]), subs[1], OP_BOOLAND);
+                case NodeType::OR_B: return BuildScript(std::move(subs[0]), subs[1], OP_BOOLOR);
+                case NodeType::OR_D: return BuildScript(std::move(subs[0]), OP_IFDUP, OP_NOTIF, subs[1], OP_ENDIF);
+                case NodeType::OR_C: return BuildScript(std::move(subs[0]), OP_NOTIF, subs[1], OP_ENDIF);
+                case NodeType::OR_I: return BuildScript(OP_IF, subs[0], OP_ELSE, subs[1], OP_ENDIF);
+                case NodeType::ANDOR: return BuildScript(std::move(subs[0]), OP_NOTIF, subs[2], OP_ELSE, subs[1], OP_ENDIF);
                 case NodeType::MULTI: {
                     CScript script = CScript() << node.k;
                     for (const auto& key : node.keys) {
@@ -546,7 +546,7 @@ public:
                 case NodeType::THRESH: {
                     CScript script = std::move(subs[0]);
                     for (size_t i = 1; i < subs.size(); ++i) {
-                        script = (std::move(script) + std::move(subs[i])) << OP_ADD;
+                        script = BuildScript(std::move(script), subs[i], OP_ADD);
                     }
                     return std::move(script) << node.k << (verify ? OP_EQUALVERIFY : OP_EQUAL);
                 }
