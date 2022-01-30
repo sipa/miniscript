@@ -275,7 +275,7 @@ size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_
         case NodeType::OR_C: return subsize + 2;
         case NodeType::OR_I: return subsize + 3;
         case NodeType::ANDOR: return subsize + 3;
-        case NodeType::THRESH: return subsize + n_subs + 1;
+        case NodeType::THRESH: return subsize + n_subs + CScript(k).size();
         case NodeType::MULTI: return subsize + 3 + (n_keys > 16) + (k > 16) + 34 * n_keys;
     }
     assert(false);
