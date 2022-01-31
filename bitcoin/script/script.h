@@ -578,12 +578,13 @@ template<typename... Ts>
 CScript BuildScript(Ts&&... inputs)
 {
     CScript ret;
-    size_t cnt{0}; // Try to optimize over repeatedly calling ret.empty()
+    size_t cnt{0};
 
-    ([&] (Ts&& input) {
+    ([&ret, &cnt] (Ts&& input) {
+        cnt++;
         if constexpr (std::is_same_v<std::remove_cv_t<std::remove_reference_t<Ts>>, CScript>) {
-            // If it is a CScript, extend ret with it. Move or copy the first element instead.
-            if (cnt++ == 0) {
+            // If it is a CScript, extend ret with it. If ret is empty, move or copy it instead.
+            if (cnt == 0) {
                 ret = std::forward<Ts>(input);
             } else {
                 ret.insert(ret.end(), input.begin(), input.end());

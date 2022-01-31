@@ -512,23 +512,29 @@ public:
         // and the CScripts of its child nodes, the CScript of the node.
         auto upfn = [&ctx](bool verify, const Node& node, Span<CScript> subs) -> CScript {
             switch (node.nodetype) {
-                case NodeType::PK_K: return CScript() << ctx.ToPKBytes(node.keys[0]);
-                case NodeType::PK_H: return CScript() << OP_DUP << OP_HASH160 << ctx.ToPKHBytes(node.keys[0]) << OP_EQUALVERIFY;
-                case NodeType::OLDER: return CScript() << node.k << OP_CHECKSEQUENCEVERIFY;
-                case NodeType::AFTER: return CScript() << node.k << OP_CHECKLOCKTIMEVERIFY;
-                case NodeType::SHA256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_SHA256 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-                case NodeType::RIPEMD160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_RIPEMD160 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-                case NodeType::HASH256: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH256 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
-                case NodeType::HASH160: return CScript() << OP_SIZE << 32 << OP_EQUALVERIFY << OP_HASH160 << node.data << (verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case NodeType::PK_K: return BuildScript(ctx.ToPKBytes(node.keys[0]));
+                case NodeType::PK_H: return BuildScript(OP_DUP, OP_HASH160, ctx.ToPKHBytes(node.keys[0]), OP_EQUALVERIFY);
+                case NodeType::OLDER: return BuildScript(node.k, OP_CHECKSEQUENCEVERIFY);
+                case NodeType::AFTER: return BuildScript(node.k, OP_CHECKLOCKTIMEVERIFY);
+                case NodeType::SHA256: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case NodeType::RIPEMD160: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case NodeType::HASH256: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case NodeType::HASH160: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
                 case NodeType::WRAP_A: return BuildScript(OP_TOALTSTACK, subs[0], OP_FROMALTSTACK);
                 case NodeType::WRAP_S: return BuildScript(OP_SWAP, subs[0]);
                 case NodeType::WRAP_C: return BuildScript(std::move(subs[0]), verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
                 case NodeType::WRAP_D: return BuildScript(OP_DUP, OP_IF, subs[0], OP_ENDIF);
-                case NodeType::WRAP_V: return BuildScript(std::move(subs[0]), node.subs[0]->GetType() << "x"_mst ? CScript(OP_VERIFY) : CScript());
+                case NodeType::WRAP_V: {
+                    if (node.subs[0]->GetType() << "x"_mst) {
+                        return BuildScript(std::move(subs[0]), OP_VERIFY);
+                    } else {
+                        return std::move(subs[0]);
+                    }
+                }
                 case NodeType::WRAP_J: return BuildScript(OP_SIZE, OP_0NOTEQUAL, OP_IF, subs[0], OP_ENDIF);
                 case NodeType::WRAP_N: return BuildScript(std::move(subs[0]), OP_0NOTEQUAL);
-                case NodeType::JUST_1: return CScript() << OP_1;
-                case NodeType::JUST_0: return CScript() << OP_0;
+                case NodeType::JUST_1: return BuildScript(OP_1);
+                case NodeType::JUST_0: return BuildScript(OP_0);
                 case NodeType::AND_V: return BuildScript(std::move(subs[0]), subs[1]);
                 case NodeType::AND_B: return BuildScript(std::move(subs[0]), subs[1], OP_BOOLAND);
                 case NodeType::OR_B: return BuildScript(std::move(subs[0]), subs[1], OP_BOOLOR);
@@ -537,18 +543,18 @@ public:
                 case NodeType::OR_I: return BuildScript(OP_IF, subs[0], OP_ELSE, subs[1], OP_ENDIF);
                 case NodeType::ANDOR: return BuildScript(std::move(subs[0]), OP_NOTIF, subs[2], OP_ELSE, subs[1], OP_ENDIF);
                 case NodeType::MULTI: {
-                    CScript script = CScript() << node.k;
+                    CScript script = BuildScript(node.k);
                     for (const auto& key : node.keys) {
-                        script << ctx.ToPKBytes(key);
+                        script = BuildScript(std::move(script), ctx.ToPKBytes(key));
                     }
-                    return std::move(script) << node.keys.size() << (verify ? OP_CHECKMULTISIGVERIFY : OP_CHECKMULTISIG);
+                    return BuildScript(std::move(script), node.keys.size(), verify ? OP_CHECKMULTISIGVERIFY : OP_CHECKMULTISIG);
                 }
                 case NodeType::THRESH: {
                     CScript script = std::move(subs[0]);
                     for (size_t i = 1; i < subs.size(); ++i) {
                         script = BuildScript(std::move(script), subs[i], OP_ADD);
                     }
-                    return std::move(script) << node.k << (verify ? OP_EQUALVERIFY : OP_EQUAL);
+                    return BuildScript(std::move(script), node.k, verify ? OP_EQUALVERIFY : OP_EQUAL);
                 }
             }
             assert(false);
