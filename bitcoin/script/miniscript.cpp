@@ -45,8 +45,10 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
         assert(data_size == 0);
     }
     // Sanity check on k
-    if (nodetype == NodeType::OLDER || nodetype == NodeType::AFTER) {
-        assert(k >= 1 && k < 0x80000000UL);
+    if (nodetype == NodeType::AFTER) {
+        assert(k >= 1);
+    } else if (nodetype == NodeType::OLDER) {
+        assert(k >= 1 && k < 0x80000000);
     } else if (nodetype == NodeType::MULTI) {
         assert(k >= 1 && k <= n_keys);
     } else if (nodetype == NodeType::THRESH) {
@@ -398,7 +400,7 @@ bool ParseScriptNumber(const std::pair<opcodetype, std::vector<unsigned char>>& 
     if (!in.second.empty()) {
         if (IsPushdataOp(in.first) && !CheckMinimalPush(in.second, in.first)) return false;
         try {
-            k = CScriptNum(in.second, true).GetInt64();
+            k = CScriptNum(in.second, true, 5).GetInt64();
             return true;
         } catch(const scriptnum_error&) {}
     }

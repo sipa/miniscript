@@ -385,7 +385,7 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <tr><td><code>1</code></td><td></td><td>B</td><td>z; u</td></tr>
 <tr><td><code>pk_k(key)</code></td><td></td><td>K</td><td>o; n; d; u</td></tr>
 <tr><td><code>pk_h(key)</code></td><td></td><td>K</td><td>n; d; u</td></tr>
-<tr><td><code>older(n)</code>, <code>after(n)</code></td><td>1 &le; n &lt; 2<sup>31</sup></td><td>B</td><td>z</td></tr>
+<tr><td><code>older(n)</code>, <code>after(n)</code></td><td>1 &le; n, and n &lt; 2<sup>31</sup> (<code>older</code>) or n &lt; 2<sup>32</sup> (<code>after</code>) </td><td>B</td><td>z</td></tr>
 <tr><td><code>sha256(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
 <tr><td><code>ripemd160(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>
 <tr><td><code>hash256(h)</code></td><td></td><td>B</td><td>o; n; d; u</td></tr>

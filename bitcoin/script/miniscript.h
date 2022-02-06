@@ -1192,7 +1192,7 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
                 if (arg_size < 1) return {};
                 int64_t num;
                 if (!ParseInt64(std::string(in.begin(), in.begin() + arg_size), &num)) return {};
-                if (num < 1 || num >= 0x80000000L) return {};
+                if (num < 1 || num >= 0x100000000L) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::AFTER, num));
                 in = in.subspan(arg_size + 1);
             } else if (Const("older(", in)) {
@@ -1514,7 +1514,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
                 constructed.push_back(MakeNodeRef<Key>(NodeType::OLDER, k));
             } else if (last - in >= 2 && in[0].first == OP_CHECKLOCKTIMEVERIFY && ParseScriptNumber(in[1], k)) {
                 in += 2;
-                if (k < 1 || k > 0x7FFFFFFFL) return {};
+                if (k < 1 || k >= 0x100000000L) return {};
                 constructed.push_back(MakeNodeRef<Key>(NodeType::AFTER, k));
             }
             // Hashes

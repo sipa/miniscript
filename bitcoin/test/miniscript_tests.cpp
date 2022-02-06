@@ -524,8 +524,8 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     Test("l:older(2147483648)", "?", TESTMODE_INVALID); // older(2147483648): k must be below 2^31
     Test("u:after(1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // after(1): valid
     Test("u:after(0)", "?", TESTMODE_INVALID); // after(0): k must be at least 1
-    Test("u:after(2147483647)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // after(2147483647): valid
-    Test("u:after(2147483648)", "?", TESTMODE_INVALID); // after(2147483648): k must be below 2^31
+    Test("u:after(4294967295)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // after(4294967295): valid
+    Test("u:after(4294967296)", "?", TESTMODE_INVALID ); // after(4294967296): k must be below 2^32
     Test("andor(0,1,1)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // andor(Bdu,B,B): valid
     Test("andor(a:0,1,1)", "?", TESTMODE_INVALID); // andor(Wdu,B,B): X must be B
     Test("andor(0,a:1,a:1)", "?", TESTMODE_INVALID); // andor(Bdu,W,W): Y and Z must be B/V/K
