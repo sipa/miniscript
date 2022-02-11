@@ -1634,58 +1634,69 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
             break;
         }
         case DecodeContext::SWAP: {
-            if (in >= last || in[0].first != OP_SWAP) return {};
+            if (in >= last || in[0].first != OP_SWAP || constructed.empty()) return {};
             ++in;
             constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_S, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::ALT: {
-            if (in >= last || in[0].first != OP_TOALTSTACK) return {};
+            if (in >= last || in[0].first != OP_TOALTSTACK || constructed.empty()) return {};
             ++in;
             constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_A, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::CHECK: {
+            if (constructed.empty()) return {};
             constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_C, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::DUP_IF: {
+            if (constructed.empty()) return {};
             constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_D, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::VERIFY: {
+            if (constructed.empty()) return {};
             constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_V, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::NON_ZERO: {
+            if (constructed.empty()) return {};
             constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_J, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::ZERO_NOTEQUAL: {
+            if (constructed.empty()) return {};
             constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_N, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::AND_V: {
+            if (constructed.size() < 2) return {};
             BuildBack(NodeType::AND_V, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::AND_B: {
+            if (constructed.size() < 2) return {};
             BuildBack(NodeType::AND_B, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_B: {
+            if (constructed.size() < 2) return {};
             BuildBack(NodeType::OR_B, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_C: {
+            if (constructed.size() < 2) return {};
             BuildBack(NodeType::OR_C, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_D: {
+            if (constructed.size() < 2) return {};
             BuildBack(NodeType::OR_D, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::ANDOR: {
+            if (constructed.size() < 3) return {};
             NodeRef<Key> left = std::move(constructed.back());
             constructed.pop_back();
             NodeRef<Key> right = std::move(constructed.back());
@@ -1708,7 +1719,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
             break;
         }
         case DecodeContext::THRESH_E: {
-            if (k < 1 || k > n) return {};
+            if (k < 1 || k > n || constructed.size() < static_cast<size_t>(n)) return {};
             std::vector<NodeRef<Key>> subs;
             for (int i = 0; i < n; ++i) {
                 NodeRef<Key> sub = std::move(constructed.back());
