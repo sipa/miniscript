@@ -35,42 +35,42 @@ Type SanitizeType(Type e) {
     return e;
 }
 
-Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys) {
+Type ComputeType(Fragment nodetype, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys) {
     // Sanity check on data
-    if (nodetype == NodeType::SHA256 || nodetype == NodeType::HASH256) {
+    if (nodetype == Fragment::SHA256 || nodetype == Fragment::HASH256) {
         assert(data_size == 32);
-    } else if (nodetype == NodeType::RIPEMD160 || nodetype == NodeType::HASH160) {
+    } else if (nodetype == Fragment::RIPEMD160 || nodetype == Fragment::HASH160) {
         assert(data_size == 20);
     } else {
         assert(data_size == 0);
     }
     // Sanity check on k
-    if (nodetype == NodeType::OLDER || nodetype == NodeType::AFTER) {
+    if (nodetype == Fragment::OLDER || nodetype == Fragment::AFTER) {
         assert(k >= 1 && k < 0x80000000UL);
-    } else if (nodetype == NodeType::MULTI) {
+    } else if (nodetype == Fragment::MULTI) {
         assert(k >= 1 && k <= n_keys);
-    } else if (nodetype == NodeType::THRESH) {
+    } else if (nodetype == Fragment::THRESH) {
         assert(k >= 1 && k <= n_subs);
     } else {
         assert(k == 0);
     }
     // Sanity check on subs
-    if (nodetype == NodeType::AND_V || nodetype == NodeType::AND_B || nodetype == NodeType::OR_B ||
-        nodetype == NodeType::OR_C || nodetype == NodeType::OR_I || nodetype == NodeType::OR_D) {
+    if (nodetype == Fragment::AND_V || nodetype == Fragment::AND_B || nodetype == Fragment::OR_B ||
+        nodetype == Fragment::OR_C || nodetype == Fragment::OR_I || nodetype == Fragment::OR_D) {
         assert(n_subs == 2);
-    } else if (nodetype == NodeType::ANDOR) {
+    } else if (nodetype == Fragment::ANDOR) {
         assert(n_subs == 3);
-    } else if (nodetype == NodeType::WRAP_A || nodetype == NodeType::WRAP_S || nodetype == NodeType::WRAP_C ||
-               nodetype == NodeType::WRAP_D || nodetype == NodeType::WRAP_V || nodetype == NodeType::WRAP_J ||
-               nodetype == NodeType::WRAP_N) {
+    } else if (nodetype == Fragment::WRAP_A || nodetype == Fragment::WRAP_S || nodetype == Fragment::WRAP_C ||
+               nodetype == Fragment::WRAP_D || nodetype == Fragment::WRAP_V || nodetype == Fragment::WRAP_J ||
+               nodetype == Fragment::WRAP_N) {
         assert(n_subs == 1);
-    } else if (nodetype != NodeType::THRESH) {
+    } else if (nodetype != Fragment::THRESH) {
         assert(n_subs == 0);
     }
     // Sanity check on keys
-    if (nodetype == NodeType::PK_K || nodetype == NodeType::PK_H) {
+    if (nodetype == Fragment::PK_K || nodetype == Fragment::PK_H) {
         assert(n_keys == 1);
-    } else if (nodetype == NodeType::MULTI) {
+    } else if (nodetype == Fragment::MULTI) {
         assert(n_keys >= 1 && n_keys <= 20);
     } else {
         assert(n_keys == 0);
@@ -80,59 +80,59 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
     // It heavily relies on Type's << operator (where "X << a_mst" means
     // "X has all properties listed in a").
     switch (nodetype) {
-        case NodeType::PK_K: return "Konudemsxk"_mst;
-        case NodeType::PK_H: return "Knudemsxk"_mst;
-        case NodeType::OLDER: return
+        case Fragment::PK_K: return "Konudemsxk"_mst;
+        case Fragment::PK_H: return "Knudemsxk"_mst;
+        case Fragment::OLDER: return
             "g"_mst.If(k & CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG) |
             "h"_mst.If(!(k & CTxIn::SEQUENCE_LOCKTIME_TYPE_FLAG)) |
             "Bzfmxk"_mst;
-        case NodeType::AFTER: return
+        case Fragment::AFTER: return
             "i"_mst.If(k >= LOCKTIME_THRESHOLD) |
             "j"_mst.If(k < LOCKTIME_THRESHOLD) |
             "Bzfmxk"_mst;
-        case NodeType::SHA256: return "Bonudmk"_mst;
-        case NodeType::RIPEMD160: return "Bonudmk"_mst;
-        case NodeType::HASH256: return "Bonudmk"_mst;
-        case NodeType::HASH160: return "Bonudmk"_mst;
-        case NodeType::JUST_1: return "Bzufmxk"_mst;
-        case NodeType::JUST_0: return "Bzudemsxk"_mst;
-        case NodeType::WRAP_A: return
+        case Fragment::SHA256: return "Bonudmk"_mst;
+        case Fragment::RIPEMD160: return "Bonudmk"_mst;
+        case Fragment::HASH256: return "Bonudmk"_mst;
+        case Fragment::HASH160: return "Bonudmk"_mst;
+        case Fragment::JUST_1: return "Bzufmxk"_mst;
+        case Fragment::JUST_0: return "Bzudemsxk"_mst;
+        case Fragment::WRAP_A: return
             "W"_mst.If(x << "B"_mst) | // W=B_x
             (x & "ghijk"_mst) | // g=g_x, h=h_x, i=i_x, j=j_x, k=k_x
             (x & "udfems"_mst) | // u=u_x, d=d_x, f=f_x, e=e_x, m=m_x, s=s_x
             "x"_mst; // x
-        case NodeType::WRAP_S: return
+        case Fragment::WRAP_S: return
             "W"_mst.If(x << "Bo"_mst) | // W=B_x*o_x
             (x & "ghijk"_mst) | // g=g_x, h=h_x, i=i_x, j=j_x, k=k_x
             (x & "udfemsx"_mst); // u=u_x, d=d_x, f=f_x, e=e_x, m=m_x, s=s_x, x=x_x
-        case NodeType::WRAP_C: return
+        case Fragment::WRAP_C: return
             "B"_mst.If(x << "K"_mst) | // B=K_x
             (x & "ghijk"_mst) | // g=g_x, h=h_x, i=i_x, j=j_x, k=k_x
             (x & "ondfem"_mst) | // o=o_x, n=n_x, d=d_x, f=f_x, e=e_x, m=m_x
             "us"_mst; // u, s
-        case NodeType::WRAP_D: return
+        case Fragment::WRAP_D: return
             "B"_mst.If(x << "Vz"_mst) | // B=V_x*z_x
             "o"_mst.If(x << "z"_mst) | // o=z_x
             "e"_mst.If(x << "f"_mst) | // e=f_x
             (x & "ghijk"_mst) | // g=g_x, h=h_x, i=i_x, j=j_x, k=k_x
             (x & "ms"_mst) | // m=m_x, s=s_x
             "nudx"_mst; // n, u, d, x
-        case NodeType::WRAP_V: return
+        case Fragment::WRAP_V: return
             "V"_mst.If(x << "B"_mst) | // V=B_x
             (x & "ghijk"_mst) | // g=g_x, h=h_x, i=i_x, j=j_x, k=k_x
             (x & "zonms"_mst) | // z=z_x, o=o_x, n=n_x, m=m_x, s=s_x
             "fx"_mst; // f, x
-        case NodeType::WRAP_J: return
+        case Fragment::WRAP_J: return
             "B"_mst.If(x << "Bn"_mst) | // B=B_x*n_x
             "e"_mst.If(x << "f"_mst) | // e=f_x
             (x & "ghijk"_mst) | // g=g_x, h=h_x, i=i_x, j=j_x, k=k_x
             (x & "oums"_mst) | // o=o_x, u=u_x, m=m_x, s=s_x
             "ndx"_mst; // n, d, x
-        case NodeType::WRAP_N: return
+        case Fragment::WRAP_N: return
             (x & "ghijk"_mst) | // g=g_x, h=h_x, i=i_x, j=j_x, k=k_x
             (x & "Bzondfems"_mst) | // B=B_x, z=z_x, o=o_x, n=n_x, d=d_x, f=f_x, e=e_x, m=m_x, s=s_x
             "ux"_mst; // u, x
-        case NodeType::AND_V: return
+        case Fragment::AND_V: return
             (y & "KVB"_mst).If(x << "V"_mst) | // B=V_x*B_y, V=V_x*V_y, K=V_x*K_y
             (x & "n"_mst) | (y & "n"_mst).If(x << "z"_mst) | // n=n_x+z_x*n_y
             ((x | y) & "o"_mst).If((x | y) << "z"_mst) | // o=o_x*z_y+z_x*o_y
@@ -146,7 +146,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
                 ((x << "h"_mst) && (y << "g"_mst)) ||
                 ((x << "i"_mst) && (y << "j"_mst)) ||
                 ((x << "j"_mst) && (y << "i"_mst)))); // k=k_x*k_y*!(g_x*h_y + h_x*g_y + i_x*j_y + j_x*i_y)
-        case NodeType::AND_B: return
+        case Fragment::AND_B: return
             (x & "B"_mst).If(y << "W"_mst) | // B=B_x*W_y
             ((x | y) & "o"_mst).If((x | y) << "z"_mst) | // o=o_x*z_y+z_x*o_y
             (x & "n"_mst) | (y & "n"_mst).If(x << "z"_mst) | // n=n_x+z_x*n_y
@@ -161,7 +161,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
                 ((x << "h"_mst) && (y << "g"_mst)) ||
                 ((x << "i"_mst) && (y << "j"_mst)) ||
                 ((x << "j"_mst) && (y << "i"_mst)))); // k=k_x*k_y*!(g_x*h_y + h_x*g_y + i_x*j_y + j_x*i_y)
-        case NodeType::OR_B: return
+        case Fragment::OR_B: return
             "B"_mst.If(x << "Bd"_mst && y << "Wd"_mst) | // B=B_x*d_x*W_x*d_y
             ((x | y) & "o"_mst).If((x | y) << "z"_mst) | // o=o_x*z_y+z_x*o_y
             (x & y & "m"_mst).If((x | y) << "s"_mst && (x & y) << "e"_mst) | // m=m_x*m_y*e_x*e_y*(s_x+s_y)
@@ -169,7 +169,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
             "dux"_mst | // d, u, x
             ((x | y) & "ghij"_mst) | // g=g_x+g_y, h=h_x+h_y, i=i_x+i_y, j=j_x+j_y
             (x & y & "k"_mst); // k=k_x*k_y
-        case NodeType::OR_D: return
+        case Fragment::OR_D: return
             (y & "B"_mst).If(x << "Bdu"_mst) | // B=B_y*B_x*d_x*u_x
             (x & "o"_mst).If(y << "z"_mst) | // o=o_x*z_y
             (x & y & "m"_mst).If(x << "e"_mst && (x | y) << "s"_mst) | // m=m_x*m_y*e_x*(s_x+s_y)
@@ -178,7 +178,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
             "x"_mst | // x
             ((x | y) & "ghij"_mst) | // g=g_x+g_y, h=h_x+h_y, i=i_x+i_y, j=j_x+j_y
             (x & y & "k"_mst); // k=k_x*k_y
-        case NodeType::OR_C: return
+        case Fragment::OR_C: return
             (y & "V"_mst).If(x << "Bdu"_mst) | // V=V_y*B_x*u_x*d_x
             (x & "o"_mst).If(y << "z"_mst) | // o=o_x*z_y
             (x & y & "m"_mst).If(x << "e"_mst && (x | y) << "s"_mst) | // m=m_x*m_y*e_x*(s_x+s_y)
@@ -186,7 +186,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
             "fx"_mst | // f, x
             ((x | y) & "ghij"_mst) | // g=g_x+g_y, h=h_x+h_y, i=i_x+i_y, j=j_x+j_y
             (x & y & "k"_mst); // k=k_x*k_y
-        case NodeType::OR_I: return
+        case Fragment::OR_I: return
             (x & y & "VBKufs"_mst) | // V=V_x*V_y, B=B_x*B_y, K=K_x*K_y, u=u_x*u_y, f=f_x*f_y, s=s_x*s_y
             "o"_mst.If((x & y) << "z"_mst) | // o=z_x*z_y
             ((x | y) & "e"_mst).If((x | y) << "f"_mst) | // e=e_x*f_y+f_x*e_y
@@ -195,7 +195,7 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
             "x"_mst | // x
             ((x | y) & "ghij"_mst) | // g=g_x+g_y, h=h_x+h_y, i=i_x+i_y, j=j_x+j_y
             (x & y & "k"_mst); // k=k_x*k_y
-        case NodeType::ANDOR: return
+        case Fragment::ANDOR: return
             (y & z & "BKV"_mst).If(x << "Bdu"_mst) | // B=B_x*d_x*u_x*B_y*B_z, K=B_x*d_x*u_x*K_y*K_z, V=B_x*d_x*u_x*V_y*V_z
             (x & y & z & "z"_mst) | // z=z_x*z_y*z_z
             ((x | (y & z)) & "o"_mst).If((x | (y & z)) << "z"_mst) | // o=o_x*z_y*z_z+z_x*o_y*o_z
@@ -212,8 +212,8 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
                 ((x << "h"_mst) && (y << "g"_mst)) ||
                 ((x << "i"_mst) && (y << "j"_mst)) ||
                 ((x << "j"_mst) && (y << "i"_mst)))); // k=k_x*k_y*k_z* !(g_x*h_y + h_x*g_y + i_x*j_y + j_x*i_y)
-        case NodeType::MULTI: return "Bnudemsk"_mst;
-        case NodeType::THRESH: {
+        case Fragment::MULTI: return "Bnudemsk"_mst;
+        case Fragment::THRESH: {
             bool all_e = true;
             bool all_m = true;
             uint32_t args = 0;
@@ -249,34 +249,34 @@ Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Ty
     return ""_mst;
 }
 
-size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys) {
+size_t ComputeScriptLen(Fragment nodetype, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys) {
     switch (nodetype) {
-        case NodeType::PK_K: return subsize + 34;
-        case NodeType::PK_H: return subsize + 3 + 21;
-        case NodeType::OLDER: return subsize + 1 + BuildScript(k).size();
-        case NodeType::AFTER: return subsize + 1 + BuildScript(k).size();
-        case NodeType::HASH256: return subsize + 4 + 2 + 33;
-        case NodeType::HASH160: return subsize + 4 + 2 + 21;
-        case NodeType::SHA256: return subsize + 4 + 2 + 33;
-        case NodeType::RIPEMD160: return subsize + 4 + 2 + 21;
-        case NodeType::WRAP_A: return subsize + 2;
-        case NodeType::WRAP_S: return subsize + 1;
-        case NodeType::WRAP_C: return subsize + 1;
-        case NodeType::WRAP_D: return subsize + 3;
-        case NodeType::WRAP_V: return subsize + (sub0typ << "x"_mst);
-        case NodeType::WRAP_J: return subsize + 4;
-        case NodeType::WRAP_N: return subsize + 1;
-        case NodeType::JUST_1: return 1;
-        case NodeType::JUST_0: return 1;
-        case NodeType::AND_V: return subsize;
-        case NodeType::AND_B: return subsize + 1;
-        case NodeType::OR_B: return subsize + 1;
-        case NodeType::OR_D: return subsize + 3;
-        case NodeType::OR_C: return subsize + 2;
-        case NodeType::OR_I: return subsize + 3;
-        case NodeType::ANDOR: return subsize + 3;
-        case NodeType::THRESH: return subsize + n_subs + BuildScript(k).size();
-        case NodeType::MULTI: return subsize + 3 + (n_keys > 16) + (k > 16) + 34 * n_keys;
+        case Fragment::JUST_1:
+        case Fragment::JUST_0: return 1;
+        case Fragment::PK_K: return 34;
+        case Fragment::PK_H: return 3 + 21;
+        case Fragment::OLDER: return 1 + BuildScript(k).size();
+        case Fragment::AFTER: return 1 + BuildScript(k).size();
+        case Fragment::HASH256:
+        case Fragment::SHA256: return 4 + 2 + 33;
+        case Fragment::HASH160:
+        case Fragment::RIPEMD160: return 4 + 2 + 21;
+        case Fragment::MULTI: return 3 + (n_keys > 16) + (k > 16) + 34 * n_keys;
+        case Fragment::AND_V: return subsize;
+        case Fragment::WRAP_V: return subsize + (sub0typ << "x"_mst);
+        case Fragment::WRAP_S:
+        case Fragment::WRAP_C:
+        case Fragment::WRAP_N:
+        case Fragment::AND_B:
+        case Fragment::OR_B: return subsize + 1;
+        case Fragment::WRAP_A:
+        case Fragment::OR_C: return subsize + 2;
+        case Fragment::WRAP_D:
+        case Fragment::OR_D:
+        case Fragment::OR_I:
+        case Fragment::ANDOR: return subsize + 3;
+        case Fragment::WRAP_J: return subsize + 4;
+        case Fragment::THRESH: return subsize + n_subs + BuildScript(k).size();
     }
     assert(false);
     return 0;

@@ -230,32 +230,31 @@ public:
 //! Singleton instance of KeyConverter.
 const KeyConverter CONVERTER{};
 
-// Helper types and functions that use miniscript instantiated for CPubKey.
-using NodeType = miniscript::NodeType;
+using Fragment = miniscript::Fragment;
 using NodeRef = miniscript::NodeRef<CPubKey>;
 using miniscript::operator"" _mst;
 
 //! Determine whether a Miniscript node is satisfiable at all (and thus isn't equivalent to just "false").
 bool Satisfiable(const NodeRef& ref) {
     switch (ref->nodetype) {
-        case NodeType::JUST_0:
+        case Fragment::JUST_0:
             return false;
-        case NodeType::AND_B: case NodeType::AND_V:
+        case Fragment::AND_B: case Fragment::AND_V:
             return Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1]);
-        case NodeType::OR_B: case NodeType::OR_C: case NodeType::OR_D: case NodeType::OR_I:
+        case Fragment::OR_B: case Fragment::OR_C: case Fragment::OR_D: case Fragment::OR_I:
             return Satisfiable(ref->subs[0]) || Satisfiable(ref->subs[1]);
-        case NodeType::ANDOR:
+        case Fragment::ANDOR:
             return (Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1])) || Satisfiable(ref->subs[2]);
-        case NodeType::WRAP_A: case NodeType::WRAP_C: case NodeType::WRAP_S:
-        case NodeType::WRAP_D: case NodeType::WRAP_V: case NodeType::WRAP_J:
-        case NodeType::WRAP_N:
+        case Fragment::WRAP_A: case Fragment::WRAP_C: case Fragment::WRAP_S:
+        case Fragment::WRAP_D: case Fragment::WRAP_V: case Fragment::WRAP_J:
+        case Fragment::WRAP_N:
             return Satisfiable(ref->subs[0]);
-        case NodeType::PK_K: case NodeType::PK_H: case NodeType::MULTI:
-        case NodeType::AFTER: case NodeType::OLDER: case NodeType::HASH256:
-        case NodeType::HASH160: case NodeType::SHA256: case NodeType::RIPEMD160:
-        case NodeType::JUST_1:
+        case Fragment::PK_K: case Fragment::PK_H: case Fragment::MULTI:
+        case Fragment::AFTER: case Fragment::OLDER: case Fragment::HASH256:
+        case Fragment::HASH160: case Fragment::SHA256: case Fragment::RIPEMD160:
+        case Fragment::JUST_1:
             return true;
-        case NodeType::THRESH:
+        case Fragment::THRESH:
             return std::accumulate(ref->subs.begin(), ref->subs.end(), (size_t)0, [](size_t acc, const NodeRef& ref){return acc + Satisfiable(ref);}) >= ref->k;
     }
     assert(false);
@@ -268,17 +267,17 @@ std::set<Challenge> FindChallenges(const NodeRef& ref) {
     for (const auto& key : ref->keys) {
         chal.emplace(ChallengeType::PK, ChallengeNumber(key));
     }
-    if (ref->nodetype == miniscript::NodeType::OLDER) {
+    if (ref->nodetype == miniscript::Fragment::OLDER) {
         chal.emplace(ChallengeType::OLDER, ref->k);
-    } else if (ref->nodetype == miniscript::NodeType::AFTER) {
+    } else if (ref->nodetype == miniscript::Fragment::AFTER) {
         chal.emplace(ChallengeType::AFTER, ref->k);
-    } else if (ref->nodetype == miniscript::NodeType::SHA256) {
+    } else if (ref->nodetype == miniscript::Fragment::SHA256) {
         chal.emplace(ChallengeType::SHA256, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::NodeType::RIPEMD160) {
+    } else if (ref->nodetype == miniscript::Fragment::RIPEMD160) {
         chal.emplace(ChallengeType::RIPEMD160, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::NodeType::HASH256) {
+    } else if (ref->nodetype == miniscript::Fragment::HASH256) {
         chal.emplace(ChallengeType::HASH256, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::NodeType::HASH160) {
+    } else if (ref->nodetype == miniscript::Fragment::HASH160) {
         chal.emplace(ChallengeType::HASH160, ChallengeNumber(ref->data));
     }
     for (const auto& sub : ref->subs) {
@@ -434,8 +433,11 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     Test("t:or_i(v:1,v:1)", "?", TESTMODE_VALID); // or_i(V,V): valid
     Test("c:or_i(pk_k(03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7),pk_k(036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00))", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // or_i(K,K): valid
     Test("or_i(a:1,a:1)", "?", TESTMODE_INVALID); // or_i(W,W): X and Y must be B/V/K
+    Test("or_b(l:after(100),al:after(1000000000))", "?", TESTMODE_VALID); // or_b(timelock, heighlock) valid
+    Test("and_b(after(100),a:after(1000000000))", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_TIMELOCKMIX); // and_b(timelock, heighlock) invalid
     Test("pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65)", "2103d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // alias to c:pk_k
     Test("pkh(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65)", "76a914fcd35ddacad9f2d5be5e464639441c6065e6955d88ac", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // alias to c:pk_h
+
 
     // Randomly generated test set that covers the majority of type and node type combinations
     Test("lltvln:after(1231488000)", "6300676300676300670400046749b1926869516868", TESTMODE_VALID | TESTMODE_NONMAL, 12, 4);
