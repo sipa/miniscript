@@ -200,8 +200,6 @@ struct NodeInfo {
     NodeInfo(Fragment frag, uint32_t _k, std::vector<CPubKey> _keys): fragment(frag), n_subs(0), k(_k), keys(std::move(_keys)) {}
 };
 
-std::set<std::pair<Fragment, miniscript::Type>> types;
-
 /** Pick an index in a collection from a single byte in the fuzzer's output. */
 template<typename T, typename A>
 T ConsumeIndex(FuzzedDataProvider& provider, A& col) {
