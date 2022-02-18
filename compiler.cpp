@@ -20,7 +20,7 @@ const CompilerContext COMPILER_CTX;
 namespace {
 
 using Node = miniscript::NodeRef<CompilerContext::Key>;
-using NodeType = miniscript::NodeType;
+using Fragment = miniscript::Fragment;
 using miniscript::operator"" _mst;
 
 template<typename... Args>
@@ -471,45 +471,45 @@ void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationK
 
 constexpr double INF = std::numeric_limits<double>::infinity();
 
-CostPair CalcCostPair(NodeType nt, const std::vector<const Result*>& s, double l) {
+CostPair CalcCostPair(Fragment nt, const std::vector<const Result*>& s, double l) {
     double r = 1.0 - l;
-    if (nt != NodeType::OR_B && nt != NodeType::OR_D && nt != NodeType::OR_C && nt != NodeType::OR_I && nt != NodeType::THRESH && nt != NodeType::ANDOR && nt != NodeType::MULTI) {
+    if (nt != Fragment::OR_B && nt != Fragment::OR_D && nt != Fragment::OR_C && nt != Fragment::OR_I && nt != Fragment::THRESH && nt != Fragment::ANDOR && nt != Fragment::MULTI) {
         assert(l == 0);
     }
     switch (nt) {
-        case NodeType::PK_K: return {73, 1};
-        case NodeType::PK_H: return {107, 35};
-        case NodeType::OLDER:
-        case NodeType::AFTER:
+        case Fragment::PK_K: return {73, 1};
+        case Fragment::PK_H: return {107, 35};
+        case Fragment::OLDER:
+        case Fragment::AFTER:
             return {0, INF};
-        case NodeType::HASH256:
-        case NodeType::HASH160:
-        case NodeType::SHA256:
-        case NodeType::RIPEMD160:
+        case Fragment::HASH256:
+        case Fragment::HASH160:
+        case Fragment::SHA256:
+        case Fragment::RIPEMD160:
             return {33, 33};
-        case NodeType::WRAP_A:
-        case NodeType::WRAP_S:
-        case NodeType::WRAP_C:
-        case NodeType::WRAP_N:
+        case Fragment::WRAP_A:
+        case Fragment::WRAP_S:
+        case Fragment::WRAP_C:
+        case Fragment::WRAP_N:
             return s[0]->pair;
-        case NodeType::WRAP_D: return {2 + s[0]->pair.sat, 1};
-        case NodeType::WRAP_V: return {s[0]->pair.sat, INF};
-        case NodeType::WRAP_J: return {s[0]->pair.sat, 1};
-        case NodeType::JUST_1: return {0, INF};
-        case NodeType::JUST_0: return {INF, 0};
-        case NodeType::AND_V: return {s[0]->pair.sat + s[1]->pair.sat, INF};
-        case NodeType::AND_B: return {s[0]->pair.sat + s[1]->pair.sat, s[0]->pair.nsat + s[1]->pair.nsat};
-        case NodeType::OR_B:
+        case Fragment::WRAP_D: return {2 + s[0]->pair.sat, 1};
+        case Fragment::WRAP_V: return {s[0]->pair.sat, INF};
+        case Fragment::WRAP_J: return {s[0]->pair.sat, 1};
+        case Fragment::JUST_1: return {0, INF};
+        case Fragment::JUST_0: return {INF, 0};
+        case Fragment::AND_V: return {s[0]->pair.sat + s[1]->pair.sat, INF};
+        case Fragment::AND_B: return {s[0]->pair.sat + s[1]->pair.sat, s[0]->pair.nsat + s[1]->pair.nsat};
+        case Fragment::OR_B:
             return {Mul(l, s[0]->pair.sat + s[1]->pair.nsat) + Mul(r, s[0]->pair.nsat + s[1]->pair.sat), s[0]->pair.nsat + s[1]->pair.nsat};
-        case NodeType::OR_D:
-        case NodeType::OR_C:
+        case Fragment::OR_D:
+        case Fragment::OR_C:
             return {Mul(l, s[0]->pair.sat) + Mul(r, s[0]->pair.nsat + s[1]->pair.sat), s[0]->pair.nsat + s[1]->pair.nsat};
-        case NodeType::OR_I:
+        case Fragment::OR_I:
             return {Mul(l, s[0]->pair.sat + 2) + Mul(r, s[1]->pair.sat + 1), std::min(2 + s[0]->pair.nsat, 1 + s[1]->pair.nsat)};
-        case NodeType::ANDOR:
+        case Fragment::ANDOR:
             return {Mul(l, s[0]->pair.sat + s[1]->pair.sat) + Mul(r, s[0]->pair.nsat + s[2]->pair.sat), s[0]->pair.nsat + s[2]->pair.nsat};
-        case NodeType::MULTI: return CostPair{1.0 + l * 73.0, 1.0 + l};
-        case NodeType::THRESH: {
+        case Fragment::MULTI: return CostPair{1.0 + l * 73.0, 1.0 + l};
+        case Fragment::THRESH: {
             double sat = 0.0, nsat = 0.0;
             for (const auto& sub : s) {
                 sat += sub->pair.sat;
@@ -521,40 +521,40 @@ CostPair CalcCostPair(NodeType nt, const std::vector<const Result*>& s, double l
     throw std::runtime_error("Computing CostPair of unknown nodetype");
 }
 
-std::pair<std::vector<double>, std::vector<double>> GetPQs(NodeType nt, double p, double q, double l, int m) {
+std::pair<std::vector<double>, std::vector<double>> GetPQs(Fragment nt, double p, double q, double l, int m) {
     static const std::pair<std::vector<double>, std::vector<double>> NONE;
     double r = 1.0 - l;
     switch (nt) {
-        case NodeType::JUST_1:
-        case NodeType::JUST_0:
-        case NodeType::PK_K:
-        case NodeType::PK_H:
-        case NodeType::MULTI:
-        case NodeType::OLDER:
-        case NodeType::AFTER:
-        case NodeType::HASH256:
-        case NodeType::HASH160:
-        case NodeType::SHA256:
-        case NodeType::RIPEMD160:
+        case Fragment::JUST_1:
+        case Fragment::JUST_0:
+        case Fragment::PK_K:
+        case Fragment::PK_H:
+        case Fragment::MULTI:
+        case Fragment::OLDER:
+        case Fragment::AFTER:
+        case Fragment::HASH256:
+        case Fragment::HASH160:
+        case Fragment::SHA256:
+        case Fragment::RIPEMD160:
             return NONE;
-        case NodeType::WRAP_A:
-        case NodeType::WRAP_S:
-        case NodeType::WRAP_C:
-        case NodeType::WRAP_N:
+        case Fragment::WRAP_A:
+        case Fragment::WRAP_S:
+        case Fragment::WRAP_C:
+        case Fragment::WRAP_N:
             return {{p}, {q}};
-        case NodeType::WRAP_D:
-        case NodeType::WRAP_V:
-        case NodeType::WRAP_J:
+        case Fragment::WRAP_D:
+        case Fragment::WRAP_V:
+        case Fragment::WRAP_J:
             return {{p}, {0}};
-        case NodeType::AND_V:
-        case NodeType::AND_B:
+        case Fragment::AND_V:
+        case Fragment::AND_B:
             return {{p, p}, {q, q}};
-        case NodeType::OR_B: return {{l*p, r*p}, {r*p + q, l*p + q}};
-        case NodeType::OR_D: return {{l*p, r*p}, {r*p + q, q}};
-        case NodeType::OR_C: return {{l*p, r*p}, {r*p, 0}};
-        case NodeType::OR_I: return {{l*p, r*p}, {m == 0 ? q : 0, m == 1 ? q : 0}};
-        case NodeType::ANDOR: return {{l*p, l*p, r*p}, {q + r*p, 0, q}};
-        case NodeType::THRESH: return {std::vector<double>(m, p * l), std::vector<double>(m, q + p * r)};
+        case Fragment::OR_B: return {{l*p, r*p}, {r*p + q, l*p + q}};
+        case Fragment::OR_D: return {{l*p, r*p}, {r*p + q, q}};
+        case Fragment::OR_C: return {{l*p, r*p}, {r*p, 0}};
+        case Fragment::OR_I: return {{l*p, r*p}, {m == 0 ? q : 0, m == 1 ? q : 0}};
+        case Fragment::ANDOR: return {{l*p, l*p, r*p}, {q + r*p, 0, q}};
+        case Fragment::THRESH: return {std::vector<double>(m, p * l), std::vector<double>(m, q + p * r)};
     }
     assert(false);
     return NONE;
@@ -562,7 +562,7 @@ std::pair<std::vector<double>, std::vector<double>> GetPQs(NodeType nt, double p
 
 typedef std::vector<std::vector<TypeFilter>> TypeFilters;
 
-const TypeFilters& GetTypeFilter(NodeType nt) {
+const TypeFilters& GetTypeFilter(Fragment nt) {
     static const TypeFilters FILTER_NO{{}};
     static const TypeFilters FILTER_WRAP_A{{"B/udfems"_mstf}};
     static const TypeFilters FILTER_WRAP_S{{"Bo/udfemsx"_mstf}};
@@ -592,47 +592,47 @@ const TypeFilters& GetTypeFilter(NodeType nt) {
     };
 
     switch (nt) {
-        case NodeType::JUST_1:
-        case NodeType::JUST_0:
-        case NodeType::PK_K:
-        case NodeType::PK_H:
-        case NodeType::MULTI:
-        case NodeType::OLDER:
-        case NodeType::AFTER:
-        case NodeType::HASH256:
-        case NodeType::HASH160:
-        case NodeType::SHA256:
-        case NodeType::RIPEMD160:
+        case Fragment::JUST_1:
+        case Fragment::JUST_0:
+        case Fragment::PK_K:
+        case Fragment::PK_H:
+        case Fragment::MULTI:
+        case Fragment::OLDER:
+        case Fragment::AFTER:
+        case Fragment::HASH256:
+        case Fragment::HASH160:
+        case Fragment::SHA256:
+        case Fragment::RIPEMD160:
             return FILTER_NO;
-        case NodeType::WRAP_A: return FILTER_WRAP_A;
-        case NodeType::WRAP_S: return FILTER_WRAP_S;
-        case NodeType::WRAP_C: return FILTER_WRAP_C;
-        case NodeType::WRAP_D: return FILTER_WRAP_D;
-        case NodeType::WRAP_V: return FILTER_WRAP_V;
-        case NodeType::WRAP_J: return FILTER_WRAP_J;
-        case NodeType::WRAP_N: return FILTER_WRAP_N;
-        case NodeType::AND_V: return FILTER_AND_V;
-        case NodeType::AND_B: return FILTER_AND_B;
-        case NodeType::OR_B: return FILTER_OR_B;
-        case NodeType::OR_C: return FILTER_OR_C;
-        case NodeType::OR_D: return FILTER_OR_D;
-        case NodeType::OR_I: return FILTER_OR_I;
-        case NodeType::ANDOR: return FILTER_ANDOR;
-        case NodeType::THRESH: break;
+        case Fragment::WRAP_A: return FILTER_WRAP_A;
+        case Fragment::WRAP_S: return FILTER_WRAP_S;
+        case Fragment::WRAP_C: return FILTER_WRAP_C;
+        case Fragment::WRAP_D: return FILTER_WRAP_D;
+        case Fragment::WRAP_V: return FILTER_WRAP_V;
+        case Fragment::WRAP_J: return FILTER_WRAP_J;
+        case Fragment::WRAP_N: return FILTER_WRAP_N;
+        case Fragment::AND_V: return FILTER_AND_V;
+        case Fragment::AND_B: return FILTER_AND_B;
+        case Fragment::OR_B: return FILTER_OR_B;
+        case Fragment::OR_C: return FILTER_OR_C;
+        case Fragment::OR_D: return FILTER_OR_D;
+        case Fragment::OR_I: return FILTER_OR_I;
+        case Fragment::ANDOR: return FILTER_ANDOR;
+        case Fragment::THRESH: break;
     }
     assert(false);
     return FILTER_NO;
 }
 
 template<typename... Args>
-void AddInner(Compilation& compilation, std::map<CompilationKey, Compilation>& cache, NodeType nt, const std::vector<const Result*>& resp, double prob, Args&&... args) {
+void AddInner(Compilation& compilation, std::map<CompilationKey, Compilation>& cache, Fragment nt, const std::vector<const Result*>& resp, double prob, Args&&... args) {
     std::vector<Node> subs;
     for (const Result* res : resp) subs.push_back(res->node);
     compilation.Add(CalcCostPair(nt, resp, prob), nt, std::move(subs), std::forward<Args>(args)...);
 }
 
 template<typename... Args>
-void Add(Compilation& compilation, std::map<CompilationKey, Compilation>& cache, NodeType nt, const std::vector<const Strat*>& s, double prob, int m, Args&&... args) {
+void Add(Compilation& compilation, std::map<CompilationKey, Compilation>& cache, Fragment nt, const std::vector<const Strat*>& s, double prob, int m, Args&&... args) {
     auto pqs = GetPQs(nt, compilation.p, compilation.q, prob, m);
     auto filter = GetTypeFilter(nt);
     std::vector<const Result*> resp;
@@ -706,68 +706,68 @@ void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationK
             return;
         }
         case Strat::Type::JUST_0:
-            Add(compilation, cache, NodeType::JUST_0, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::JUST_0, strat->sub, 0, 0);
             return;
         case Strat::Type::JUST_1:
-            Add(compilation, cache, NodeType::JUST_1, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::JUST_1, strat->sub, 0, 0);
             return;
         case Strat::Type::AFTER:
         case Strat::Type::OLDER: {
-            Add(compilation, cache, strat->node_type == Strat::Type::OLDER ? NodeType::OLDER : NodeType::AFTER, strat->sub, 0, 0, strat->k);
+            Add(compilation, cache, strat->node_type == Strat::Type::OLDER ? Fragment::OLDER : Fragment::AFTER, strat->sub, 0, 0, strat->k);
             return;
         }
         case Strat::Type::HASH160: {
-            Add(compilation, cache, NodeType::HASH160, strat->sub, 0, 0, strat->data);
+            Add(compilation, cache, Fragment::HASH160, strat->sub, 0, 0, strat->data);
             return;
         }
         case Strat::Type::HASH256: {
-            Add(compilation, cache, NodeType::HASH256, strat->sub, 0, 0, strat->data);
+            Add(compilation, cache, Fragment::HASH256, strat->sub, 0, 0, strat->data);
             return;
         }
         case Strat::Type::RIPEMD160: {
-            Add(compilation, cache, NodeType::RIPEMD160, strat->sub, 0, 0, strat->data);
+            Add(compilation, cache, Fragment::RIPEMD160, strat->sub, 0, 0, strat->data);
             return;
         }
         case Strat::Type::SHA256: {
-            Add(compilation, cache, NodeType::SHA256, strat->sub, 0, 0, strat->data);
+            Add(compilation, cache, Fragment::SHA256, strat->sub, 0, 0, strat->data);
             return;
         }
         case Strat::Type::PK_K: {
-            Add(compilation, cache, NodeType::PK_K, strat->sub, 0, 0, strat->keys);
-            Add(compilation, cache, NodeType::PK_H, strat->sub, 0, 0, strat->keys);
+            Add(compilation, cache, Fragment::PK_K, strat->sub, 0, 0, strat->keys);
+            Add(compilation, cache, Fragment::PK_H, strat->sub, 0, 0, strat->keys);
             return;
         }
         case Strat::Type::MULTI:
-            Add(compilation, cache, NodeType::MULTI, strat->sub, strat->k, 0, strat->keys, strat->k);
+            Add(compilation, cache, Fragment::MULTI, strat->sub, strat->k, 0, strat->keys, strat->k);
             return;
         case Strat::Type::WRAP_AS:
-            Add(compilation, cache, NodeType::WRAP_A, strat->sub, 0, 0);
-            Add(compilation, cache, NodeType::WRAP_S, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::WRAP_A, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::WRAP_S, strat->sub, 0, 0);
             return;
         case Strat::Type::WRAP_C:
-            Add(compilation, cache, NodeType::WRAP_C, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::WRAP_C, strat->sub, 0, 0);
             return;
         case Strat::Type::WRAP_D:
-            Add(compilation, cache, NodeType::WRAP_D, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::WRAP_D, strat->sub, 0, 0);
             return;
         case Strat::Type::WRAP_N:
-            Add(compilation, cache, NodeType::WRAP_N, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::WRAP_N, strat->sub, 0, 0);
             return;
         case Strat::Type::WRAP_J:
-            Add(compilation, cache, NodeType::WRAP_J, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::WRAP_J, strat->sub, 0, 0);
             return;
         case Strat::Type::WRAP_V:
-            Add(compilation, cache, NodeType::WRAP_V, strat->sub, 0, 0);
+            Add(compilation, cache, Fragment::WRAP_V, strat->sub, 0, 0);
             return;
         case Strat::Type::AND: {
             const auto& sub = strat->sub;
             const std::vector<const Strat*> rev{sub[1], sub[0]};
             if (q == 0) {
-                Add(compilation, cache, NodeType::AND_V, sub, 0, 0);
-                Add(compilation, cache, NodeType::AND_V, rev, 0, 0);
+                Add(compilation, cache, Fragment::AND_V, sub, 0, 0);
+                Add(compilation, cache, Fragment::AND_V, rev, 0, 0);
             }
-            Add(compilation, cache, NodeType::AND_B, sub, 0, 0);
-            Add(compilation, cache, NodeType::AND_B, rev, 0, 0);
+            Add(compilation, cache, Fragment::AND_B, sub, 0, 0);
+            Add(compilation, cache, Fragment::AND_B, rev, 0, 0);
             return;
         }
         case Strat::Type::OR: {
@@ -775,29 +775,29 @@ void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationK
             const std::vector<const Strat*> rev{sub[1], sub[0]};
             double l = strat->prob, r = 1.0 - l;
             if (q == 0) {
-                Add(compilation, cache, NodeType::OR_C, sub, l, 0);
-                Add(compilation, cache, NodeType::OR_C, rev, r, 0);
+                Add(compilation, cache, Fragment::OR_C, sub, l, 0);
+                Add(compilation, cache, Fragment::OR_C, rev, r, 0);
             }
-            Add(compilation, cache, NodeType::OR_B, sub, l, 0);
-            Add(compilation, cache, NodeType::OR_B, rev, r, 0);
-            Add(compilation, cache, NodeType::OR_D, sub, l, 0);
-            Add(compilation, cache, NodeType::OR_D, rev, r, 0);
-            Add(compilation, cache, NodeType::OR_I, sub, l, 0);
-            Add(compilation, cache, NodeType::OR_I, rev, r, 0);
-            Add(compilation, cache, NodeType::OR_I, sub, l, 1);
-            Add(compilation, cache, NodeType::OR_I, rev, r, 1);
+            Add(compilation, cache, Fragment::OR_B, sub, l, 0);
+            Add(compilation, cache, Fragment::OR_B, rev, r, 0);
+            Add(compilation, cache, Fragment::OR_D, sub, l, 0);
+            Add(compilation, cache, Fragment::OR_D, rev, r, 0);
+            Add(compilation, cache, Fragment::OR_I, sub, l, 0);
+            Add(compilation, cache, Fragment::OR_I, rev, r, 0);
+            Add(compilation, cache, Fragment::OR_I, sub, l, 1);
+            Add(compilation, cache, Fragment::OR_I, rev, r, 1);
             return;
         }
         case Strat::Type::ANDOR: {
             const auto& sub = strat->sub;
             const std::vector<const Strat*> rev{sub[1], sub[0], sub[2]};
             double l = strat->prob;
-            Add(compilation, cache, NodeType::ANDOR, sub, l, 0);
-            Add(compilation, cache, NodeType::ANDOR, rev, l, 0);
+            Add(compilation, cache, Fragment::ANDOR, sub, l, 0);
+            Add(compilation, cache, Fragment::ANDOR, rev, l, 0);
             return;
         }
         case Strat::Type::THRESH: {
-            auto pqs = GetPQs(NodeType::THRESH, p, q, strat->prob, (int)strat->sub.size());
+            auto pqs = GetPQs(Fragment::THRESH, p, q, strat->prob, (int)strat->sub.size());
             std::vector<Result> Bs, Ws;
             int B_pos = -1;
             double cost_diff = -1.0;
@@ -821,7 +821,7 @@ void Compile(const Strat* strat, Compilation& compilation, std::map<CompilationK
             for (size_t i = 0; i < strat->sub.size(); ++i) {
                 if ((int)i != B_pos) resp.push_back(&Ws[i]);
             }
-            AddInner(compilation, cache, NodeType::THRESH, resp, strat->prob, strat->k);
+            AddInner(compilation, cache, Fragment::THRESH, resp, strat->prob, strat->k);
             return;
         }
     }
@@ -891,32 +891,32 @@ std::string Disassembler(CScript::const_iterator& it, CScript::const_iterator en
 /*
 std::string DebugNode(const Node& node) {
     switch (node->nodetype) {
-        case NodeType::PK_K: return "pk";
-        case NodeType::PK_H: return "pk_h";
-        case NodeType::MULTI: return "multi(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")";
-        case NodeType::AFTER: return "after";
-        case NodeType::OLDER: return "older";
-        case NodeType::SHA256: return "sha256";
-        case NodeType::HASH256: return "hash256";
-        case NodeType::RIPEMD160: return "ripemd160";
-        case NodeType::HASH160: return "hash160";
-        case NodeType::JUST_1: return "1";
-        case NodeType::JUST_0: return "0";
-        case NodeType::WRAP_C: return "c:";
-        case NodeType::WRAP_A: return "a:";
-        case NodeType::WRAP_S: return "s:";
-        case NodeType::WRAP_V: return "v:";
-        case NodeType::WRAP_D: return "d:";
-        case NodeType::WRAP_J: return "j:";
-        case NodeType::WRAP_N: return "n:";
-        case NodeType::AND_V: return "and_v";
-        case NodeType::AND_B: return "and_b";
-        case NodeType::OR_B: return "or_b";
-        case NodeType::OR_C: return "or_c";
-        case NodeType::OR_D: return "or_d";
-        case NodeType::OR_I: return "or_i";
-        case NodeType::ANDOR: return "andor";
-        case NodeType::THRESH: return "thresh(" + std::to_string(node->k) + " of " + std::to_string(node->subs.size()) + ")";
+        case Fragment::PK_K: return "pk";
+        case Fragment::PK_H: return "pk_h";
+        case Fragment::MULTI: return "multi(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")";
+        case Fragment::AFTER: return "after";
+        case Fragment::OLDER: return "older";
+        case Fragment::SHA256: return "sha256";
+        case Fragment::HASH256: return "hash256";
+        case Fragment::RIPEMD160: return "ripemd160";
+        case Fragment::HASH160: return "hash160";
+        case Fragment::JUST_1: return "1";
+        case Fragment::JUST_0: return "0";
+        case Fragment::WRAP_C: return "c:";
+        case Fragment::WRAP_A: return "a:";
+        case Fragment::WRAP_S: return "s:";
+        case Fragment::WRAP_V: return "v:";
+        case Fragment::WRAP_D: return "d:";
+        case Fragment::WRAP_J: return "j:";
+        case Fragment::WRAP_N: return "n:";
+        case Fragment::AND_V: return "and_v";
+        case Fragment::AND_B: return "and_b";
+        case Fragment::OR_B: return "or_b";
+        case Fragment::OR_C: return "or_c";
+        case Fragment::OR_D: return "or_d";
+        case Fragment::OR_I: return "or_i";
+        case Fragment::ANDOR: return "andor";
+        case Fragment::THRESH: return "thresh(" + std::to_string(node->k) + " of " + std::to_string(node->subs.size()) + ")";
     }
     assert(false);
     return "";
