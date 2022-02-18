@@ -683,38 +683,38 @@ public:
             case Fragment::HASH160: return {4, 0, {}};
             case Fragment::AND_V: return {subs[0]->ops.count + subs[1]->ops.count, subs[0]->ops.sat + subs[1]->ops.sat, {}};
             case Fragment::AND_B: {
-                const uint32_t count{1 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{subs[0]->ops.sat + subs[1]->ops.sat};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                const auto count{1 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{subs[0]->ops.sat + subs[1]->ops.sat};
+                const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_B: {
-                const uint32_t count{1 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                const auto count{1 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_D: {
-                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                const auto count{3 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_C: {
-                const uint32_t count{2 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto count{2 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
                 return {count, sat, {}};
             }
             case Fragment::OR_I: {
-                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat)};
-                const internal::MaxInt<uint32_t> dsat{Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
+                const auto count{3 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat)};
+                const auto dsat{Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
                 return {count, sat, dsat};
             }
             case Fragment::ANDOR: {
-                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count + subs[2]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[2]->ops.dsat};
+                const auto count{3 + subs[0]->ops.count + subs[1]->ops.count + subs[2]->ops.count};
+                const auto sat{Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat)};
+                const auto dsat{subs[0]->ops.dsat + subs[2]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::MULTI: return {1, (uint32_t)keys.size(), (uint32_t)keys.size()};
@@ -756,15 +756,15 @@ public:
             case Fragment::HASH256:
             case Fragment::HASH160: return {1, {}};
             case Fragment::ANDOR: {
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ss.dsat + subs[2]->ss.dsat};
+                const auto sat{Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat)};
+                const auto dsat{subs[0]->ss.dsat + subs[2]->ss.dsat};
                 return {sat, dsat};
             }
             case Fragment::AND_V: return {subs[0]->ss.sat + subs[1]->ss.sat, {}};
             case Fragment::AND_B: return {subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.dsat};
             case Fragment::OR_B: {
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ss.dsat + subs[1]->ss.dsat};
+                const auto sat{Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat)};
+                const auto dsat{subs[0]->ss.dsat + subs[1]->ss.dsat};
                 return {sat, dsat};
             }
             case Fragment::OR_C: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), {}};
