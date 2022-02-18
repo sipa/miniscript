@@ -323,25 +323,24 @@ InputStack operator+(InputStack a, InputStack b) {
     return a;
 }
 
-InputStack Choose(InputStack a, InputStack b, bool nonmalleable) {
+InputStack Choose(InputStack a, InputStack b) {
     // If only one (or neither) is valid, pick the other one.
     if (a.available == Availability::NO) return b;
     if (b.available == Availability::NO) return a;
-    // If both are valid, they must be distinct.
-    if (nonmalleable) {
-        // If both options are weak, any result is fine; it just needs the malleable marker.
-        if (!a.has_sig && !b.has_sig) return a.Malleable();
-        // If one option is weak, we must pick that one.
-        if (!a.has_sig) return a;
-        if (!b.has_sig) return b;
-        // If both options are strong, prefer the canonical one.
-        if (b.non_canon) return a;
-        if (a.non_canon) return b;
-        // If both options are strong and canonical, prefer the nonmalleable one.
-        if (b.malleable) return a;
-        if (a.malleable) return b;
+    // If only one of the solutions has a signature, we must pick the other one.
+    if (!a.has_sig && b.has_sig) return a;
+    if (!b.has_sig && a.has_sig) return b;
+    if (!a.has_sig && !b.has_sig) {
+        // If neither solution requires a signature, the result is inevitably malleable.
+        a.malleable = true;
+        b.malleable = true;
+    } else {
+        // If both options require a signature, prefer the non-malleable one.
+        if (b.malleable && !a.malleable) return a;
+        if (a.malleable && !b.malleable) return b;
     }
-    // Pick the smaller between YESes and the bigger between MAYBEs. Prefer YES over MAYBE.
+    // Between two malleable or two non-malleable solutions, pick the smaller one between
+    // YESes, and the bigger ones between MAYBEs. Prefer YES over MAYBE.
     if (a.available == Availability::YES && b.available == Availability::YES) {
         return std::move(a.size <= b.size ? a : b);
     } else if (a.available == Availability::MAYBE && b.available == Availability::MAYBE) {

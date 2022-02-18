@@ -390,23 +390,31 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
     assert(parsed);
     assert(*parsed == *node);
 
-    // Check both malleable and non-malleable satisfaction. Note that we only assert the produced witness
-    // is valid if the Miniscript was sane, as otherwise it could overflow the limits.
-    CScriptWitness witness;
+    // Run malleable satisfaction algorithm.
     const CScript script_pubkey = CScript() << OP_0 << WitnessV0ScriptHash(script);
-    const bool mal_success = node->Satisfy(SATISFIER_CTX, witness.stack, false) == miniscript::Availability::YES;
-    if (mal_success && node->IsSaneTopLevel()) {
-        witness.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
-        assert(VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX));
+    CScriptWitness witness_mal;
+    const bool mal_success = node->Satisfy(SATISFIER_CTX, witness_mal.stack, false) == miniscript::Availability::YES;
+    witness_mal.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
+
+    // Run non-malleable satisfaction algorithm.
+    CScriptWitness witness_nonmal;
+    const bool nonmal_success = node->Satisfy(SATISFIER_CTX, witness_nonmal.stack, true) == miniscript::Availability::YES;
+    witness_nonmal.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
+
+    // If a non-malleable satisfaction exists, the malleable one must also exist, and be identical to it.
+    if (nonmal_success) {
+        assert(mal_success);
+        assert(witness_nonmal.stack == witness_mal.stack);
     }
-    witness.stack.clear();
-    const bool nonmal_success = node->Satisfy(SATISFIER_CTX, witness.stack, true) == miniscript::Availability::YES;
-    if (nonmal_success && node->IsSaneTopLevel()) {
-        witness.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
-        assert(VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX));
+
+    // Test satisfactions.
+    if (node->ValidSatisfactions() && nonmal_success) {
+        // Non-malleable satisfactions are guaranteed to be valid if ValidSatisfactions().
+        assert(VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness_nonmal, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX));
     }
-    // If a nonmalleable solution exists, a solution whatsoever must also exist.
-    assert(mal_success >= nonmal_success);
-    // If a miniscript is nonmalleable and needs a signature, and a solution exists, a non-malleable solution must also exist.
-    if (node->IsNonMalleable() && node->NeedsSignature()) assert(nonmal_success == mal_success);
+
+    if (node->IsSaneTopLevel()) {
+        // For sane nodes, the two algorithms behave identically.
+        assert(mal_success == nonmal_success);
+    }
 }
