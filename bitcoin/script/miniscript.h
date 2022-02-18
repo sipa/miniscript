@@ -974,20 +974,13 @@ public:
     //! Return the expression type.
     Type GetType() const { return typ; }
 
-    //! Find the deepest insane sub. Null if there is none.
-    NodeRef<Key> FindInsaneSub() const {
-        auto downfn = [](NodeRef<Key> curr_insane, const Node& node, size_t i) {
-            if (!node.subs[i]->IsSane()) return node.subs[i];
-            return curr_insane;
-        };
-
-        auto upfn = [](NodeRef<Key> curr_insane, const Node& node, Span<NodeRef<Key>> subs) {
-            for (const auto& sub: subs) if (sub) return sub;
-            return curr_insane;
-        };
-
-        NodeRef<Key> null;
-        return TreeEvalMaybe<NodeRef<Key>>(null, downfn, upfn).value_or(null);
+    //! Find an insane subnode which has no insane children. Nullptr if there is none.
+    const Node* FindInsaneSub() const {
+        return TreeEval<const Node*>([](const Node& node, Span<const Node*> subs) -> const Node* {
+            for (auto& sub: subs) if (sub) return sub;
+            if (!node.IsSane()) return &node;
+            return nullptr;
+        });
     }
 
     //! Check whether this node is valid at all.
