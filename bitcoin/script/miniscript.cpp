@@ -323,7 +323,7 @@ InputStack operator+(InputStack a, InputStack b) {
     return a;
 }
 
-InputStack Choose(InputStack a, InputStack b) {
+InputStack operator|(InputStack a, InputStack b) {
     // If only one (or neither) is valid, pick the other one.
     if (a.available == Availability::NO) return b;
     if (b.available == Availability::NO) return a;

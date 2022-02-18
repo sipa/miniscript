@@ -271,7 +271,7 @@ struct InputStack {
     //! Concatenate two input stacks.
     friend InputStack operator+(InputStack a, InputStack b);
     //! Choose between two potential input stacks.
-    friend InputStack Choose(InputStack a, InputStack b);
+    friend InputStack operator|(InputStack a, InputStack b);
 };
 
 static const auto ZERO = InputStack(std::vector<unsigned char>());
@@ -300,7 +300,7 @@ struct MaxInt {
         return a.value + b.value;
     }
 
-    friend MaxInt<I> Choose(const MaxInt<I>& a, const MaxInt<I>& b) {
+    friend MaxInt<I> operator|(const MaxInt<I>& a, const MaxInt<I>& b) {
         if (!a.valid) return b;
         if (!b.valid) return a;
         return std::max(a.value, b.value);
@@ -691,30 +691,30 @@ public:
             }
             case Fragment::OR_B: {
                 const auto count{1 + subs[0]->ops.count + subs[1]->ops.count};
-                const auto sat{Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto sat{(subs[0]->ops.sat + subs[1]->ops.dsat) | (subs[1]->ops.sat + subs[0]->ops.dsat)};
                 const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_D: {
                 const auto count{3 + subs[0]->ops.count + subs[1]->ops.count};
-                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto sat{subs[0]->ops.sat | (subs[1]->ops.sat + subs[0]->ops.dsat)};
                 const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_C: {
                 const auto count{2 + subs[0]->ops.count + subs[1]->ops.count};
-                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto sat{subs[0]->ops.sat | (subs[1]->ops.sat + subs[0]->ops.dsat)};
                 return {count, sat, {}};
             }
             case Fragment::OR_I: {
                 const auto count{3 + subs[0]->ops.count + subs[1]->ops.count};
-                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat)};
-                const auto dsat{Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
+                const auto sat{subs[0]->ops.sat | subs[1]->ops.sat};
+                const auto dsat{subs[0]->ops.dsat | subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::ANDOR: {
                 const auto count{3 + subs[0]->ops.count + subs[1]->ops.count + subs[2]->ops.count};
-                const auto sat{Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat)};
+                const auto sat{(subs[1]->ops.sat + subs[0]->ops.sat) | (subs[0]->ops.dsat + subs[2]->ops.sat)};
                 const auto dsat{subs[0]->ops.dsat + subs[2]->ops.dsat};
                 return {count, sat, dsat};
             }
@@ -732,7 +732,7 @@ public:
                 for (const auto& sub : subs) {
                     count += sub->ops.count + 1;
                     auto next_sats = Vector(sats[0] + sub->ops.dsat);
-                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + sub->ops.dsat, sats[j - 1] + sub->ops.sat));
+                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back((sats[j] + sub->ops.dsat) | (sats[j - 1] + sub->ops.sat));
                     next_sats.push_back(sats[sats.size() - 1] + sub->ops.sat);
                     sats = std::move(next_sats);
                 }
@@ -757,20 +757,20 @@ public:
             case Fragment::HASH256:
             case Fragment::HASH160: return {1, {}};
             case Fragment::ANDOR: {
-                const auto sat{Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat)};
+                const auto sat{(subs[0]->ss.sat + subs[1]->ss.sat) | (subs[0]->ss.dsat + subs[2]->ss.sat)};
                 const auto dsat{subs[0]->ss.dsat + subs[2]->ss.dsat};
                 return {sat, dsat};
             }
             case Fragment::AND_V: return {subs[0]->ss.sat + subs[1]->ss.sat, {}};
             case Fragment::AND_B: return {subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.dsat};
             case Fragment::OR_B: {
-                const auto sat{Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat)};
+                const auto sat{(subs[0]->ss.dsat + subs[1]->ss.sat) | (subs[0]->ss.sat + subs[1]->ss.dsat)};
                 const auto dsat{subs[0]->ss.dsat + subs[1]->ss.dsat};
                 return {sat, dsat};
             }
-            case Fragment::OR_C: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), {}};
-            case Fragment::OR_D: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), subs[0]->ss.dsat + subs[1]->ss.dsat};
-            case Fragment::OR_I: return {Choose(subs[0]->ss.sat + 1, subs[1]->ss.sat + 1), Choose(subs[0]->ss.dsat + 1, subs[1]->ss.dsat + 1)};
+            case Fragment::OR_C: return {subs[0]->ss.sat | (subs[0]->ss.dsat + subs[1]->ss.sat), {}};
+            case Fragment::OR_D: return {subs[0]->ss.sat | (subs[0]->ss.dsat + subs[1]->ss.sat), subs[0]->ss.dsat + subs[1]->ss.dsat};
+            case Fragment::OR_I: return {(subs[0]->ss.sat + 1) | (subs[1]->ss.sat + 1), (subs[0]->ss.dsat + 1) | (subs[1]->ss.dsat + 1)};
             case Fragment::MULTI: return {(uint32_t)keys.size() + 1, (uint32_t)keys.size() + 1};
             case Fragment::WRAP_A:
             case Fragment::WRAP_N:
@@ -783,7 +783,7 @@ public:
                 auto sats = Vector(internal::MaxInt<uint32_t>(0));
                 for (const auto& sub : subs) {
                     auto next_sats = Vector(sats[0] + sub->ss.dsat);
-                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + sub->ss.dsat, sats[j - 1] + sub->ss.sat));
+                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back((sats[j] + sub->ss.dsat) | (sats[j - 1] + sub->ss.sat));
                     next_sats.push_back(sats[sats.size() - 1] + sub->ss.sat);
                     sats = std::move(next_sats);
                 }
@@ -820,7 +820,7 @@ public:
                         auto sat = InputStack(std::move(sig)).WithSig().Available(avail);
                         std::vector<InputStack> next_sats;
                         next_sats.push_back(sats[0]);
-                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j], std::move(sats[j - 1]) + sat));
+                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(sats[j] | (std::move(sats[j - 1]) + sat));
                         next_sats.push_back(std::move(sats[sats.size() - 1]) + std::move(sat));
                         sats = std::move(next_sats);
                     }
@@ -835,7 +835,7 @@ public:
                         auto& res = subres[subres.size() - i - 1];
                         std::vector<InputStack> next_sats;
                         next_sats.push_back(sats[0] + res.nsat);
-                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + res.nsat, std::move(sats[j - 1]) + res.sat));
+                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back((sats[j] + res.nsat) | (std::move(sats[j - 1]) + res.sat));
                         next_sats.push_back(std::move(sats[sats.size() - 1]) + std::move(res.sat));
                         sats = std::move(next_sats);
                     }
@@ -843,7 +843,7 @@ public:
                     for (size_t i = 0; i < sats.size(); ++i) {
                         // i==k is the satisfaction; i==0 is the canonical dissatisfaction; the rest are non-canonical.
                         if (i != 0 && i != node.k) sats[i].NonCanon();
-                        if (i != node.k) nsat = Choose(std::move(nsat), std::move(sats[i]));
+                        if (i != node.k) nsat = std::move(nsat) | std::move(sats[i]);
                     }
                     assert(node.k <= sats.size());
                     return InputResult(std::move(nsat), std::move(sats[node.k]));
@@ -880,29 +880,29 @@ public:
                 }
                 case Fragment::AND_B: {
                     auto& x = subres[0], &y = subres[1];
-                    return InputResult(Choose(Choose(y.nsat + x.nsat, (y.sat + x.nsat).NonCanon()), (y.nsat + x.sat).NonCanon()), y.sat + x.sat);
+                    return InputResult((y.nsat + x.nsat) | (y.sat + x.nsat).NonCanon() | (y.nsat + x.sat).NonCanon(), y.sat + x.sat);
                 }
                 case Fragment::OR_B: {
                     auto& x = subres[0], &z = subres[1];
                     // The (sat(Z) sat(X)) solution is overcomplete (attacker can change either into dsat).
-                    return InputResult(z.nsat + x.nsat, Choose(Choose(z.nsat + x.sat, z.sat + x.nsat), (z.sat + x.sat).Malleable()));
+                    return InputResult(z.nsat + x.nsat, (z.nsat + x.sat) | (z.sat + x.nsat) | (z.sat + x.sat).Malleable());
                 }
                 case Fragment::OR_C: {
                     auto& x = subres[0], &z = subres[1];
-                    return InputResult(INVALID, Choose(std::move(x.sat), z.sat + x.nsat));
+                    return InputResult(INVALID, std::move(x.sat) | (z.sat + x.nsat));
                 }
                 case Fragment::OR_D: {
                     auto& x = subres[0], &z = subres[1];
                     auto nsat = z.nsat + x.nsat, sat_l = x.sat, sat_r = z.sat + x.nsat;
-                    return InputResult(z.nsat + x.nsat, Choose(std::move(x.sat), z.sat + x.nsat));
+                    return InputResult(z.nsat + x.nsat, std::move(x.sat) | (z.sat + x.nsat));
                 }
                 case Fragment::OR_I: {
                     auto& x = subres[0], &z = subres[1];
-                    return InputResult(Choose(x.nsat + ONE, z.nsat + ZERO), Choose(x.sat + ONE, z.sat + ZERO));
+                    return InputResult((x.nsat + ONE) | (z.nsat + ZERO), (x.sat + ONE) | (z.sat + ZERO));
                 }
                 case Fragment::ANDOR: {
                     auto& x = subres[0], &y = subres[1], &z = subres[2];
-                    return InputResult(Choose((y.nsat + x.sat).NonCanon(), z.nsat + x.nsat), Choose(y.sat + x.sat, z.sat + x.nsat));
+                    return InputResult((y.nsat + x.sat).NonCanon() | (z.nsat + x.nsat), (y.sat + x.sat) | (z.sat + x.nsat));
                 }
                 case Fragment::WRAP_A:
                 case Fragment::WRAP_S:
