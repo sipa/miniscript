@@ -113,9 +113,6 @@ typedef std::pair<ChallengeType, uint32_t> Challenge;
 struct KeyConverter {
     typedef CPubKey Key;
 
-    //! Public keys in text form are their usual hex notation (no xpubs, ...).
-    bool ToString(const CPubKey& key, std::string& ret) const { ret = HexStr(key); return true; }
-
     //! Convert a public key to bytes.
     std::vector<unsigned char> ToPKBytes(const CPubKey& key) const { return {key.begin(), key.end()}; }
 
@@ -233,167 +230,36 @@ public:
 //! Singleton instance of KeyConverter.
 const KeyConverter CONVERTER{};
 
-// Helper types and functions that use miniscript instantiated for CPubKey.
-using NodeType = miniscript::NodeType;
+using Fragment = miniscript::Fragment;
 using NodeRef = miniscript::NodeRef<CPubKey>;
-template<typename... Args> NodeRef MakeNodeRef(Args&&... args) { return miniscript::MakeNodeRef<CPubKey>(std::forward<Args>(args)...); }
 using miniscript::operator"" _mst;
 
 //! Determine whether a Miniscript node is satisfiable at all (and thus isn't equivalent to just "false").
 bool Satisfiable(const NodeRef& ref) {
     switch (ref->nodetype) {
-        case NodeType::JUST_0:
+        case Fragment::JUST_0:
             return false;
-        case NodeType::AND_B: case NodeType::AND_V:
+        case Fragment::AND_B: case Fragment::AND_V:
             return Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1]);
-        case NodeType::OR_B: case NodeType::OR_C: case NodeType::OR_D: case NodeType::OR_I:
+        case Fragment::OR_B: case Fragment::OR_C: case Fragment::OR_D: case Fragment::OR_I:
             return Satisfiable(ref->subs[0]) || Satisfiable(ref->subs[1]);
-        case NodeType::ANDOR:
+        case Fragment::ANDOR:
             return (Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1])) || Satisfiable(ref->subs[2]);
-        case NodeType::WRAP_A: case NodeType::WRAP_C: case NodeType::WRAP_S:
-        case NodeType::WRAP_D: case NodeType::WRAP_V: case NodeType::WRAP_J:
-        case NodeType::WRAP_N:
+        case Fragment::WRAP_A: case Fragment::WRAP_C: case Fragment::WRAP_S:
+        case Fragment::WRAP_D: case Fragment::WRAP_V: case Fragment::WRAP_J:
+        case Fragment::WRAP_N:
             return Satisfiable(ref->subs[0]);
-        case NodeType::PK_K: case NodeType::PK_H: case NodeType::MULTI:
-        case NodeType::AFTER: case NodeType::OLDER: case NodeType::HASH256:
-        case NodeType::HASH160: case NodeType::SHA256: case NodeType::RIPEMD160:
-        case NodeType::JUST_1:
+        case Fragment::PK_K: case Fragment::PK_H: case Fragment::MULTI:
+        case Fragment::AFTER: case Fragment::OLDER: case Fragment::HASH256:
+        case Fragment::HASH160: case Fragment::SHA256: case Fragment::RIPEMD160:
+        case Fragment::JUST_1:
             return true;
-        case NodeType::THRESH:
+        case Fragment::THRESH:
             return std::accumulate(ref->subs.begin(), ref->subs.end(), (size_t)0, [](size_t acc, const NodeRef& ref){return acc + Satisfiable(ref);}) >= ref->k;
     }
     assert(false);
     return false;
 }
-
-NodeRef GenNode(miniscript::Type typ, int complexity);
-
-//! Generate a random valid miniscript node of the given type and complexity.
-NodeRef RandomNode(miniscript::Type typ, int complexity) {
-    assert(complexity > 0);
-    NodeRef ret;
-    do {
-        ret = GenNode(typ, complexity);
-    } while (!ret || !ret->IsValid() || !(ret->GetType() << typ));
-    return ret;
-}
-
-//! Generate a vector of valid miniscript nodes of the given types, and a specified complexity of their sum.
-std::vector<NodeRef> MultiNode(int complexity, const std::vector<miniscript::Type>& types)
-{
-    int nodes = types.size();
-    assert(complexity >= nodes);
-    std::vector<int> subcomplex(nodes, 1);
-    if (nodes == 1) {
-        subcomplex[0] = complexity;
-    } else {
-        // This is a silly inefficient way to construct a multinomial distribution.
-        for (int i = 0; i < complexity - nodes; ++i) {
-            subcomplex[InsecureRandRange(nodes)]++;
-        }
-    }
-    std::vector<NodeRef> subs;
-    for (int i = 0; i < nodes; ++i) {
-        subs.push_back(RandomNode(types[i], subcomplex[i]));
-    }
-    return subs;
-}
-
-//! Generate a random (but occasionally invalid) miniscript node of the given type and complexity.
-NodeRef GenNode(miniscript::Type typ, int complexity) {
-    if (typ << "B"_mst) {
-        // Generate a "B" node.
-        if (complexity == 1) {
-            switch (InsecureRandBits(2)) {
-                case 0: return MakeNodeRef(InsecureRandBool() ? NodeType::JUST_0 : NodeType::JUST_1);
-                case 1: return MakeNodeRef(InsecureRandBool() ? NodeType::OLDER : NodeType::AFTER, 1 + InsecureRandRange((1ULL << (1 + InsecureRandRange(31))) - 1));
-                case 2: {
-                    int hashtype = InsecureRandBits(2);
-                    int index = InsecureRandRange(255);
-                    switch (hashtype) {
-                        case 0: return MakeNodeRef(NodeType::SHA256, g_testdata->sha256[index]);
-                        case 1: return MakeNodeRef(NodeType::RIPEMD160, g_testdata->ripemd160[index]);
-                        case 2: return MakeNodeRef(NodeType::HASH256, g_testdata->hash256[index]);
-                        case 3: return MakeNodeRef(NodeType::HASH160, g_testdata->hash160[index]);
-                    }
-                    break;
-                }
-                case 3: return MakeNodeRef(NodeType::WRAP_C, MultiNode(complexity, Vector("K"_mst)));
-            }
-            assert(false);
-        }
-        switch (InsecureRandRange(7 + (complexity >= 3) * 7 + (complexity >= 4) * 2)) {
-            // Complexity >= 2
-            case 0: return MakeNodeRef(NodeType::WRAP_C, MultiNode(complexity, Vector("K"_mst)));
-            case 1: return MakeNodeRef(NodeType::WRAP_D, MultiNode(complexity - 1, Vector("V"_mst)));
-            case 2: return MakeNodeRef(NodeType::WRAP_J, MultiNode(complexity - 1, Vector("B"_mst)));
-            case 3: return MakeNodeRef(NodeType::WRAP_N, MultiNode(complexity - 1, Vector("B"_mst)));
-            case 4: return MakeNodeRef(NodeType::OR_I, Cat(MultiNode(complexity - 1, Vector("B"_mst)), Vector(MakeNodeRef(NodeType::JUST_0))));
-            case 5: return MakeNodeRef(NodeType::OR_I, Cat(Vector(MakeNodeRef(NodeType::JUST_0)), MultiNode(complexity - 1, Vector("B"_mst))));
-            case 6: return MakeNodeRef(NodeType::AND_V, Cat(MultiNode(complexity - 1, Vector("V"_mst)), Vector(MakeNodeRef(NodeType::JUST_1))));
-            // Complexity >= 3
-            case 7: return MakeNodeRef(NodeType::AND_V, MultiNode(complexity - 1, Vector("V"_mst, "B"_mst)));
-            case 8: return MakeNodeRef(NodeType::ANDOR, Cat(MultiNode(complexity - 1, Vector("B"_mst, "B"_mst)), Vector(MakeNodeRef(NodeType::JUST_0))));
-            case 9: return MakeNodeRef(NodeType::AND_B, MultiNode(complexity - 1, Vector("B"_mst, "W"_mst)));
-            case 10: return MakeNodeRef(NodeType::OR_B, MultiNode(complexity - 1, Vector("B"_mst, "W"_mst)));
-            case 11: return MakeNodeRef(NodeType::OR_D, MultiNode(complexity - 1, Vector("B"_mst, "B"_mst)));
-            case 12: return MakeNodeRef(NodeType::OR_I, MultiNode(complexity - 1, Vector("B"_mst, "B"_mst)));
-            case 13: {
-                if (complexity != 3) return {};
-                int nkeys = 1 + (InsecureRandRange(15) * InsecureRandRange(25)) / 17;
-                int sigs = 1 + InsecureRandRange(nkeys);
-                std::vector<CPubKey> keys;
-                for (int i = 0; i < nkeys; ++i) keys.push_back(g_testdata->pubkeys[InsecureRandRange(255)]);
-                return MakeNodeRef(NodeType::MULTI, std::move(keys), sigs);
-            }
-            // Complexity >= 4
-            case 14: return MakeNodeRef(NodeType::ANDOR, MultiNode(complexity - 1, Vector("B"_mst, "B"_mst, "B"_mst)));
-            case 15: {
-                int args = 3 + InsecureRandRange(std::min(3, complexity - 3));
-                int sats = 2 + InsecureRandRange(args - 2);
-                return MakeNodeRef(NodeType::THRESH, MultiNode(complexity - 1, Cat(Vector("B"_mst), std::vector<miniscript::Type>(args - 1, "W"_mst))), sats);
-            }
-        }
-    } else if (typ << "V"_mst) {
-        // Generate a "V" node.
-        switch (InsecureRandRange(1 + (complexity >= 3) * 3 + (complexity >= 4))) {
-            // Complexity >= 1
-            case 0: return MakeNodeRef(NodeType::WRAP_V, MultiNode(complexity, Vector("B"_mst)));
-            // Complexity >= 3
-            case 1: return MakeNodeRef(NodeType::AND_V, MultiNode(complexity - 1, Vector("V"_mst, "V"_mst)));
-            case 2: return MakeNodeRef(NodeType::OR_C, MultiNode(complexity - 1, Vector("B"_mst, "V"_mst)));
-            case 3: return MakeNodeRef(NodeType::OR_I, MultiNode(complexity - 1, Vector("V"_mst, "V"_mst)));
-            // Complexity >= 4
-            case 4: return MakeNodeRef(NodeType::ANDOR, MultiNode(complexity - 1, Vector("B"_mst, "V"_mst, "V"_mst)));
-        }
-    } else if (typ << "W"_mst) {
-        // Generate a "W" node by wrapping a "B" node.
-        auto sub = RandomNode("B"_mst, complexity);
-        if (sub->GetType() << "o"_mst) {
-            if (InsecureRandBool()) return MakeNodeRef(NodeType::WRAP_S, Vector(std::move(sub)));
-        }
-        return MakeNodeRef(NodeType::WRAP_A, Vector(std::move(sub)));
-    } else if (typ << "K"_mst) {
-        // Generate a "K" node.
-        if (complexity == 1 || complexity == 2) {
-            if (InsecureRandBool()) {
-                return MakeNodeRef(NodeType::PK_K, Vector(g_testdata->pubkeys[InsecureRandRange(255)]));
-            } else {
-                return MakeNodeRef(NodeType::PK_H, Vector(g_testdata->pubkeys[InsecureRandRange(255)]));
-            }
-        }
-        switch (InsecureRandRange(2 + (complexity >= 4))) {
-            // Complexity >= 3
-            case 0: return MakeNodeRef(NodeType::AND_V, MultiNode(complexity - 1, Vector("V"_mst, "K"_mst)));
-            case 1: return MakeNodeRef(NodeType::OR_I, MultiNode(complexity - 1, Vector("K"_mst, "K"_mst)));
-            // Complexity >= 4
-            case 2: return MakeNodeRef(NodeType::ANDOR, MultiNode(complexity - 1, Vector("B"_mst, "K"_mst, "K"_mst)));
-        }
-    }
-    assert(false);
-    return {};
-}
-
 
 /** Compute all challenges (pubkeys, hashes, timelocks) that occur in a given Miniscript. */
 std::set<Challenge> FindChallenges(const NodeRef& ref) {
@@ -401,17 +267,17 @@ std::set<Challenge> FindChallenges(const NodeRef& ref) {
     for (const auto& key : ref->keys) {
         chal.emplace(ChallengeType::PK, ChallengeNumber(key));
     }
-    if (ref->nodetype == miniscript::NodeType::OLDER) {
+    if (ref->nodetype == miniscript::Fragment::OLDER) {
         chal.emplace(ChallengeType::OLDER, ref->k);
-    } else if (ref->nodetype == miniscript::NodeType::AFTER) {
+    } else if (ref->nodetype == miniscript::Fragment::AFTER) {
         chal.emplace(ChallengeType::AFTER, ref->k);
-    } else if (ref->nodetype == miniscript::NodeType::SHA256) {
+    } else if (ref->nodetype == miniscript::Fragment::SHA256) {
         chal.emplace(ChallengeType::SHA256, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::NodeType::RIPEMD160) {
+    } else if (ref->nodetype == miniscript::Fragment::RIPEMD160) {
         chal.emplace(ChallengeType::RIPEMD160, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::NodeType::HASH256) {
+    } else if (ref->nodetype == miniscript::Fragment::HASH256) {
         chal.emplace(ChallengeType::HASH256, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::NodeType::HASH160) {
+    } else if (ref->nodetype == miniscript::Fragment::HASH160) {
         chal.emplace(ChallengeType::HASH160, ChallengeNumber(ref->data));
     }
     for (const auto& sub : ref->subs) {
@@ -503,12 +369,11 @@ void Test(const std::string& ms, const std::string& hexscript, int mode, int ops
         auto inferred_miniscript = miniscript::FromScript(computed_script, CONVERTER);
         BOOST_CHECK_MESSAGE(inferred_miniscript, "Cannot infer miniscript from script: " + ms);
         BOOST_CHECK_MESSAGE(inferred_miniscript->ToScript(CONVERTER) == computed_script, "Roundtrip failure: miniscript->script != miniscript->script->miniscript->script: " + ms);
-        if (opslimit != -1) BOOST_CHECK_MESSAGE((int)node->GetOps() == opslimit, "Ops limit mismatch: " + ms + " (" + std::to_string(node->GetOps()) + " vs " + std::to_string(opslimit) + ")");
-        if (stacklimit != -1) BOOST_CHECK_MESSAGE((int)node->GetStackSize() == stacklimit, "Stack limit mismatch: " + ms + " (" + std::to_string(node->GetStackSize()) + " vs " + std::to_string(stacklimit) + ")");
+        if (opslimit != -1) BOOST_CHECK_MESSAGE((int)node->GetOps() == opslimit, "Ops limit mismatch: " << ms << " (" << node->GetOps() << " vs " << opslimit << ")");
+        if (stacklimit != -1) BOOST_CHECK_MESSAGE((int)node->GetStackSize() == stacklimit, "Stack limit mismatch: " << ms << " (" << node->GetStackSize() << " vs " << stacklimit << ")");
         TestSatisfy(ms, node);
     }
 }
-
 } // namespace
 
 BOOST_FIXTURE_TEST_SUITE(miniscript_tests, BasicTestingSetup)
@@ -568,8 +433,11 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     Test("t:or_i(v:1,v:1)", "?", TESTMODE_VALID); // or_i(V,V): valid
     Test("c:or_i(pk_k(03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7),pk_k(036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00))", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // or_i(K,K): valid
     Test("or_i(a:1,a:1)", "?", TESTMODE_INVALID); // or_i(W,W): X and Y must be B/V/K
+    Test("or_b(l:after(100),al:after(1000000000))", "?", TESTMODE_VALID); // or_b(timelock, heighlock) valid
+    Test("and_b(after(100),a:after(1000000000))", "?", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_TIMELOCKMIX); // and_b(timelock, heighlock) invalid
     Test("pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65)", "2103d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65ac", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // alias to c:pk_k
     Test("pkh(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65)", "76a914fcd35ddacad9f2d5be5e464639441c6065e6955d88ac", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG); // alias to c:pk_h
+
 
     // Randomly generated test set that covers the majority of type and node type combinations
     Test("lltvln:after(1231488000)", "6300676300676300670400046749b1926869516868", TESTMODE_VALID | TESTMODE_NONMAL, 12, 4);
@@ -636,38 +504,6 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     // This is actually non-malleable in practice, but we cannot detect it in type system. See above rationale
     Test("thresh(1,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),altv:after(1000000000),altv:after(100))", "?", TESTMODE_VALID); // thresh with k = 1
 
-
-    g_testdata.reset();
-}
-
-BOOST_AUTO_TEST_CASE(random_tests)
-{
-    // Initialize precomputed data.
-    g_testdata.reset(new TestData());
-
-    for (int i = 0; i < 1000; ++i) {
-        bool safe = InsecureRandRange(20) == 0; // In 5% of the cases, generate safe top-level expressions.
-        // Generate a random B (or Bms) node of variable complexity, which should be valid as a top-level expression.
-        auto node = RandomNode(safe ? "Bms"_mst : "B"_mst, 1 + InsecureRandRange(90));
-        BOOST_CHECK(node && node->IsValid() && node->IsValidTopLevel());
-        auto script = node->ToScript(CONVERTER);
-        BOOST_CHECK(node->ScriptSize() == script.size()); // Check consistency between script size estimation and real size
-        // Check consistency of "x" property with the script (relying on the fact that no top-level scripts end with a hash or key push, whose last byte could match these opcodes).
-        bool ends_in_verify = !(node->GetType() << "x"_mst);
-        BOOST_CHECK(ends_in_verify == (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
-        std::string str;
-        BOOST_CHECK(node->ToString(CONVERTER, str)); // Check that we can convert to text
-        auto parsed = miniscript::FromString(str, CONVERTER);
-        BOOST_CHECK(parsed); // Check that we can convert back
-        BOOST_CHECK(*parsed == *node); // Check that it matches the original
-        auto decoded = miniscript::FromScript(script, CONVERTER);
-        BOOST_CHECK(decoded); // Check that we can decode the miniscript back from the script.
-        // Check that it matches the original (we can't use *decoded == *node because the miniscript representation may differ)
-        BOOST_CHECK(decoded->ToScript(CONVERTER) == script); // The script corresponding to that decoded form must match exactly.
-        BOOST_CHECK(decoded->GetType() == node->GetType()); // The type also has to match exactly.
-        // Random satisfaction tests.
-        TestSatisfy(str, node);
-    }
 
     g_testdata.reset();
 }

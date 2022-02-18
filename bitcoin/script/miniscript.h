@@ -16,12 +16,13 @@
 #include <assert.h>
 
 #include <policy/policy.h>
+#include <primitives/transaction.h>
 #include <script/script.h>
 #include <span.h>
 #include <util/spanparsing.h>
 #include <util/strencodings.h>
+#include <util/string.h>
 #include <util/vector.h>
-#include <primitives/transaction.h>
 
 namespace miniscript {
 
@@ -106,8 +107,8 @@ namespace miniscript {
  * user expects.
  * - "g" Whether the branch contains a relative time timelock
  * - "h" Whether the branch contains a relative height timelock
- * - "i" Whether the branch contains a absolute time timelock
- * - "j" Whether the branch contains a absolute time heightlock
+ * - "i" Whether the branch contains an absolute time timelock
+ * - "j" Whether the branch contains an absolute height timelock
  * - "k"
  *   - Whether all satisfactions of this expression don't contain a mix of heightlock and timelock
  *     of the same type.
@@ -186,7 +187,7 @@ template<typename Key, typename... Args>
 NodeRef<Key> MakeNodeRef(Args&&... args) { return std::make_shared<const Node<Key>>(std::forward<Args>(args)...); }
 
 //! The different node types in miniscript.
-enum class NodeType {
+enum class Fragment {
     JUST_0,    //!< OP_0
     JUST_1,    //!< OP_1
     PK_K,      //!< [key]
@@ -228,10 +229,10 @@ enum class Availability {
 namespace internal {
 
 //! Helper function for Node::CalcType.
-Type ComputeType(NodeType nodetype, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys);
+Type ComputeType(Fragment nodetype, Type x, Type y, Type z, const std::vector<Type>& sub_types, uint32_t k, size_t data_size, size_t n_subs, size_t n_keys);
 
 //! Helper function for Node::CalcScriptLen.
-size_t ComputeScriptLen(NodeType nodetype, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys);
+size_t ComputeScriptLen(Fragment nodetype, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys);
 
 //! A helper sanitizer/checker for the output of CalcType.
 Type SanitizeType(Type x);
@@ -307,13 +308,13 @@ struct MaxInt {
 
 struct Ops {
     //! Non-push opcodes.
-    uint32_t stat;
+    uint32_t count;
     //! Number of keys in possibly executed OP_CHECKMULTISIG(VERIFY)s to satisfy.
     MaxInt<uint32_t> sat;
     //! Number of keys in possibly executed OP_CHECKMULTISIG(VERIFY)s to dissatisfy.
     MaxInt<uint32_t> dsat;
 
-    Ops(uint32_t in_stat, MaxInt<uint32_t> in_sat, MaxInt<uint32_t> in_dsat) : stat(in_stat), sat(in_sat), dsat(in_dsat) {};
+    Ops(uint32_t in_count, MaxInt<uint32_t> in_sat, MaxInt<uint32_t> in_dsat) : count(in_count), sat(in_sat), dsat(in_dsat) {};
 };
 
 struct StackSize {
@@ -331,7 +332,7 @@ struct StackSize {
 template<typename Key>
 struct Node {
     //! What node type this node is.
-    const NodeType nodetype;
+    const Fragment nodetype;
     //! The k parameter (time for OLDER/AFTER, threshold for THRESH(_M))
     const uint32_t k = 0;
     //! The keys used by this expression (only for PK_K/PK_H/MULTI)
@@ -423,7 +424,7 @@ private:
             if (stack.back().expanded < node.subs.size()) {
                 /* We encounter a tree node with at least one unexpanded child.
                  * Expand it. By the time we hit this node again, the result of
-                 * that child (and all earlier children) will be on the stack. */
+                 * that child (and all earlier children) will be at the end of `results`. */
                 size_t child_index = stack.back().expanded++;
                 State child_state = downfn(stack.back().state, node, child_index);
                 stack.emplace_back(*node.subs[child_index], 0, std::move(child_state));
@@ -479,12 +480,12 @@ private:
     Type CalcType() const {
         using namespace internal;
 
-        // THRESH has a variable number of subexpression
+        // THRESH has a variable number of subexpressions
         std::vector<Type> sub_types;
-        if (nodetype == NodeType::THRESH) {
+        if (nodetype == Fragment::THRESH) {
             for (const auto& sub : subs) sub_types.push_back(sub->GetType());
         }
-        // All other nodes than THRESH can be computed just from the types of the 0-3 subexpexpressions.
+        // All other nodes than THRESH can be computed just from the types of the 0-3 subexpressions.
         Type x = subs.size() > 0 ? subs[0]->GetType() : ""_mst;
         Type y = subs.size() > 1 ? subs[1]->GetType() : ""_mst;
         Type z = subs.size() > 2 ? subs[2]->GetType() : ""_mst;
@@ -501,55 +502,55 @@ public:
         // by an OP_VERIFY (which may need to be combined with the last script opcode).
         auto downfn = [](bool verify, const Node& node, size_t index) {
             // For WRAP_V, the subexpression is certainly followed by OP_VERIFY.
-            if (node.nodetype == NodeType::WRAP_V) return true;
+            if (node.nodetype == Fragment::WRAP_V) return true;
             // The subexpression of WRAP_S, and the last subexpression of AND_V
             // inherit the followed-by-OP_VERIFY property from the parent.
-            if (node.nodetype == NodeType::WRAP_S ||
-                (node.nodetype == NodeType::AND_V && index == 1)) return verify;
+            if (node.nodetype == Fragment::WRAP_S ||
+                (node.nodetype == Fragment::AND_V && index == 1)) return verify;
             return false;
         };
         // The upward function computes for a node, given its followed-by-OP_VERIFY status
         // and the CScripts of its child nodes, the CScript of the node.
         auto upfn = [&ctx](bool verify, const Node& node, Span<CScript> subs) -> CScript {
             switch (node.nodetype) {
-                case NodeType::PK_K: return BuildScript(ctx.ToPKBytes(node.keys[0]));
-                case NodeType::PK_H: return BuildScript(OP_DUP, OP_HASH160, ctx.ToPKHBytes(node.keys[0]), OP_EQUALVERIFY);
-                case NodeType::OLDER: return BuildScript(node.k, OP_CHECKSEQUENCEVERIFY);
-                case NodeType::AFTER: return BuildScript(node.k, OP_CHECKLOCKTIMEVERIFY);
-                case NodeType::SHA256: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
-                case NodeType::RIPEMD160: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
-                case NodeType::HASH256: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
-                case NodeType::HASH160: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
-                case NodeType::WRAP_A: return BuildScript(OP_TOALTSTACK, subs[0], OP_FROMALTSTACK);
-                case NodeType::WRAP_S: return BuildScript(OP_SWAP, subs[0]);
-                case NodeType::WRAP_C: return BuildScript(std::move(subs[0]), verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
-                case NodeType::WRAP_D: return BuildScript(OP_DUP, OP_IF, subs[0], OP_ENDIF);
-                case NodeType::WRAP_V: {
+                case Fragment::PK_K: return BuildScript(ctx.ToPKBytes(node.keys[0]));
+                case Fragment::PK_H: return BuildScript(OP_DUP, OP_HASH160, ctx.ToPKHBytes(node.keys[0]), OP_EQUALVERIFY);
+                case Fragment::OLDER: return BuildScript(node.k, OP_CHECKSEQUENCEVERIFY);
+                case Fragment::AFTER: return BuildScript(node.k, OP_CHECKLOCKTIMEVERIFY);
+                case Fragment::SHA256: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_SHA256, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case Fragment::RIPEMD160: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_RIPEMD160, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case Fragment::HASH256: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH256, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case Fragment::HASH160: return BuildScript(OP_SIZE, 32, OP_EQUALVERIFY, OP_HASH160, node.data, verify ? OP_EQUALVERIFY : OP_EQUAL);
+                case Fragment::WRAP_A: return BuildScript(OP_TOALTSTACK, subs[0], OP_FROMALTSTACK);
+                case Fragment::WRAP_S: return BuildScript(OP_SWAP, subs[0]);
+                case Fragment::WRAP_C: return BuildScript(std::move(subs[0]), verify ? OP_CHECKSIGVERIFY : OP_CHECKSIG);
+                case Fragment::WRAP_D: return BuildScript(OP_DUP, OP_IF, subs[0], OP_ENDIF);
+                case Fragment::WRAP_V: {
                     if (node.subs[0]->GetType() << "x"_mst) {
                         return BuildScript(std::move(subs[0]), OP_VERIFY);
                     } else {
                         return std::move(subs[0]);
                     }
                 }
-                case NodeType::WRAP_J: return BuildScript(OP_SIZE, OP_0NOTEQUAL, OP_IF, subs[0], OP_ENDIF);
-                case NodeType::WRAP_N: return BuildScript(std::move(subs[0]), OP_0NOTEQUAL);
-                case NodeType::JUST_1: return BuildScript(OP_1);
-                case NodeType::JUST_0: return BuildScript(OP_0);
-                case NodeType::AND_V: return BuildScript(std::move(subs[0]), subs[1]);
-                case NodeType::AND_B: return BuildScript(std::move(subs[0]), subs[1], OP_BOOLAND);
-                case NodeType::OR_B: return BuildScript(std::move(subs[0]), subs[1], OP_BOOLOR);
-                case NodeType::OR_D: return BuildScript(std::move(subs[0]), OP_IFDUP, OP_NOTIF, subs[1], OP_ENDIF);
-                case NodeType::OR_C: return BuildScript(std::move(subs[0]), OP_NOTIF, subs[1], OP_ENDIF);
-                case NodeType::OR_I: return BuildScript(OP_IF, subs[0], OP_ELSE, subs[1], OP_ENDIF);
-                case NodeType::ANDOR: return BuildScript(std::move(subs[0]), OP_NOTIF, subs[2], OP_ELSE, subs[1], OP_ENDIF);
-                case NodeType::MULTI: {
+                case Fragment::WRAP_J: return BuildScript(OP_SIZE, OP_0NOTEQUAL, OP_IF, subs[0], OP_ENDIF);
+                case Fragment::WRAP_N: return BuildScript(std::move(subs[0]), OP_0NOTEQUAL);
+                case Fragment::JUST_1: return BuildScript(OP_1);
+                case Fragment::JUST_0: return BuildScript(OP_0);
+                case Fragment::AND_V: return BuildScript(std::move(subs[0]), subs[1]);
+                case Fragment::AND_B: return BuildScript(std::move(subs[0]), subs[1], OP_BOOLAND);
+                case Fragment::OR_B: return BuildScript(std::move(subs[0]), subs[1], OP_BOOLOR);
+                case Fragment::OR_D: return BuildScript(std::move(subs[0]), OP_IFDUP, OP_NOTIF, subs[1], OP_ENDIF);
+                case Fragment::OR_C: return BuildScript(std::move(subs[0]), OP_NOTIF, subs[1], OP_ENDIF);
+                case Fragment::OR_I: return BuildScript(OP_IF, subs[0], OP_ELSE, subs[1], OP_ENDIF);
+                case Fragment::ANDOR: return BuildScript(std::move(subs[0]), OP_NOTIF, subs[2], OP_ELSE, subs[1], OP_ENDIF);
+                case Fragment::MULTI: {
                     CScript script = BuildScript(node.k);
                     for (const auto& key : node.keys) {
                         script = BuildScript(std::move(script), ctx.ToPKBytes(key));
                     }
                     return BuildScript(std::move(script), node.keys.size(), verify ? OP_CHECKMULTISIGVERIFY : OP_CHECKMULTISIG);
                 }
-                case NodeType::THRESH: {
+                case Fragment::THRESH: {
                     CScript script = std::move(subs[0]);
                     for (size_t i = 1; i < subs.size(); ++i) {
                         script = BuildScript(std::move(script), subs[i], OP_ADD);
@@ -569,13 +570,13 @@ public:
         // the TreeEvalMaybe algorithm. The State is a boolean: whether the parent node is a
         // wrapper. If so, non-wrapper expressions must be prefixed with a ":".
         auto downfn = [](bool, const Node& node, size_t) {
-            return (node.nodetype == NodeType::WRAP_A || node.nodetype == NodeType::WRAP_S ||
-                    node.nodetype == NodeType::WRAP_D || node.nodetype == NodeType::WRAP_V ||
-                    node.nodetype == NodeType::WRAP_J || node.nodetype == NodeType::WRAP_N ||
-                    node.nodetype == NodeType::WRAP_C ||
-                    (node.nodetype == NodeType::AND_V && node.subs[1]->nodetype == NodeType::JUST_1) ||
-                    (node.nodetype == NodeType::OR_I && node.subs[0]->nodetype == NodeType::JUST_0) ||
-                    (node.nodetype == NodeType::OR_I && node.subs[1]->nodetype == NodeType::JUST_0));
+            return (node.nodetype == Fragment::WRAP_A || node.nodetype == Fragment::WRAP_S ||
+                    node.nodetype == Fragment::WRAP_D || node.nodetype == Fragment::WRAP_V ||
+                    node.nodetype == Fragment::WRAP_J || node.nodetype == Fragment::WRAP_N ||
+                    node.nodetype == Fragment::WRAP_C ||
+                    (node.nodetype == Fragment::AND_V && node.subs[1]->nodetype == Fragment::JUST_1) ||
+                    (node.nodetype == Fragment::OR_I && node.subs[0]->nodetype == Fragment::JUST_0) ||
+                    (node.nodetype == Fragment::OR_I && node.subs[1]->nodetype == Fragment::JUST_0));
         };
         // The upward function computes for a node, given whether its parent is a wrapper,
         // and the string representations of its child nodes, the string representation of the node.
@@ -583,67 +584,67 @@ public:
             std::string ret = wrapped ? ":" : "";
 
             switch (node.nodetype) {
-                case NodeType::WRAP_A: return "a" + std::move(subs[0]);
-                case NodeType::WRAP_S: return "s" + std::move(subs[0]);
-                case NodeType::WRAP_C:
-                    if (node.subs[0]->nodetype == NodeType::PK_K) {
+                case Fragment::WRAP_A: return "a" + std::move(subs[0]);
+                case Fragment::WRAP_S: return "s" + std::move(subs[0]);
+                case Fragment::WRAP_C:
+                    if (node.subs[0]->nodetype == Fragment::PK_K) {
                         // pk(K) is syntactic sugar for c:pk_k(K)
                         std::string key_str;
                         if (!ctx.ToString(node.subs[0]->keys[0], key_str)) return {};
                         return std::move(ret) + "pk(" + std::move(key_str) + ")";
                     }
-                    if (node.subs[0]->nodetype == NodeType::PK_H) {
+                    if (node.subs[0]->nodetype == Fragment::PK_H) {
                         // pkh(K) is syntactic sugar for c:pk_h(K)
                         std::string key_str;
                         if (!ctx.ToString(node.subs[0]->keys[0], key_str)) return {};
                         return std::move(ret) + "pkh(" + std::move(key_str) + ")";
                     }
                     return "c" + std::move(subs[0]);
-                case NodeType::WRAP_D: return "d" + std::move(subs[0]);
-                case NodeType::WRAP_V: return "v" + std::move(subs[0]);
-                case NodeType::WRAP_J: return "j" + std::move(subs[0]);
-                case NodeType::WRAP_N: return "n" + std::move(subs[0]);
-                case NodeType::AND_V:
+                case Fragment::WRAP_D: return "d" + std::move(subs[0]);
+                case Fragment::WRAP_V: return "v" + std::move(subs[0]);
+                case Fragment::WRAP_J: return "j" + std::move(subs[0]);
+                case Fragment::WRAP_N: return "n" + std::move(subs[0]);
+                case Fragment::AND_V:
                     // t:X is syntactic sugar for and_v(X,1).
-                    if (node.subs[1]->nodetype == NodeType::JUST_1) return "t" + std::move(subs[0]);
+                    if (node.subs[1]->nodetype == Fragment::JUST_1) return "t" + std::move(subs[0]);
                     break;
-                case NodeType::OR_I:
-                    if (node.subs[0]->nodetype == NodeType::JUST_0) return "l" + std::move(subs[1]);
-                    if (node.subs[1]->nodetype == NodeType::JUST_0) return "u" + std::move(subs[0]);
+                case Fragment::OR_I:
+                    if (node.subs[0]->nodetype == Fragment::JUST_0) return "l" + std::move(subs[1]);
+                    if (node.subs[1]->nodetype == Fragment::JUST_0) return "u" + std::move(subs[0]);
                     break;
                 default: break;
             }
             switch (node.nodetype) {
-                case NodeType::PK_K: {
+                case Fragment::PK_K: {
                     std::string key_str;
                     if (!ctx.ToString(node.keys[0], key_str)) return {};
                     return std::move(ret) + "pk_k(" + std::move(key_str) + ")";
                 }
-                case NodeType::PK_H: {
+                case Fragment::PK_H: {
                     std::string key_str;
                     if (!ctx.ToString(node.keys[0], key_str)) return {};
                     return std::move(ret) + "pk_h(" + std::move(key_str) + ")";
                 }
-                case NodeType::AFTER: return std::move(ret) + "after(" + std::to_string(node.k) + ")";
-                case NodeType::OLDER: return std::move(ret) + "older(" + std::to_string(node.k) + ")";
-                case NodeType::HASH256: return std::move(ret) + "hash256(" + HexStr(node.data) + ")";
-                case NodeType::HASH160: return std::move(ret) + "hash160(" + HexStr(node.data) + ")";
-                case NodeType::SHA256: return std::move(ret) + "sha256(" + HexStr(node.data) + ")";
-                case NodeType::RIPEMD160: return std::move(ret) + "ripemd160(" + HexStr(node.data) + ")";
-                case NodeType::JUST_1: return std::move(ret) + "1";
-                case NodeType::JUST_0: return std::move(ret) + "0";
-                case NodeType::AND_V: return std::move(ret) + "and_v(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
-                case NodeType::AND_B: return std::move(ret) + "and_b(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
-                case NodeType::OR_B: return std::move(ret) + "or_b(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
-                case NodeType::OR_D: return std::move(ret) + "or_d(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
-                case NodeType::OR_C: return std::move(ret) + "or_c(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
-                case NodeType::OR_I: return std::move(ret) + "or_i(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
-                case NodeType::ANDOR:
+                case Fragment::AFTER: return std::move(ret) + "after(" + ::ToString(node.k) + ")";
+                case Fragment::OLDER: return std::move(ret) + "older(" + ::ToString(node.k) + ")";
+                case Fragment::HASH256: return std::move(ret) + "hash256(" + HexStr(node.data) + ")";
+                case Fragment::HASH160: return std::move(ret) + "hash160(" + HexStr(node.data) + ")";
+                case Fragment::SHA256: return std::move(ret) + "sha256(" + HexStr(node.data) + ")";
+                case Fragment::RIPEMD160: return std::move(ret) + "ripemd160(" + HexStr(node.data) + ")";
+                case Fragment::JUST_1: return std::move(ret) + "1";
+                case Fragment::JUST_0: return std::move(ret) + "0";
+                case Fragment::AND_V: return std::move(ret) + "and_v(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case Fragment::AND_B: return std::move(ret) + "and_b(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case Fragment::OR_B: return std::move(ret) + "or_b(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case Fragment::OR_D: return std::move(ret) + "or_d(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case Fragment::OR_C: return std::move(ret) + "or_c(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case Fragment::OR_I: return std::move(ret) + "or_i(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                case Fragment::ANDOR:
                     // and_n(X,Y) is syntactic sugar for andor(X,Y,0).
-                    if (node.subs[2]->nodetype == NodeType::JUST_0) return std::move(ret) + "and_n(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
+                    if (node.subs[2]->nodetype == Fragment::JUST_0) return std::move(ret) + "and_n(" + std::move(subs[0]) + "," + std::move(subs[1]) + ")";
                     return std::move(ret) + "andor(" + std::move(subs[0]) + "," + std::move(subs[1]) + "," + std::move(subs[2]) + ")";
-                case NodeType::MULTI: {
-                    auto str = std::move(ret) + "multi(" + std::to_string(node.k);
+                case Fragment::MULTI: {
+                    auto str = std::move(ret) + "multi(" + ::ToString(node.k);
                     for (const auto& key : node.keys) {
                         std::string key_str;
                         if (!ctx.ToString(key, key_str)) return {};
@@ -651,8 +652,8 @@ public:
                     }
                     return std::move(str) + ")";
                 }
-                case NodeType::THRESH: {
-                    auto str = std::move(ret) + "thresh(" + std::to_string(node.k);
+                case Fragment::THRESH: {
+                    auto str = std::move(ret) + "thresh(" + ::ToString(node.k);
                     for (auto& sub : subs) {
                         str += "," + std::move(sub);
                     }
@@ -668,46 +669,74 @@ public:
         return res.has_value();
     }
 
-private:
     internal::Ops CalcOps() const {
         switch (nodetype) {
-            case NodeType::PK_K: return {0, 0, 0};
-            case NodeType::PK_H: return {3, 0, 0};
-            case NodeType::OLDER: return {1, 0, {}};
-            case NodeType::AFTER: return {1, 0, {}};
-            case NodeType::SHA256: return {4, 0, {}};
-            case NodeType::RIPEMD160: return {4, 0, {}};
-            case NodeType::HASH256: return {4, 0, {}};
-            case NodeType::HASH160: return {4, 0, {}};
-            case NodeType::AND_V: return {subs[0]->ops.stat + subs[1]->ops.stat, subs[0]->ops.sat + subs[1]->ops.sat, {}};
-            case NodeType::AND_B: return {1 + subs[0]->ops.stat + subs[1]->ops.stat, subs[0]->ops.sat + subs[1]->ops.sat, subs[0]->ops.dsat + subs[1]->ops.dsat};
-            case NodeType::OR_B: return {1 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat), subs[0]->ops.dsat + subs[1]->ops.dsat};
-            case NodeType::OR_D: return {3 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat), subs[0]->ops.dsat + subs[1]->ops.dsat};
-            case NodeType::OR_C: return {2 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat), {}};
-            case NodeType::OR_I: return {3 + subs[0]->ops.stat + subs[1]->ops.stat, Choose(subs[0]->ops.sat, subs[1]->ops.sat), Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
-            case NodeType::ANDOR: return {3 + subs[0]->ops.stat + subs[1]->ops.stat + subs[2]->ops.stat, Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat), subs[0]->ops.dsat + subs[2]->ops.dsat};
-            case NodeType::MULTI: return {1, (uint32_t)keys.size(), (uint32_t)keys.size()};
-            case NodeType::WRAP_A: return {2 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
-            case NodeType::WRAP_S: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
-            case NodeType::WRAP_C: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
-            case NodeType::WRAP_D: return {3 + subs[0]->ops.stat, subs[0]->ops.sat, 0};
-            case NodeType::WRAP_V: return {subs[0]->ops.stat + (subs[0]->GetType() << "x"_mst), subs[0]->ops.sat, {}};
-            case NodeType::WRAP_J: return {4 + subs[0]->ops.stat, subs[0]->ops.sat, 0};
-            case NodeType::WRAP_N: return {1 + subs[0]->ops.stat, subs[0]->ops.sat, subs[0]->ops.dsat};
-            case NodeType::JUST_1: return {0, 0, {}};
-            case NodeType::JUST_0: return {0, {}, 0};
-            case NodeType::THRESH: {
-                uint32_t stat = 0;
+            case Fragment::JUST_1: return {0, 0, {}};
+            case Fragment::JUST_0: return {0, {}, 0};
+            case Fragment::PK_K: return {0, 0, 0};
+            case Fragment::PK_H: return {3, 0, 0};
+            case Fragment::OLDER:
+            case Fragment::AFTER: return {1, 0, {}};
+            case Fragment::SHA256:
+            case Fragment::RIPEMD160:
+            case Fragment::HASH256:
+            case Fragment::HASH160: return {4, 0, {}};
+            case Fragment::AND_V: return {subs[0]->ops.count + subs[1]->ops.count, subs[0]->ops.sat + subs[1]->ops.sat, {}};
+            case Fragment::AND_B: {
+                const uint32_t count{1 + subs[0]->ops.count + subs[1]->ops.count};
+                const internal::MaxInt<uint32_t> sat{subs[0]->ops.sat + subs[1]->ops.sat};
+                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                return {count, sat, dsat};
+            }
+            case Fragment::OR_B: {
+                const uint32_t count{1 + subs[0]->ops.count + subs[1]->ops.count};
+                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                return {count, sat, dsat};
+            }
+            case Fragment::OR_D: {
+                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count};
+                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                return {count, sat, dsat};
+            }
+            case Fragment::OR_C: {
+                const uint32_t count{2 + subs[0]->ops.count + subs[1]->ops.count};
+                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                return {count, sat, {}};
+            }
+            case Fragment::OR_I: {
+                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count};
+                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat)};
+                const internal::MaxInt<uint32_t> dsat{Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
+                return {count, sat, dsat};
+            }
+            case Fragment::ANDOR: {
+                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count + subs[2]->ops.count};
+                const internal::MaxInt<uint32_t> sat{Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat)};
+                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[2]->ops.dsat};
+                return {count, sat, dsat};
+            }
+            case Fragment::MULTI: return {1, (uint32_t)keys.size(), (uint32_t)keys.size()};
+            case Fragment::WRAP_S:
+            case Fragment::WRAP_C:
+            case Fragment::WRAP_N: return {1 + subs[0]->ops.count, subs[0]->ops.sat, subs[0]->ops.dsat};
+            case Fragment::WRAP_A: return {2 + subs[0]->ops.count, subs[0]->ops.sat, subs[0]->ops.dsat};
+            case Fragment::WRAP_D: return {3 + subs[0]->ops.count, subs[0]->ops.sat, 0};
+            case Fragment::WRAP_J: return {4 + subs[0]->ops.count, subs[0]->ops.sat, 0};
+            case Fragment::WRAP_V: return {subs[0]->ops.count + (subs[0]->GetType() << "x"_mst), subs[0]->ops.sat, {}};
+            case Fragment::THRESH: {
+                uint32_t count = 0;
                 auto sats = Vector(internal::MaxInt<uint32_t>(0));
                 for (const auto& sub : subs) {
-                    stat += sub->ops.stat + 1;
+                    count += sub->ops.count + 1;
                     auto next_sats = Vector(sats[0] + sub->ops.dsat);
                     for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + sub->ops.dsat, sats[j - 1] + sub->ops.sat));
                     next_sats.push_back(sats[sats.size() - 1] + sub->ops.sat);
                     sats = std::move(next_sats);
                 }
                 assert(k <= sats.size());
-                return {stat, sats[k], sats[0]};
+                return {count, sats[k], sats[0]};
             }
         }
         assert(false);
@@ -716,32 +745,40 @@ private:
 
     internal::StackSize CalcStackSize() const {
         switch (nodetype) {
-            case NodeType::PK_K: return {1, 1};
-            case NodeType::PK_H: return {2, 2};
-            case NodeType::OLDER: return {0, {}};
-            case NodeType::AFTER: return {0, {}};
-            case NodeType::SHA256: return {1, {}};
-            case NodeType::RIPEMD160: return {1, {}};
-            case NodeType::HASH256: return {1, {}};
-            case NodeType::HASH160: return {1, {}};
-            case NodeType::ANDOR: return {Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat), subs[0]->ss.dsat + subs[2]->ss.dsat};
-            case NodeType::AND_V: return {subs[0]->ss.sat + subs[1]->ss.sat, {}};
-            case NodeType::AND_B: return {subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.dsat};
-            case NodeType::OR_B: return {Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat), subs[0]->ss.dsat + subs[1]->ss.dsat};
-            case NodeType::OR_C: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), {}};
-            case NodeType::OR_D: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), subs[0]->ss.dsat + subs[1]->ss.dsat};
-            case NodeType::OR_I: return {Choose(subs[0]->ss.sat + 1, subs[1]->ss.sat + 1), Choose(subs[0]->ss.dsat + 1, subs[1]->ss.dsat + 1)};
-            case NodeType::MULTI: return {(uint32_t)keys.size() + 1, (uint32_t)keys.size() + 1};
-            case NodeType::WRAP_A: return subs[0]->ss;
-            case NodeType::WRAP_S: return subs[0]->ss;
-            case NodeType::WRAP_C: return subs[0]->ss;
-            case NodeType::WRAP_D: return {1 + subs[0]->ss.sat, 1};
-            case NodeType::WRAP_V: return {subs[0]->ss.sat, {}};
-            case NodeType::WRAP_J: return {subs[0]->ss.sat, 1};
-            case NodeType::WRAP_N: return subs[0]->ss;
-            case NodeType::JUST_1: return {0, {}};
-            case NodeType::JUST_0: return {{}, 0};
-            case NodeType::THRESH: {
+            case Fragment::JUST_0: return {{}, 0};
+            case Fragment::JUST_1:
+            case Fragment::OLDER:
+            case Fragment::AFTER: return {0, {}};
+            case Fragment::PK_K: return {1, 1};
+            case Fragment::PK_H: return {2, 2};
+            case Fragment::SHA256:
+            case Fragment::RIPEMD160:
+            case Fragment::HASH256:
+            case Fragment::HASH160: return {1, {}};
+            case Fragment::ANDOR: {
+                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat)};
+                const internal::MaxInt<uint32_t> dsat{subs[0]->ss.dsat + subs[2]->ss.dsat};
+                return {sat, dsat};
+            }
+            case Fragment::AND_V: return {subs[0]->ss.sat + subs[1]->ss.sat, {}};
+            case Fragment::AND_B: return {subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.dsat};
+            case Fragment::OR_B: {
+                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat)};
+                const internal::MaxInt<uint32_t> dsat{subs[0]->ss.dsat + subs[1]->ss.dsat};
+                return {sat, dsat};
+            }
+            case Fragment::OR_C: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), {}};
+            case Fragment::OR_D: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), subs[0]->ss.dsat + subs[1]->ss.dsat};
+            case Fragment::OR_I: return {Choose(subs[0]->ss.sat + 1, subs[1]->ss.sat + 1), Choose(subs[0]->ss.dsat + 1, subs[1]->ss.dsat + 1)};
+            case Fragment::MULTI: return {(uint32_t)keys.size() + 1, (uint32_t)keys.size() + 1};
+            case Fragment::WRAP_A:
+            case Fragment::WRAP_N:
+            case Fragment::WRAP_S:
+            case Fragment::WRAP_C: return subs[0]->ss;
+            case Fragment::WRAP_D: return {1 + subs[0]->ss.sat, 1};
+            case Fragment::WRAP_V: return {subs[0]->ss.sat, {}};
+            case Fragment::WRAP_J: return {subs[0]->ss.sat, 1};
+            case Fragment::THRESH: {
                 auto sats = Vector(internal::MaxInt<uint32_t>(0));
                 for (const auto& sub : subs) {
                     auto next_sats = Vector(sats[0] + sub->ss.dsat);
@@ -764,17 +801,17 @@ private:
 
         auto helper = [&ctx, nonmal](const Node& node, Span<InputResult> subres) -> InputResult {
             switch (node.nodetype) {
-                case NodeType::PK_K: {
+                case Fragment::PK_K: {
                     std::vector<unsigned char> sig;
                     Availability avail = ctx.Sign(node.keys[0], sig);
                     return InputResult(ZERO, InputStack(std::move(sig)).WithSig().Available(avail));
                 }
-                case NodeType::PK_H: {
+                case Fragment::PK_H: {
                     std::vector<unsigned char> key = ctx.ToPKBytes(node.keys[0]), sig;
                     Availability avail = ctx.Sign(node.keys[0], sig);
                     return InputResult(ZERO + InputStack(key), (InputStack(std::move(sig)).WithSig() + InputStack(key)).Available(avail));
                 }
-                case NodeType::MULTI: {
+                case Fragment::MULTI: {
                     std::vector<InputStack> sats = Vector(ZERO);
                     for (size_t i = 0; i < node.keys.size(); ++i) {
                         std::vector<unsigned char> sig;
@@ -791,7 +828,7 @@ private:
                     assert(node.k <= sats.size());
                     return InputResult(std::move(nsat), std::move(sats[node.k]));
                 }
-                case NodeType::THRESH: {
+                case Fragment::THRESH: {
                     std::vector<InputStack> sats = Vector(EMPTY);
                     for (size_t i = 0; i < subres.size(); ++i) {
                         auto& res = subres[subres.size() - i - 1];
@@ -808,71 +845,71 @@ private:
                     assert(node.k <= sats.size());
                     return InputResult(std::move(nsat), std::move(sats[node.k]));
                 }
-                case NodeType::OLDER: {
+                case Fragment::OLDER: {
                     return InputResult(INVALID, ctx.CheckOlder(node.k) ? EMPTY : INVALID);
                 }
-                case NodeType::AFTER: {
+                case Fragment::AFTER: {
                     return InputResult(INVALID, ctx.CheckAfter(node.k) ? EMPTY : INVALID);
                 }
-                case NodeType::SHA256: {
+                case Fragment::SHA256: {
                     std::vector<unsigned char> preimage;
                     Availability avail = ctx.SatSHA256(node.data, preimage);
                     return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
                 }
-                case NodeType::RIPEMD160: {
+                case Fragment::RIPEMD160: {
                     std::vector<unsigned char> preimage;
                     Availability avail = ctx.SatRIPEMD160(node.data, preimage);
                     return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
                 }
-                case NodeType::HASH256: {
+                case Fragment::HASH256: {
                     std::vector<unsigned char> preimage;
                     Availability avail = ctx.SatHASH256(node.data, preimage);
                     return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
                 }
-                case NodeType::HASH160: {
+                case Fragment::HASH160: {
                     std::vector<unsigned char> preimage;
                     Availability avail = ctx.SatHASH160(node.data, preimage);
                     return InputResult(ZERO32, InputStack(std::move(preimage)).Available(avail));
                 }
-                case NodeType::AND_V: {
+                case Fragment::AND_V: {
                     auto& x = subres[0], &y = subres[1];
                     return InputResult((y.nsat + x.sat).NonCanon(), y.sat + x.sat);
                 }
-                case NodeType::AND_B: {
+                case Fragment::AND_B: {
                     auto& x = subres[0], &y = subres[1];
                     return InputResult(Choose(Choose(y.nsat + x.nsat, (y.sat + x.nsat).NonCanon(), nonmal), (y.nsat + x.sat).NonCanon(), nonmal), y.sat + x.sat);
                 }
-                case NodeType::OR_B: {
+                case Fragment::OR_B: {
                     auto& x = subres[0], &z = subres[1];
                     return InputResult(z.nsat + x.nsat, Choose(Choose(z.nsat + x.sat, z.sat + x.nsat, nonmal), (z.sat + x.sat).NonCanon(), nonmal));
                 }
-                case NodeType::OR_C: {
+                case Fragment::OR_C: {
                     auto& x = subres[0], &z = subres[1];
                     return InputResult(INVALID, Choose(std::move(x.sat), z.sat + x.nsat, nonmal));
                 }
-                case NodeType::OR_D: {
+                case Fragment::OR_D: {
                     auto& x = subres[0], &z = subres[1];
                     auto nsat = z.nsat + x.nsat, sat_l = x.sat, sat_r = z.sat + x.nsat;
                     return InputResult(z.nsat + x.nsat, Choose(std::move(x.sat), z.sat + x.nsat, nonmal));
                 }
-                case NodeType::OR_I: {
+                case Fragment::OR_I: {
                     auto& x = subres[0], &z = subres[1];
                     return InputResult(Choose(x.nsat + ONE, z.nsat + ZERO, nonmal), Choose(x.sat + ONE, z.sat + ZERO, nonmal));
                 }
-                case NodeType::ANDOR: {
+                case Fragment::ANDOR: {
                     auto& x = subres[0], &y = subres[1], &z = subres[2];
                     return InputResult(Choose((y.nsat + x.sat).NonCanon(), z.nsat + x.nsat, nonmal), Choose(y.sat + x.sat, z.sat + x.nsat, nonmal));
                 }
-                case NodeType::WRAP_A:
-                case NodeType::WRAP_S:
-                case NodeType::WRAP_C:
-                case NodeType::WRAP_N:
+                case Fragment::WRAP_A:
+                case Fragment::WRAP_S:
+                case Fragment::WRAP_C:
+                case Fragment::WRAP_N:
                     return std::move(subres[0]);
-                case NodeType::WRAP_D: {
+                case Fragment::WRAP_D: {
                     auto &x = subres[0];
                     return InputResult(ZERO, x.sat + ONE);
                 }
-                case NodeType::WRAP_J: {
+                case Fragment::WRAP_J: {
                     auto &x = subres[0];
                     // If a dissatisfaction with a nonzero top stack element exists, an alternative dissatisfaction exists.
                     // As the dissatisfaction logic currently doesn't keep track of this nonzeroness property, and thus even
@@ -881,12 +918,12 @@ private:
                     // dissatisfiable, this alternative dissatisfaction exists and leads to malleability.
                     return InputResult(InputStack(ZERO).Malleable(x.nsat.available != Availability::NO && !x.nsat.has_sig), std::move(x.sat));
                 }
-                case NodeType::WRAP_V: {
+                case Fragment::WRAP_V: {
                     auto &x = subres[0];
                     return InputResult(INVALID, std::move(x.sat));
                 }
-                case NodeType::JUST_0: return InputResult(EMPTY, INVALID);
-                case NodeType::JUST_1: return InputResult(INVALID, EMPTY);
+                case Fragment::JUST_0: return InputResult(EMPTY, INVALID);
+                case Fragment::JUST_1: return InputResult(INVALID, EMPTY);
             }
             assert(false);
             return InputResult(INVALID, INVALID);
@@ -922,12 +959,13 @@ public:
     size_t ScriptSize() const { return scriptlen; }
 
     //! Return the maximum number of ops needed to satisfy this script non-malleably.
-    uint32_t GetOps() const { return ops.stat + ops.sat.value; }
+    uint32_t GetOps() const { return ops.count + ops.sat.value; }
 
     //! Check the ops limit of this script against the consensus limit.
     bool CheckOpsLimit() const { return GetOps() <= MAX_OPS_PER_SCRIPT; }
 
-    //! Return the maximum number of stack elements needed to satisfy this script non-malleably.
+    /** Return the maximum number of stack elements needed to satisfy this script non-malleably, including
+     * the script push. */
     uint32_t GetStackSize() const { return ss.sat.value + 1; }
 
     //! Check the maximum stack size for this script against the policy limit.
@@ -935,6 +973,22 @@ public:
 
     //! Return the expression type.
     Type GetType() const { return typ; }
+
+    //! Find the deepest insane sub. Null if there is none.
+    NodeRef<Key> FindInsaneSub() const {
+        auto downfn = [](NodeRef<Key> curr_insane, const Node& node, size_t i) {
+            if (!node.subs[i]->IsSane()) return node.subs[i];
+            return curr_insane;
+        };
+
+        auto upfn = [](NodeRef<Key> curr_insane, const Node& node, Span<NodeRef<Key>> subs) {
+            for (const auto& sub: subs) if (sub) return sub;
+            return curr_insane;
+        };
+
+        NodeRef<Key> null;
+        return TreeEvalMaybe<NodeRef<Key>>(null, downfn, upfn).value_or(null);
+    }
 
     //! Check whether this node is valid at all.
     bool IsValid() const { return !(GetType() == ""_mst) && ScriptSize() <= MAX_STANDARD_P2WSH_SCRIPT_SIZE; }
@@ -948,12 +1002,16 @@ public:
     //! Check whether this script always needs a signature.
     bool NeedsSignature() const { return GetType() << "s"_mst; }
 
+    //! Check whether there is no satisfaction path that contains both timelocks and heightlocks
+    bool CheckTimeLocksMix() const { return GetType() << "k"_mst; }
+
     //! Do all sanity checks.
-    bool IsSane() const { return GetType() << "mk"_mst && CheckOpsLimit() && CheckStackSize() && IsValid(); }
+    bool IsSane() const { return IsValid() && IsNonMalleable() && CheckTimeLocksMix() && CheckOpsLimit() && CheckStackSize(); }
 
     //! Check whether this node is safe as a script on its own.
-    bool IsSaneTopLevel() const { return GetType() << "Bs"_mst && IsSane() && IsValidTopLevel(); }
+    bool IsSaneTopLevel() const { return IsValidTopLevel() && IsSane() && NeedsSignature(); }
 
+    //! Produce a witness for this script, if possible and given the information available in the context.
     template<typename Ctx>
     Availability Satisfy(const Ctx& ctx, std::vector<std::vector<unsigned char>>& stack, bool nonmalleable = true) const {
         auto ret = ProduceInput(ctx, nonmalleable);
@@ -979,12 +1037,12 @@ public:
     }
 
     // Constructors with various argument combinations.
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(NodeType nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(Fragment nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(Fragment nt, std::vector<unsigned char> arg, uint32_t val = 0) : nodetype(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(Fragment nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(Fragment nt, std::vector<Key> key, uint32_t val = 0) : nodetype(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(Fragment nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : nodetype(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(Fragment nt, uint32_t val = 0) : nodetype(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
 };
 
 namespace internal {
@@ -1043,12 +1101,36 @@ enum class ParseContext {
     CLOSE_BRACKET,
 };
 
-
 int FindNextChar(Span<const char> in, const char m);
 
-/** BuildBack pops the last two elements off `constructed` and wraps them in the specified NodeType */
+/** Parse a key string ending at the end of the fragment's text representation. */
+template<typename Key, typename Ctx>
+std::optional<std::pair<Key, int>> ParseKey(Span<const char> in, const Ctx& ctx)
+{
+    Key key;
+    int key_size = FindNextChar(in, ')');
+    if (key_size < 1) return {};
+    if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
+    return {{key, key_size}};
+}
+
+/** Parse a hex string ending at the end of the fragment's text representation. */
+template<typename Ctx>
+std::optional<std::pair<std::vector<unsigned char>, int>> ParseHexStr(Span<const char> in, const size_t expected_size,
+                                                                      const Ctx& ctx)
+{
+    int hash_size = FindNextChar(in, ')');
+    if (hash_size < 1) return {};
+    std::string val = std::string(in.begin(), in.begin() + hash_size);
+    if (!IsHex(val)) return {};
+    auto hash = ParseHex(val);
+    if (hash.size() != expected_size) return {};
+    return {{hash, hash_size}};
+}
+
+/** BuildBack pops the last two elements off `constructed` and wraps them in the specified Fragment */
 template<typename Key>
-void BuildBack(NodeType nt, std::vector<NodeRef<Key>>& constructed, const bool reverse = false)
+void BuildBack(Fragment nt, std::vector<NodeRef<Key>>& constructed, const bool reverse = false)
 {
     NodeRef<Key> child = std::move(constructed.back());
     constructed.pop_back();
@@ -1059,7 +1141,11 @@ void BuildBack(NodeType nt, std::vector<NodeRef<Key>>& constructed, const bool r
     }
 }
 
-//! Parse a miniscript from its textual descriptor form.
+/**
+ * Parse a miniscript from its textual descriptor form.
+ * This does not check whether the script is valid, let alone sane. The caller is expected to use
+ * the `IsValidTopLevel()` and `IsSaneTopLevel()` to check for these properties on the node.
+ */
 template<typename Key, typename Ctx>
 inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
 {
@@ -1108,7 +1194,7 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
                     to_parse.emplace_back(ParseContext::WRAP_T, -1, -1);
                 } else if (in[j] == 'l') {
                     // The l: wrapper is equivalent to or_i(0,X)
-                    constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_0));
+                    constructed.push_back(MakeNodeRef<Key>(Fragment::JUST_0));
                     to_parse.emplace_back(ParseContext::OR_I, -1, -1);
                 } else {
                     return {};
@@ -1120,72 +1206,56 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
         }
         case ParseContext::EXPR: {
             if (Const("0", in)) {
-                constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_0));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::JUST_0));
             } else if (Const("1", in)) {
-                constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_1));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::JUST_1));
             } else if (Const("pk(", in)) {
-                Key key;
-                int key_size = FindNextChar(in, ')');
-                if (key_size < 1) return {};
-                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key))))));
+                auto res = ParseKey<Key, Ctx>(in, ctx);
+                if (!res) return {};
+                auto [key, key_size] = *res;
+                constructed.push_back(MakeNodeRef<Key>(Fragment::WRAP_C, Vector(MakeNodeRef<Key>(Fragment::PK_K, Vector(std::move(key))))));
                 in = in.subspan(key_size + 1);
             } else if (Const("pkh(", in)) {
-                Key key;
-                int key_size = FindNextChar(in, ')');
-                if (key_size < 1) return {};
-                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::WRAP_C, Vector(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key))))));
+                auto res = ParseKey<Key>(in, ctx);
+                if (!res) return {};
+                auto [key, key_size] = *res;
+                constructed.push_back(MakeNodeRef<Key>(Fragment::WRAP_C, Vector(MakeNodeRef<Key>(Fragment::PK_H, Vector(std::move(key))))));
                 in = in.subspan(key_size + 1);
             } else if (Const("pk_k(", in)) {
-                Key key;
-                int key_size = FindNextChar(in, ')');
-                if (key_size < 1) return {};
-                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key))));
+                auto res = ParseKey<Key>(in, ctx);
+                if (!res) return {};
+                auto [key, key_size] = *res;
+                constructed.push_back(MakeNodeRef<Key>(Fragment::PK_K, Vector(std::move(key))));
                 in = in.subspan(key_size + 1);
             } else if (Const("pk_h(", in)) {
-                Key key;
-                int key_size = FindNextChar(in, ')');
-                if (key_size < 1) return {};
-                if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key))));
+                auto res = ParseKey<Key>(in, ctx);
+                if (!res) return {};
+                auto [key, key_size] = *res;
+                constructed.push_back(MakeNodeRef<Key>(Fragment::PK_H, Vector(std::move(key))));
                 in = in.subspan(key_size + 1);
             } else if (Const("sha256(", in)) {
-                int hash_size = FindNextChar(in, ')');
-                if (hash_size < 1) return {};
-                std::string val = std::string(in.begin(), in.begin() + hash_size);
-                if (!IsHex(val)) return {};
-                auto hash = ParseHex(val);
-                if (hash.size() != 32) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::SHA256, std::move(hash)));
+                auto res = ParseHexStr(in, 32, ctx);
+                if (!res) return {};
+                auto [hash, hash_size] = *res;
+                constructed.push_back(MakeNodeRef<Key>(Fragment::SHA256, std::move(hash)));
                 in = in.subspan(hash_size + 1);
             } else if (Const("ripemd160(", in)) {
-                int hash_size = FindNextChar(in, ')');
-                if (hash_size < 1) return {};
-                std::string val = std::string(in.begin(), in.begin() + hash_size);
-                if (!IsHex(val)) return {};
-                auto hash = ParseHex(val);
-                if (hash.size() != 20) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::RIPEMD160, std::move(hash)));
+                auto res = ParseHexStr(in, 20, ctx);
+                if (!res) return {};
+                auto [hash, hash_size] = *res;
+                constructed.push_back(MakeNodeRef<Key>(Fragment::RIPEMD160, std::move(hash)));
                 in = in.subspan(hash_size + 1);
             } else if (Const("hash256(", in)) {
-                int hash_size = FindNextChar(in, ')');
-                if (hash_size < 1) return {};
-                std::string val = std::string(in.begin(), in.begin() + hash_size);
-                if (!IsHex(val)) return {};
-                auto hash = ParseHex(val);
-                if (hash.size() != 32) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::HASH256, std::move(hash)));
+                auto res = ParseHexStr(in, 32, ctx);
+                if (!res) return {};
+                auto [hash, hash_size] = *res;
+                constructed.push_back(MakeNodeRef<Key>(Fragment::HASH256, std::move(hash)));
                 in = in.subspan(hash_size + 1);
             } else if (Const("hash160(", in)) {
-                int hash_size = FindNextChar(in, ')');
-                if (hash_size < 1) return {};
-                std::string val = std::string(in.begin(), in.begin() + hash_size);
-                if (!IsHex(val)) return {};
-                auto hash = ParseHex(val);
-                if (hash.size() != 20) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::HASH160, std::move(hash)));
+                auto res = ParseHexStr(in, 20, ctx);
+                if (!res) return {};
+                auto [hash, hash_size] = *res;
+                constructed.push_back(MakeNodeRef<Key>(Fragment::HASH160, std::move(hash)));
                 in = in.subspan(hash_size + 1);
             } else if (Const("after(", in)) {
                 int arg_size = FindNextChar(in, ')');
@@ -1193,7 +1263,7 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
                 int64_t num;
                 if (!ParseInt64(std::string(in.begin(), in.begin() + arg_size), &num)) return {};
                 if (num < 1 || num >= 0x80000000L) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::AFTER, num));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::AFTER, num));
                 in = in.subspan(arg_size + 1);
             } else if (Const("older(", in)) {
                 int arg_size = FindNextChar(in, ')');
@@ -1201,7 +1271,7 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
                 int64_t num;
                 if (!ParseInt64(std::string(in.begin(), in.begin() + arg_size), &num)) return {};
                 if (num < 1 || num >= 0x80000000L) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::OLDER, num));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::OLDER, num));
                 in = in.subspan(arg_size + 1);
             } else if (Const("multi(", in)) {
                 // Get threshold
@@ -1222,7 +1292,7 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
                 }
                 if (keys.size() < 1 || keys.size() > 20) return {};
                 if (k < 1 || k > (int64_t)keys.size()) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::MULTI, std::move(keys), k));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::MULTI, std::move(keys), k));
             } else if (Const("thresh(", in)) {
                 int next_comma = FindNextChar(in, ',');
                 if (next_comma < 1) return {};
@@ -1266,69 +1336,69 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
             break;
         }
         case ParseContext::ALT: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_A, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_A, Vector(std::move(constructed.back())));
             break;
         }
         case ParseContext::SWAP: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_S, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_S, Vector(std::move(constructed.back())));
             break;
         }
         case ParseContext::CHECK: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_C, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_C, Vector(std::move(constructed.back())));
             break;
         }
         case ParseContext::DUP_IF: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_D, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_D, Vector(std::move(constructed.back())));
             break;
         }
         case ParseContext::NON_ZERO: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_J, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_J, Vector(std::move(constructed.back())));
             break;
         }
         case ParseContext::ZERO_NOTEQUAL: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_N, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_N, Vector(std::move(constructed.back())));
             break;
         }
         case ParseContext::VERIFY: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_V, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_V, Vector(std::move(constructed.back())));
             break;
         }
         case ParseContext::WRAP_U: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::OR_I, Vector(std::move(constructed.back()), MakeNodeRef<Key>(NodeType::JUST_0)));
+            constructed.back() = MakeNodeRef<Key>(Fragment::OR_I, Vector(std::move(constructed.back()), MakeNodeRef<Key>(Fragment::JUST_0)));
             break;
         }
         case ParseContext::WRAP_T: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::AND_V, Vector(std::move(constructed.back()), MakeNodeRef<Key>(NodeType::JUST_1)));
+            constructed.back() = MakeNodeRef<Key>(Fragment::AND_V, Vector(std::move(constructed.back()), MakeNodeRef<Key>(Fragment::JUST_1)));
             break;
         }
         case ParseContext::AND_B: {
-            BuildBack(NodeType::AND_B, constructed);
+            BuildBack(Fragment::AND_B, constructed);
             break;
         }
         case ParseContext::AND_N: {
             auto mid = std::move(constructed.back());
             constructed.pop_back();
-            constructed.back() = MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(constructed.back()), std::move(mid), MakeNodeRef<Key>(NodeType::JUST_0)));
+            constructed.back() = MakeNodeRef<Key>(Fragment::ANDOR, Vector(std::move(constructed.back()), std::move(mid), MakeNodeRef<Key>(Fragment::JUST_0)));
             break;
         }
         case ParseContext::AND_V: {
-            BuildBack(NodeType::AND_V, constructed);
+            BuildBack(Fragment::AND_V, constructed);
             break;
         }
         case ParseContext::OR_B: {
-            BuildBack(NodeType::OR_B, constructed);
+            BuildBack(Fragment::OR_B, constructed);
             break;
         }
         case ParseContext::OR_C: {
-            BuildBack(NodeType::OR_C, constructed);
+            BuildBack(Fragment::OR_C, constructed);
             break;
         }
         case ParseContext::OR_D: {
-            BuildBack(NodeType::OR_D, constructed);
+            BuildBack(Fragment::OR_D, constructed);
             break;
         }
         case ParseContext::OR_I: {
-            BuildBack(NodeType::OR_I, constructed);
+            BuildBack(Fragment::OR_I, constructed);
             break;
         }
         case ParseContext::ANDOR: {
@@ -1336,7 +1406,7 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
             constructed.pop_back();
             auto mid = std::move(constructed.back());
             constructed.pop_back();
-            constructed.back() = MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(constructed.back()), std::move(mid), std::move(right)));
+            constructed.back() = MakeNodeRef<Key>(Fragment::ANDOR, Vector(std::move(constructed.back()), std::move(mid), std::move(right)));
             break;
         }
         case ParseContext::THRESH: {
@@ -1355,7 +1425,7 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
                     constructed.pop_back();
                 }
                 std::reverse(subs.begin(), subs.end());
-                constructed.push_back(MakeNodeRef<Key>(NodeType::THRESH, std::move(subs), k));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::THRESH, std::move(subs), k));
             } else {
                 return {};
             }
@@ -1377,9 +1447,7 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
     // Sanity checks on the produced miniscript
     assert(constructed.size() == 1);
     if (in.size() > 0) return {};
-    const NodeRef<Key> tl_node = std::move(constructed.front());
-    if (!tl_node->IsValidTopLevel()) return {};
-    return tl_node;
+    return std::move(constructed.front());
 }
 
 /** Decode a script into opcode/push pairs.
@@ -1490,49 +1558,64 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
             // Constants
             if (in[0].first == OP_1) {
                 ++in;
-                constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_1));
-            } else if (in[0].first == OP_0) {
+                constructed.push_back(MakeNodeRef<Key>(Fragment::JUST_1));
+                break;
+            }
+            if (in[0].first == OP_0) {
                 ++in;
-                constructed.push_back(MakeNodeRef<Key>(NodeType::JUST_0));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::JUST_0));
+                break;
             }
             // Public keys
-            else if (in[0].second.size() == 33) {
+            if (in[0].second.size() == 33) {
                 Key key;
                 if (!ctx.FromPKBytes(in[0].second.begin(), in[0].second.end(), key)) return {};
                 ++in;
-                constructed.push_back(MakeNodeRef<Key>(NodeType::PK_K, Vector(std::move(key))));
-            } else if (last - in >= 5 && in[0].first == OP_VERIFY && in[1].first == OP_EQUAL && in[3].first == OP_HASH160 && in[4].first == OP_DUP && in[2].second.size() == 20) {
+                constructed.push_back(MakeNodeRef<Key>(Fragment::PK_K, Vector(std::move(key))));
+                break;
+            }
+            if (last - in >= 5 && in[0].first == OP_VERIFY && in[1].first == OP_EQUAL && in[3].first == OP_HASH160 && in[4].first == OP_DUP && in[2].second.size() == 20) {
                 Key key;
                 if (!ctx.FromPKHBytes(in[2].second.begin(), in[2].second.end(), key)) return {};
                 in += 5;
-                constructed.push_back(MakeNodeRef<Key>(NodeType::PK_H, Vector(std::move(key))));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::PK_H, Vector(std::move(key))));
+                break;
             }
             // Time locks
-            else if (last - in >= 2 && in[0].first == OP_CHECKSEQUENCEVERIFY && ParseScriptNumber(in[1], k)) {
+            if (last - in >= 2 && in[0].first == OP_CHECKSEQUENCEVERIFY && ParseScriptNumber(in[1], k)) {
                 in += 2;
                 if (k < 1 || k > 0x7FFFFFFFL) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::OLDER, k));
-            } else if (last - in >= 2 && in[0].first == OP_CHECKLOCKTIMEVERIFY && ParseScriptNumber(in[1], k)) {
+                constructed.push_back(MakeNodeRef<Key>(Fragment::OLDER, k));
+                break;
+            }
+            if (last - in >= 2 && in[0].first == OP_CHECKLOCKTIMEVERIFY && ParseScriptNumber(in[1], k)) {
                 in += 2;
                 if (k < 1 || k > 0x7FFFFFFFL) return {};
-                constructed.push_back(MakeNodeRef<Key>(NodeType::AFTER, k));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::AFTER, k));
+                break;
             }
             // Hashes
-            else if (last - in >= 7 && in[0].first == OP_EQUAL && in[1].second.size() == 32 && in[2].first == OP_SHA256 && in[3].first == OP_VERIFY && in[4].first == OP_EQUAL && ParseScriptNumber(in[5], k) && k == 32 && in[6].first == OP_SIZE) {
-                constructed.push_back(MakeNodeRef<Key>(NodeType::SHA256, in[1].second));
-                in += 7;
-            } else if (last - in >= 7 && in[0].first == OP_EQUAL && in[1].second.size() == 20 && in[2].first == OP_RIPEMD160 && in[3].first == OP_VERIFY && in[4].first == OP_EQUAL && ParseScriptNumber(in[5], k) && k == 32 && in[6].first == OP_SIZE) {
-                constructed.push_back(MakeNodeRef<Key>(NodeType::RIPEMD160, in[1].second));
-                in += 7;
-            } else if (last - in >= 7 && in[0].first == OP_EQUAL && in[1].second.size() == 32 && in[2].first == OP_HASH256 && in[3].first == OP_VERIFY && in[4].first == OP_EQUAL && ParseScriptNumber(in[5], k) && k == 32 && in[6].first == OP_SIZE) {
-                constructed.push_back(MakeNodeRef<Key>(NodeType::HASH256, in[1].second));
-                in += 7;
-            } else if (last - in >= 7 && in[0].first == OP_EQUAL && in[1].second.size() == 20 && in[2].first == OP_HASH160 && in[3].first == OP_VERIFY && in[4].first == OP_EQUAL && ParseScriptNumber(in[5], k) && k == 32 && in[6].first == OP_SIZE) {
-                constructed.push_back(MakeNodeRef<Key>(NodeType::HASH160, in[1].second));
-                in += 7;
+            if (last - in >= 7 && in[0].first == OP_EQUAL && in[3].first == OP_VERIFY && in[4].first == OP_EQUAL && ParseScriptNumber(in[5], k) && k == 32 && in[6].first == OP_SIZE) {
+                if (in[2].first == OP_SHA256 && in[1].second.size() == 32) {
+                    constructed.push_back(MakeNodeRef<Key>(Fragment::SHA256, in[1].second));
+                    in += 7;
+                    break;
+                } else if (in[2].first == OP_RIPEMD160 && in[1].second.size() == 20) {
+                    constructed.push_back(MakeNodeRef<Key>(Fragment::RIPEMD160, in[1].second));
+                    in += 7;
+                    break;
+                } else if (in[2].first == OP_HASH256 && in[1].second.size() == 32) {
+                    constructed.push_back(MakeNodeRef<Key>(Fragment::HASH256, in[1].second));
+                    in += 7;
+                    break;
+                } else if (in[2].first == OP_HASH160 && in[1].second.size() == 20) {
+                    constructed.push_back(MakeNodeRef<Key>(Fragment::HASH160, in[1].second));
+                    in += 7;
+                    break;
+                }
             }
             // Multi
-            else if (last - in >= 3 && in[0].first == OP_CHECKMULTISIG) {
+            if (last - in >= 3 && in[0].first == OP_CHECKMULTISIG) {
                 std::vector<Key> keys;
                 if (!ParseScriptNumber(in[1], n)) return {};
                 if (last - in < 3 + n) return {};
@@ -1547,40 +1630,46 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
                 if (k < 1 || k > n) return {};
                 in += 3 + n;
                 std::reverse(keys.begin(), keys.end());
-                constructed.push_back(MakeNodeRef<Key>(NodeType::MULTI, std::move(keys), k));
+                constructed.push_back(MakeNodeRef<Key>(Fragment::MULTI, std::move(keys), k));
+                break;
             }
             /** In the following wrappers, we only need to push SINGLE_BKV_EXPR rather
              * than BKV_EXPR, because and_v commutes with these wrappers. For example,
              * c:and_v(X,Y) produces the same script as and_v(X,c:Y). */
             // c: wrapper
-            else if (in[0].first == OP_CHECKSIG) {
+            if (in[0].first == OP_CHECKSIG) {
                 ++in;
                 to_parse.emplace_back(DecodeContext::CHECK, -1, -1);
                 to_parse.emplace_back(DecodeContext::SINGLE_BKV_EXPR, -1, -1);
+                break;
             }
             // v: wrapper
-            else if (in[0].first == OP_VERIFY) {
+            if (in[0].first == OP_VERIFY) {
                 ++in;
                 to_parse.emplace_back(DecodeContext::VERIFY, -1, -1);
                 to_parse.emplace_back(DecodeContext::SINGLE_BKV_EXPR, -1, -1);
+                break;
             }
             // n: wrapper
-            else if (in[0].first == OP_0NOTEQUAL) {
+            if (in[0].first == OP_0NOTEQUAL) {
                 ++in;
                 to_parse.emplace_back(DecodeContext::ZERO_NOTEQUAL, -1, -1);
                 to_parse.emplace_back(DecodeContext::SINGLE_BKV_EXPR, -1, -1);
+                break;
             }
             // Thresh
-            else if (last - in >= 3 && in[0].first == OP_EQUAL && ParseScriptNumber(in[1], k)) {
+            if (last - in >= 3 && in[0].first == OP_EQUAL && ParseScriptNumber(in[1], k)) {
                 if (k < 1) return {};
                 in += 2;
                 to_parse.emplace_back(DecodeContext::THRESH_W, 0, k);
+                break;
             }
             // OP_ENDIF can be WRAP_J, WRAP_D, ANDOR, OR_C, OR_D, or OR_I
-            else if (in[0].first == OP_ENDIF) {
+            if (in[0].first == OP_ENDIF) {
                 ++in;
                 to_parse.emplace_back(DecodeContext::ENDIF, -1, -1);
                 to_parse.emplace_back(DecodeContext::BKV_EXPR, -1, -1);
+                break;
             }
             /** In and_b and or_b nodes, we only look for SINGLE_BKV_EXPR, because
              * or_b(and_v(X,Y),Z) has script [X] [Y] [Z] OP_BOOLOR, the same as
@@ -1588,23 +1677,23 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
              * miniscript, while the latter is valid. So we leave the and_v "outside"
              * while decoding. */
             // and_b
-            else if (in[0].first == OP_BOOLAND) {
+            if (in[0].first == OP_BOOLAND) {
                 ++in;
                 to_parse.emplace_back(DecodeContext::AND_B, -1, -1);
                 to_parse.emplace_back(DecodeContext::SINGLE_BKV_EXPR, -1, -1);
                 to_parse.emplace_back(DecodeContext::W_EXPR, -1, -1);
+                break;
             }
             // or_b
-            else if (in[0].first == OP_BOOLOR) {
+            if (in[0].first == OP_BOOLOR) {
                 ++in;
                 to_parse.emplace_back(DecodeContext::OR_B, -1, -1);
                 to_parse.emplace_back(DecodeContext::SINGLE_BKV_EXPR, -1, -1);
                 to_parse.emplace_back(DecodeContext::W_EXPR, -1, -1);
-            } else {
-                // Unrecognised expression
-                return {};
+                break;
             }
-            break;
+            // Unrecognised expression
+            return {};
         }
         case DecodeContext::BKV_EXPR: {
             to_parse.emplace_back(DecodeContext::MAYBE_AND_V, -1, -1);
@@ -1634,64 +1723,75 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
             break;
         }
         case DecodeContext::SWAP: {
-            if (in >= last || in[0].first != OP_SWAP) return {};
+            if (in >= last || in[0].first != OP_SWAP || constructed.empty()) return {};
             ++in;
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_S, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_S, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::ALT: {
-            if (in >= last || in[0].first != OP_TOALTSTACK) return {};
+            if (in >= last || in[0].first != OP_TOALTSTACK || constructed.empty()) return {};
             ++in;
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_A, Vector(std::move(constructed.back())));
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_A, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::CHECK: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_C, Vector(std::move(constructed.back())));
+            if (constructed.empty()) return {};
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_C, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::DUP_IF: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_D, Vector(std::move(constructed.back())));
+            if (constructed.empty()) return {};
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_D, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::VERIFY: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_V, Vector(std::move(constructed.back())));
+            if (constructed.empty()) return {};
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_V, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::NON_ZERO: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_J, Vector(std::move(constructed.back())));
+            if (constructed.empty()) return {};
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_J, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::ZERO_NOTEQUAL: {
-            constructed.back() = MakeNodeRef<Key>(NodeType::WRAP_N, Vector(std::move(constructed.back())));
+            if (constructed.empty()) return {};
+            constructed.back() = MakeNodeRef<Key>(Fragment::WRAP_N, Vector(std::move(constructed.back())));
             break;
         }
         case DecodeContext::AND_V: {
-            BuildBack(NodeType::AND_V, constructed, /* reverse */ true);
+            if (constructed.size() < 2) return {};
+            BuildBack(Fragment::AND_V, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::AND_B: {
-            BuildBack(NodeType::AND_B, constructed, /* reverse */ true);
+            if (constructed.size() < 2) return {};
+            BuildBack(Fragment::AND_B, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_B: {
-            BuildBack(NodeType::OR_B, constructed, /* reverse */ true);
+            if (constructed.size() < 2) return {};
+            BuildBack(Fragment::OR_B, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_C: {
-            BuildBack(NodeType::OR_C, constructed, /* reverse */ true);
+            if (constructed.size() < 2) return {};
+            BuildBack(Fragment::OR_C, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::OR_D: {
-            BuildBack(NodeType::OR_D, constructed, /* reverse */ true);
+            if (constructed.size() < 2) return {};
+            BuildBack(Fragment::OR_D, constructed, /* reverse */ true);
             break;
         }
         case DecodeContext::ANDOR: {
+            if (constructed.size() < 3) return {};
             NodeRef<Key> left = std::move(constructed.back());
             constructed.pop_back();
             NodeRef<Key> right = std::move(constructed.back());
             constructed.pop_back();
             NodeRef<Key> mid = std::move(constructed.back());
-            constructed.back() = MakeNodeRef<Key>(NodeType::ANDOR, Vector(std::move(left), std::move(mid), std::move(right)));
+            constructed.back() = MakeNodeRef<Key>(Fragment::ANDOR, Vector(std::move(left), std::move(mid), std::move(right)));
             break;
         }
         case DecodeContext::THRESH_W: {
@@ -1708,14 +1808,14 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
             break;
         }
         case DecodeContext::THRESH_E: {
-            if (k < 1 || k > n) return {};
+            if (k < 1 || k > n || constructed.size() < static_cast<size_t>(n)) return {};
             std::vector<NodeRef<Key>> subs;
             for (int i = 0; i < n; ++i) {
                 NodeRef<Key> sub = std::move(constructed.back());
                 constructed.pop_back();
                 subs.push_back(std::move(sub));
             }
-            constructed.push_back(MakeNodeRef<Key>(NodeType::THRESH, std::move(subs), k));
+            constructed.push_back(MakeNodeRef<Key>(Fragment::THRESH, std::move(subs), k));
             break;
         }
         case DecodeContext::ENDIF: {
@@ -1765,7 +1865,7 @@ inline NodeRef<Key> DecodeScript(I& in, I last, const Ctx& ctx)
             if (in >= last) return {};
             if (in[0].first == OP_IF) {
                 ++in;
-                BuildBack(NodeType::OR_I, constructed, /* reverse */ true);
+                BuildBack(Fragment::OR_I, constructed, /* reverse */ true);
             } else if (in[0].first == OP_NOTIF) {
                 ++in;
                 to_parse.emplace_back(DecodeContext::ANDOR, -1, -1);
