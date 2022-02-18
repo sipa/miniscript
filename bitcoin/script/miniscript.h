@@ -841,6 +841,8 @@ public:
                     }
                     InputStack nsat = INVALID;
                     for (size_t i = 0; i < sats.size(); ++i) {
+                        // i==k is the satisfaction; i==0 is the canonical dissatisfaction; the rest are non-canonical.
+                        if (i != 0 && i != node.k) sats[i].NonCanon();
                         if (i != node.k) nsat = Choose(std::move(nsat), std::move(sats[i]));
                     }
                     assert(node.k <= sats.size());
