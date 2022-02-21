@@ -255,7 +255,7 @@ size_t ComputeScriptLen(Fragment nodetype, Type sub0typ, size_t subsize, uint32_
         case Fragment::JUST_0: return 1;
         case Fragment::PK_K: return 34;
         case Fragment::PK_H: return 3 + 21;
-        case Fragment::OLDER: return 1 + BuildScript(k).size();
+        case Fragment::OLDER:
         case Fragment::AFTER: return 1 + BuildScript(k).size();
         case Fragment::HASH256:
         case Fragment::SHA256: return 4 + 2 + 33;

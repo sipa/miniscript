@@ -683,38 +683,38 @@ public:
             case Fragment::HASH160: return {4, 0, {}};
             case Fragment::AND_V: return {subs[0]->ops.count + subs[1]->ops.count, subs[0]->ops.sat + subs[1]->ops.sat, {}};
             case Fragment::AND_B: {
-                const uint32_t count{1 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{subs[0]->ops.sat + subs[1]->ops.sat};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                const auto count{1 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{subs[0]->ops.sat + subs[1]->ops.sat};
+                const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_B: {
-                const uint32_t count{1 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                const auto count{1 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_D: {
-                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
+                const auto count{3 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_C: {
-                const uint32_t count{2 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto count{2 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
                 return {count, sat, {}};
             }
             case Fragment::OR_I: {
-                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat)};
-                const internal::MaxInt<uint32_t> dsat{Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
+                const auto count{3 + subs[0]->ops.count + subs[1]->ops.count};
+                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat)};
+                const auto dsat{Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
                 return {count, sat, dsat};
             }
             case Fragment::ANDOR: {
-                const uint32_t count{3 + subs[0]->ops.count + subs[1]->ops.count + subs[2]->ops.count};
-                const internal::MaxInt<uint32_t> sat{Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ops.dsat + subs[2]->ops.dsat};
+                const auto count{3 + subs[0]->ops.count + subs[1]->ops.count + subs[2]->ops.count};
+                const auto sat{Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat)};
+                const auto dsat{subs[0]->ops.dsat + subs[2]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::MULTI: return {1, (uint32_t)keys.size(), (uint32_t)keys.size()};
@@ -756,15 +756,15 @@ public:
             case Fragment::HASH256:
             case Fragment::HASH160: return {1, {}};
             case Fragment::ANDOR: {
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ss.dsat + subs[2]->ss.dsat};
+                const auto sat{Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat)};
+                const auto dsat{subs[0]->ss.dsat + subs[2]->ss.dsat};
                 return {sat, dsat};
             }
             case Fragment::AND_V: return {subs[0]->ss.sat + subs[1]->ss.sat, {}};
             case Fragment::AND_B: return {subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.dsat};
             case Fragment::OR_B: {
-                const internal::MaxInt<uint32_t> sat{Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat)};
-                const internal::MaxInt<uint32_t> dsat{subs[0]->ss.dsat + subs[1]->ss.dsat};
+                const auto sat{Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat)};
+                const auto dsat{subs[0]->ss.dsat + subs[1]->ss.dsat};
                 return {sat, dsat};
             }
             case Fragment::OR_C: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), {}};
@@ -974,20 +974,13 @@ public:
     //! Return the expression type.
     Type GetType() const { return typ; }
 
-    //! Find the deepest insane sub. Null if there is none.
-    NodeRef<Key> FindInsaneSub() const {
-        auto downfn = [](NodeRef<Key> curr_insane, const Node& node, size_t i) {
-            if (!node.subs[i]->IsSane()) return node.subs[i];
-            return curr_insane;
-        };
-
-        auto upfn = [](NodeRef<Key> curr_insane, const Node& node, Span<NodeRef<Key>> subs) {
-            for (const auto& sub: subs) if (sub) return sub;
-            return curr_insane;
-        };
-
-        NodeRef<Key> null;
-        return TreeEvalMaybe<NodeRef<Key>>(null, downfn, upfn).value_or(null);
+    //! Find an insane subnode which has no insane children. Nullptr if there is none.
+    const Node* FindInsaneSub() const {
+        return TreeEval<const Node*>([](const Node& node, Span<const Node*> subs) -> const Node* {
+            for (auto& sub: subs) if (sub) return sub;
+            if (!node.IsSane()) return &node;
+            return nullptr;
+        });
     }
 
     //! Check whether this node is valid at all.
@@ -1105,19 +1098,19 @@ int FindNextChar(Span<const char> in, const char m);
 
 /** Parse a key string ending at the end of the fragment's text representation. */
 template<typename Key, typename Ctx>
-std::optional<std::pair<Key, int>> ParseKey(Span<const char> in, const Ctx& ctx)
+std::optional<std::pair<Key, int>> ParseKeyEnd(Span<const char> in, const Ctx& ctx)
 {
     Key key;
     int key_size = FindNextChar(in, ')');
     if (key_size < 1) return {};
     if (!ctx.FromString(in.begin(), in.begin() + key_size, key)) return {};
-    return {{key, key_size}};
+    return {{std::move(key), key_size}};
 }
 
 /** Parse a hex string ending at the end of the fragment's text representation. */
 template<typename Ctx>
-std::optional<std::pair<std::vector<unsigned char>, int>> ParseHexStr(Span<const char> in, const size_t expected_size,
-                                                                      const Ctx& ctx)
+std::optional<std::pair<std::vector<unsigned char>, int>> ParseHexStrEnd(Span<const char> in, const size_t expected_size,
+                                                                         const Ctx& ctx)
 {
     int hash_size = FindNextChar(in, ')');
     if (hash_size < 1) return {};
@@ -1125,7 +1118,7 @@ std::optional<std::pair<std::vector<unsigned char>, int>> ParseHexStr(Span<const
     if (!IsHex(val)) return {};
     auto hash = ParseHex(val);
     if (hash.size() != expected_size) return {};
-    return {{hash, hash_size}};
+    return {{std::move(hash), hash_size}};
 }
 
 /** BuildBack pops the last two elements off `constructed` and wraps them in the specified Fragment */
@@ -1210,51 +1203,51 @@ inline NodeRef<Key> Parse(Span<const char> in, const Ctx& ctx)
             } else if (Const("1", in)) {
                 constructed.push_back(MakeNodeRef<Key>(Fragment::JUST_1));
             } else if (Const("pk(", in)) {
-                auto res = ParseKey<Key, Ctx>(in, ctx);
+                auto res = ParseKeyEnd<Key, Ctx>(in, ctx);
                 if (!res) return {};
-                auto [key, key_size] = *res;
+                auto& [key, key_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(Fragment::WRAP_C, Vector(MakeNodeRef<Key>(Fragment::PK_K, Vector(std::move(key))))));
                 in = in.subspan(key_size + 1);
             } else if (Const("pkh(", in)) {
-                auto res = ParseKey<Key>(in, ctx);
+                auto res = ParseKeyEnd<Key>(in, ctx);
                 if (!res) return {};
-                auto [key, key_size] = *res;
+                auto& [key, key_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(Fragment::WRAP_C, Vector(MakeNodeRef<Key>(Fragment::PK_H, Vector(std::move(key))))));
                 in = in.subspan(key_size + 1);
             } else if (Const("pk_k(", in)) {
-                auto res = ParseKey<Key>(in, ctx);
+                auto res = ParseKeyEnd<Key>(in, ctx);
                 if (!res) return {};
-                auto [key, key_size] = *res;
+                auto& [key, key_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(Fragment::PK_K, Vector(std::move(key))));
                 in = in.subspan(key_size + 1);
             } else if (Const("pk_h(", in)) {
-                auto res = ParseKey<Key>(in, ctx);
+                auto res = ParseKeyEnd<Key>(in, ctx);
                 if (!res) return {};
-                auto [key, key_size] = *res;
+                auto& [key, key_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(Fragment::PK_H, Vector(std::move(key))));
                 in = in.subspan(key_size + 1);
             } else if (Const("sha256(", in)) {
-                auto res = ParseHexStr(in, 32, ctx);
+                auto res = ParseHexStrEnd(in, 32, ctx);
                 if (!res) return {};
-                auto [hash, hash_size] = *res;
+                auto& [hash, hash_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(Fragment::SHA256, std::move(hash)));
                 in = in.subspan(hash_size + 1);
             } else if (Const("ripemd160(", in)) {
-                auto res = ParseHexStr(in, 20, ctx);
+                auto res = ParseHexStrEnd(in, 20, ctx);
                 if (!res) return {};
-                auto [hash, hash_size] = *res;
+                auto& [hash, hash_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(Fragment::RIPEMD160, std::move(hash)));
                 in = in.subspan(hash_size + 1);
             } else if (Const("hash256(", in)) {
-                auto res = ParseHexStr(in, 32, ctx);
+                auto res = ParseHexStrEnd(in, 32, ctx);
                 if (!res) return {};
-                auto [hash, hash_size] = *res;
+                auto& [hash, hash_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(Fragment::HASH256, std::move(hash)));
                 in = in.subspan(hash_size + 1);
             } else if (Const("hash160(", in)) {
-                auto res = ParseHexStr(in, 20, ctx);
+                auto res = ParseHexStrEnd(in, 20, ctx);
                 if (!res) return {};
-                auto [hash, hash_size] = *res;
+                auto& [hash, hash_size] = *res;
                 constructed.push_back(MakeNodeRef<Key>(Fragment::HASH160, std::move(hash)));
                 in = in.subspan(hash_size + 1);
             } else if (Const("after(", in)) {
