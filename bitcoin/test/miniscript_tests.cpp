@@ -287,26 +287,6 @@ std::set<Challenge> FindChallenges(const NodeRef& ref) {
     return chal;
 }
 
-/** Verify a satisfaction. */
-void Verify(const std::string& testcase, const NodeRef& node, const Satisfier& ctx, std::vector<std::vector<unsigned char>> stack, const CScript& script, bool nonmal) {
-    // Construct P2WSH scriptPubKey.
-    CScript spk = GetScriptForDestination(WitnessV0ScriptHash(script));
-    // Construct the P2WSH witness (script stack + script).
-    CScriptWitness witness;
-    witness.stack = std::move(stack);
-    witness.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
-    // Use a test signature checker aware of which afters/olders we made valid.
-    TestSignatureChecker checker(&ctx);
-    ScriptError serror;
-    if (nonmal) BOOST_CHECK(stack.size() <= node->GetStackSize());
-    if (!VerifyScript(CScript(), spk, &witness, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror)) {
-        // The only possible violation should be the ops limit, as that is hard to statically guarantee.
-        BOOST_CHECK(serror == SCRIPT_ERR_OP_COUNT);
-        // When using the non-malleable satisfier, and our OpsLimit analysis succeeds, no execution errors should occur at all.
-        BOOST_CHECK(!(nonmal && node->CheckOpsLimit()));
-    }
-}
-
 /** Run random satisfaction tests. */
 void TestSatisfy(const std::string& testcase, const NodeRef& node) {
     auto script = node->ToScript(CONVERTER);
@@ -315,31 +295,72 @@ void TestSatisfy(const std::string& testcase, const NodeRef& node) {
     for (int iter = 0; iter < 3; ++iter) {
         Shuffle(challist.begin(), challist.end(), g_insecure_rand_ctx);
         Satisfier satisfier;
+        TestSignatureChecker checker(&satisfier);
         bool prev_mal_success = false, prev_nonmal_success = false;
         // Go over all challenges involved in this miniscript in random order.
         for (int add = -1; add < (int)challist.size(); ++add) {
             if (add >= 0) satisfier.supported.insert(challist[add]); // The first iteration does not add anything
-            // First try to produce a potentially malleable satisfaction.
-            std::vector<std::vector<unsigned char>> stack;
-            bool mal_success = node->Satisfy(satisfier, stack, false) == miniscript::Availability::YES;
-            if (mal_success) Verify(testcase, node, satisfier, stack, script, false); // And verify it against consensus/standardness.
-            // Then produce a non-malleable satisfaction.
-            bool nonmal_success = node->Satisfy(satisfier, stack, true) == miniscript::Availability::YES;
-            if (nonmal_success) Verify(testcase, node, satisfier, std::move(stack), std::move(script), true);
-            // If a nonmalleable solution exists, a solution whatsoever must also exist.
-            BOOST_CHECK(mal_success >= nonmal_success);
-            // If a miniscript is nonmalleable and needs a signature, and a solution exists, a non-malleable solution must also exist.
-            if (node->IsNonMalleable() && node->NeedsSignature()) BOOST_CHECK_EQUAL(nonmal_success, mal_success);
+
+            // Run malleable satisfaction algorithm.
+            const CScript script_pubkey = CScript() << OP_0 << WitnessV0ScriptHash(script);
+            CScriptWitness witness_mal;
+            const bool mal_success = node->Satisfy(satisfier, witness_mal.stack, false) == miniscript::Availability::YES;
+            witness_mal.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
+
+            // Run non-malleable satisfaction algorithm.
+            CScriptWitness witness_nonmal;
+            const bool nonmal_success = node->Satisfy(satisfier, witness_nonmal.stack, true) == miniscript::Availability::YES;
+            witness_nonmal.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
+
+            if (nonmal_success) {
+                // Non-malleable satisfactions are bounded by GetStackSize().
+                BOOST_CHECK(witness_nonmal.stack.size() <= node->GetStackSize());
+                // If a non-malleable satisfaction exists, the malleable one must also exist, and be identical to it.
+                BOOST_CHECK(mal_success);
+                BOOST_CHECK(witness_nonmal.stack == witness_mal.stack);
+
+                // Test non-malleable satisfaction.
+                ScriptError serror;
+                bool res = VerifyScript(CScript(), script_pubkey, &witness_nonmal, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror);
+                // Non-malleable satisfactions are guaranteed to be valid if ValidSatisfactions().
+                if (node->ValidSatisfactions()) BOOST_CHECK(res);
+                // More detailed: non-malleable satisfactions must be valid, or could fail with ops count error (if CheckOpsLimit failed),
+                // or with a stack size error (if CheckStackSize check fails).
+                BOOST_CHECK(res ||
+                            (!node->CheckOpsLimit() && serror == ScriptError::SCRIPT_ERR_OP_COUNT) ||
+                            (!node->CheckStackSize() && serror == ScriptError::SCRIPT_ERR_STACK_SIZE));
+            }
+
+            if (mal_success && (!nonmal_success || witness_mal.stack != witness_nonmal.stack)) {
+                // Test malleable satisfaction only if it's different from the non-malleable one.
+                ScriptError serror;
+                bool res = VerifyScript(CScript(), script_pubkey, &witness_mal, STANDARD_SCRIPT_VERIFY_FLAGS, checker, &serror);
+                // Malleable satisfactions are not guaranteed to be valid under any conditions, but they can only
+                // fail due to stack or ops limits.
+                BOOST_CHECK(res || serror == ScriptError::SCRIPT_ERR_OP_COUNT || serror == ScriptError::SCRIPT_ERR_STACK_SIZE);
+            }
+
+            if (node->IsSaneTopLevel()) {
+                // For sane nodes, the two algorithms behave identically.
+                BOOST_CHECK_EQUAL(mal_success, nonmal_success);
+            }
+
             // Adding more satisfied conditions can never remove our ability to produce a satisfaction.
             BOOST_CHECK(mal_success >= prev_mal_success);
-            // For nonmalleable solutions this is only true if the added condition is PK; for other conditions, adding one may make an valid satisfaction become malleable.
-            if (add >= 0 && challist[add].first == ChallengeType::PK) BOOST_CHECK(nonmal_success >= prev_nonmal_success);
+            // For nonmalleable solutions this is only true if the added condition is PK;
+            // for other conditions, adding one may make an valid satisfaction become malleable. If the script
+            // is sane, this cannot happen however.
+            if (node->IsSaneTopLevel() || add < 0 || challist[add].first == ChallengeType::PK) {
+                BOOST_CHECK(nonmal_success >= prev_nonmal_success);
+            }
             // Remember results for the next added challenge.
             prev_mal_success = mal_success;
             prev_nonmal_success = nonmal_success;
         }
         // If the miniscript was satisfiable at all, a satisfaction must be found after all conditions are added.
         BOOST_CHECK_EQUAL(prev_mal_success, Satisfiable(node));
+        // If the miniscript is sane and satisfiable, a nonmalleable satisfaction must eventually be found.
+        if (node->IsSaneTopLevel()) BOOST_CHECK_EQUAL(prev_nonmal_success, Satisfiable(node));
     }
 }
 
