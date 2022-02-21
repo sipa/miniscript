@@ -401,16 +401,32 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
     const bool nonmal_success = node->Satisfy(SATISFIER_CTX, witness_nonmal.stack, true) == miniscript::Availability::YES;
     witness_nonmal.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
 
-    // If a non-malleable satisfaction exists, the malleable one must also exist, and be identical to it.
     if (nonmal_success) {
+        // Non-malleable satisfactions are bounded by GetStackSize().
+        assert(witness_nonmal.stack.size() <= node->GetStackSize());
+        // If a non-malleable satisfaction exists, the malleable one must also exist, and be identical to it.
         assert(mal_success);
         assert(witness_nonmal.stack == witness_mal.stack);
+
+        // Test non-malleable satisfaction.
+        ScriptError serror;
+        bool res = VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness_nonmal, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX, &serror);
+        // Non-malleable satisfactions are guaranteed to be valid if ValidSatisfactions().
+        if (node->ValidSatisfactions()) assert(res);
+        // More detailed: non-malleable satisfactions must be valid, or could fail with ops count error (if CheckOpsLimit failed),
+        // or with a stack size error (if CheckStackSize check failed).
+        assert(res ||
+               (!node->CheckOpsLimit() && serror == ScriptError::SCRIPT_ERR_OP_COUNT) ||
+               (!node->CheckStackSize() && serror == ScriptError::SCRIPT_ERR_STACK_SIZE));
     }
 
-    // Test satisfactions.
-    if (node->ValidSatisfactions() && nonmal_success) {
-        // Non-malleable satisfactions are guaranteed to be valid if ValidSatisfactions().
-        assert(VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness_nonmal, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX));
+    if (mal_success && (!nonmal_success || witness_mal.stack != witness_nonmal.stack)) {
+        // Test malleable satisfaction only if it's different from the non-malleable one.
+        ScriptError serror;
+        bool res = VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness_mal, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX, &serror);
+        // Malleable satisfactions are not guaranteed to be valid under any conditions, but they can only
+        // fail due to stack or ops limits.
+        assert(res || serror == ScriptError::SCRIPT_ERR_OP_COUNT || serror == ScriptError::SCRIPT_ERR_STACK_SIZE);
     }
 
     if (node->IsSaneTopLevel()) {
