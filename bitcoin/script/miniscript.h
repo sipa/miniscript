@@ -250,6 +250,7 @@ struct InputStack {
     //! Whether this stack is malleable (can be turned into an equally valid other stack by a third party).
     bool malleable = false;
     //! Whether this stack is non-canonical (using a construction known to be unnecessary for satisfaction).
+    //! Note that this flag does not affect the satisfaction algorithm; it is only used for sanity checking.
     bool non_canon = false;
     //! Serialized witness size.
     size_t size = 0;
@@ -270,7 +271,7 @@ struct InputStack {
     //! Concatenate two input stacks.
     friend InputStack operator+(InputStack a, InputStack b);
     //! Choose between two potential input stacks.
-    friend InputStack Choose(InputStack a, InputStack b, bool nonmalleable);
+    friend InputStack operator|(InputStack a, InputStack b);
 };
 
 static const auto ZERO = InputStack(std::vector<unsigned char>());
@@ -299,7 +300,7 @@ struct MaxInt {
         return a.value + b.value;
     }
 
-    friend MaxInt<I> Choose(const MaxInt<I>& a, const MaxInt<I>& b) {
+    friend MaxInt<I> operator|(const MaxInt<I>& a, const MaxInt<I>& b) {
         if (!a.valid) return b;
         if (!b.valid) return a;
         return std::max(a.value, b.value);
@@ -690,30 +691,30 @@ public:
             }
             case Fragment::OR_B: {
                 const auto count{1 + subs[0]->ops.count + subs[1]->ops.count};
-                const auto sat{Choose(subs[0]->ops.sat + subs[1]->ops.dsat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto sat{(subs[0]->ops.sat + subs[1]->ops.dsat) | (subs[1]->ops.sat + subs[0]->ops.dsat)};
                 const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_D: {
                 const auto count{3 + subs[0]->ops.count + subs[1]->ops.count};
-                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto sat{subs[0]->ops.sat | (subs[1]->ops.sat + subs[0]->ops.dsat)};
                 const auto dsat{subs[0]->ops.dsat + subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::OR_C: {
                 const auto count{2 + subs[0]->ops.count + subs[1]->ops.count};
-                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat + subs[0]->ops.dsat)};
+                const auto sat{subs[0]->ops.sat | (subs[1]->ops.sat + subs[0]->ops.dsat)};
                 return {count, sat, {}};
             }
             case Fragment::OR_I: {
                 const auto count{3 + subs[0]->ops.count + subs[1]->ops.count};
-                const auto sat{Choose(subs[0]->ops.sat, subs[1]->ops.sat)};
-                const auto dsat{Choose(subs[0]->ops.dsat, subs[1]->ops.dsat)};
+                const auto sat{subs[0]->ops.sat | subs[1]->ops.sat};
+                const auto dsat{subs[0]->ops.dsat | subs[1]->ops.dsat};
                 return {count, sat, dsat};
             }
             case Fragment::ANDOR: {
                 const auto count{3 + subs[0]->ops.count + subs[1]->ops.count + subs[2]->ops.count};
-                const auto sat{Choose(subs[1]->ops.sat + subs[0]->ops.sat, subs[0]->ops.dsat + subs[2]->ops.sat)};
+                const auto sat{(subs[1]->ops.sat + subs[0]->ops.sat) | (subs[0]->ops.dsat + subs[2]->ops.sat)};
                 const auto dsat{subs[0]->ops.dsat + subs[2]->ops.dsat};
                 return {count, sat, dsat};
             }
@@ -731,7 +732,7 @@ public:
                 for (const auto& sub : subs) {
                     count += sub->ops.count + 1;
                     auto next_sats = Vector(sats[0] + sub->ops.dsat);
-                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + sub->ops.dsat, sats[j - 1] + sub->ops.sat));
+                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back((sats[j] + sub->ops.dsat) | (sats[j - 1] + sub->ops.sat));
                     next_sats.push_back(sats[sats.size() - 1] + sub->ops.sat);
                     sats = std::move(next_sats);
                 }
@@ -756,20 +757,20 @@ public:
             case Fragment::HASH256:
             case Fragment::HASH160: return {1, {}};
             case Fragment::ANDOR: {
-                const auto sat{Choose(subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[2]->ss.sat)};
+                const auto sat{(subs[0]->ss.sat + subs[1]->ss.sat) | (subs[0]->ss.dsat + subs[2]->ss.sat)};
                 const auto dsat{subs[0]->ss.dsat + subs[2]->ss.dsat};
                 return {sat, dsat};
             }
             case Fragment::AND_V: return {subs[0]->ss.sat + subs[1]->ss.sat, {}};
             case Fragment::AND_B: return {subs[0]->ss.sat + subs[1]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.dsat};
             case Fragment::OR_B: {
-                const auto sat{Choose(subs[0]->ss.dsat + subs[1]->ss.sat, subs[0]->ss.sat + subs[1]->ss.dsat)};
+                const auto sat{(subs[0]->ss.dsat + subs[1]->ss.sat) | (subs[0]->ss.sat + subs[1]->ss.dsat)};
                 const auto dsat{subs[0]->ss.dsat + subs[1]->ss.dsat};
                 return {sat, dsat};
             }
-            case Fragment::OR_C: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), {}};
-            case Fragment::OR_D: return {Choose(subs[0]->ss.sat, subs[0]->ss.dsat + subs[1]->ss.sat), subs[0]->ss.dsat + subs[1]->ss.dsat};
-            case Fragment::OR_I: return {Choose(subs[0]->ss.sat + 1, subs[1]->ss.sat + 1), Choose(subs[0]->ss.dsat + 1, subs[1]->ss.dsat + 1)};
+            case Fragment::OR_C: return {subs[0]->ss.sat | (subs[0]->ss.dsat + subs[1]->ss.sat), {}};
+            case Fragment::OR_D: return {subs[0]->ss.sat | (subs[0]->ss.dsat + subs[1]->ss.sat), subs[0]->ss.dsat + subs[1]->ss.dsat};
+            case Fragment::OR_I: return {(subs[0]->ss.sat + 1) | (subs[1]->ss.sat + 1), (subs[0]->ss.dsat + 1) | (subs[1]->ss.dsat + 1)};
             case Fragment::MULTI: return {(uint32_t)keys.size() + 1, (uint32_t)keys.size() + 1};
             case Fragment::WRAP_A:
             case Fragment::WRAP_N:
@@ -782,7 +783,7 @@ public:
                 auto sats = Vector(internal::MaxInt<uint32_t>(0));
                 for (const auto& sub : subs) {
                     auto next_sats = Vector(sats[0] + sub->ss.dsat);
-                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + sub->ss.dsat, sats[j - 1] + sub->ss.sat));
+                    for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back((sats[j] + sub->ss.dsat) | (sats[j - 1] + sub->ss.sat));
                     next_sats.push_back(sats[sats.size() - 1] + sub->ss.sat);
                     sats = std::move(next_sats);
                 }
@@ -796,10 +797,10 @@ public:
 
 
     template<typename Ctx>
-    internal::InputResult ProduceInput(const Ctx& ctx, bool nonmal) const {
+    internal::InputResult ProduceInput(const Ctx& ctx) const {
         using namespace internal;
 
-        auto helper = [&ctx, nonmal](const Node& node, Span<InputResult> subres) -> InputResult {
+        auto helper = [&ctx](const Node& node, Span<InputResult> subres) -> InputResult {
             switch (node.nodetype) {
                 case Fragment::PK_K: {
                     std::vector<unsigned char> sig;
@@ -819,7 +820,7 @@ public:
                         auto sat = InputStack(std::move(sig)).WithSig().Available(avail);
                         std::vector<InputStack> next_sats;
                         next_sats.push_back(sats[0]);
-                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j], std::move(sats[j - 1]) + sat, nonmal));
+                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(sats[j] | (std::move(sats[j - 1]) + sat));
                         next_sats.push_back(std::move(sats[sats.size() - 1]) + std::move(sat));
                         sats = std::move(next_sats);
                     }
@@ -834,13 +835,15 @@ public:
                         auto& res = subres[subres.size() - i - 1];
                         std::vector<InputStack> next_sats;
                         next_sats.push_back(sats[0] + res.nsat);
-                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back(Choose(sats[j] + res.nsat, std::move(sats[j - 1]) + res.sat, nonmal));
+                        for (size_t j = 1; j < sats.size(); ++j) next_sats.push_back((sats[j] + res.nsat) | (std::move(sats[j - 1]) + res.sat));
                         next_sats.push_back(std::move(sats[sats.size() - 1]) + std::move(res.sat));
                         sats = std::move(next_sats);
                     }
                     InputStack nsat = INVALID;
                     for (size_t i = 0; i < sats.size(); ++i) {
-                        if (i != node.k) nsat = Choose(std::move(nsat), std::move(sats[i]), nonmal);
+                        // i==k is the satisfaction; i==0 is the canonical dissatisfaction; the rest are non-canonical.
+                        if (i != 0 && i != node.k) sats[i].NonCanon();
+                        if (i != node.k) nsat = std::move(nsat) | std::move(sats[i]);
                     }
                     assert(node.k <= sats.size());
                     return InputResult(std::move(nsat), std::move(sats[node.k]));
@@ -877,28 +880,29 @@ public:
                 }
                 case Fragment::AND_B: {
                     auto& x = subres[0], &y = subres[1];
-                    return InputResult(Choose(Choose(y.nsat + x.nsat, (y.sat + x.nsat).NonCanon(), nonmal), (y.nsat + x.sat).NonCanon(), nonmal), y.sat + x.sat);
+                    return InputResult((y.nsat + x.nsat) | (y.sat + x.nsat).NonCanon() | (y.nsat + x.sat).NonCanon(), y.sat + x.sat);
                 }
                 case Fragment::OR_B: {
                     auto& x = subres[0], &z = subres[1];
-                    return InputResult(z.nsat + x.nsat, Choose(Choose(z.nsat + x.sat, z.sat + x.nsat, nonmal), (z.sat + x.sat).NonCanon(), nonmal));
+                    // The (sat(Z) sat(X)) solution is overcomplete (attacker can change either into dsat).
+                    return InputResult(z.nsat + x.nsat, (z.nsat + x.sat) | (z.sat + x.nsat) | (z.sat + x.sat).Malleable());
                 }
                 case Fragment::OR_C: {
                     auto& x = subres[0], &z = subres[1];
-                    return InputResult(INVALID, Choose(std::move(x.sat), z.sat + x.nsat, nonmal));
+                    return InputResult(INVALID, std::move(x.sat) | (z.sat + x.nsat));
                 }
                 case Fragment::OR_D: {
                     auto& x = subres[0], &z = subres[1];
                     auto nsat = z.nsat + x.nsat, sat_l = x.sat, sat_r = z.sat + x.nsat;
-                    return InputResult(z.nsat + x.nsat, Choose(std::move(x.sat), z.sat + x.nsat, nonmal));
+                    return InputResult(z.nsat + x.nsat, std::move(x.sat) | (z.sat + x.nsat));
                 }
                 case Fragment::OR_I: {
                     auto& x = subres[0], &z = subres[1];
-                    return InputResult(Choose(x.nsat + ONE, z.nsat + ZERO, nonmal), Choose(x.sat + ONE, z.sat + ZERO, nonmal));
+                    return InputResult((x.nsat + ONE) | (z.nsat + ZERO), (x.sat + ONE) | (z.sat + ZERO));
                 }
                 case Fragment::ANDOR: {
                     auto& x = subres[0], &y = subres[1], &z = subres[2];
-                    return InputResult(Choose((y.nsat + x.sat).NonCanon(), z.nsat + x.nsat, nonmal), Choose(y.sat + x.sat, z.sat + x.nsat, nonmal));
+                    return InputResult((y.nsat + x.sat).NonCanon() | (z.nsat + x.nsat), (y.sat + x.sat) | (z.sat + x.nsat));
                 }
                 case Fragment::WRAP_A:
                 case Fragment::WRAP_S:
@@ -929,25 +933,46 @@ public:
             return InputResult(INVALID, INVALID);
         };
 
-        auto tester = [&helper, nonmal](const Node& node, Span<InputResult> subres) -> InputResult {
+        auto tester = [&helper](const Node& node, Span<InputResult> subres) -> InputResult {
             auto ret = helper(node, subres);
+
             // Do a consistency check between the satisfaction code and the type checker
             // (the actual satisfaction code in ProduceInputHelper does not use GetType)
+
+            // For 'z' nodes, available satisfactions/dissatisfactions must have stack size 0.
             if (node.GetType() << "z"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.stack.size() == 0);
             if (node.GetType() << "z"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.size() == 0);
+
+            // For 'o' nodes, available satisfactions/dissatisfactions must have stack size 1.
             if (node.GetType() << "o"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.stack.size() == 1);
             if (node.GetType() << "o"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.size() == 1);
-            if (node.GetType() << "n"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.back().size() != 0);
+
+            // For 'n' nodes, available satisfactions/dissatisfactions must have stack size 1 or larger. For satisfactions,
+            // the top element cannot be 0.
+            if (node.GetType() << "n"_mst && ret.sat.available != Availability::NO) assert(ret.sat.stack.size() >= 1);
+            if (node.GetType() << "n"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.stack.size() >= 1);
+            if (node.GetType() << "n"_mst && ret.sat.available != Availability::NO) assert(!ret.sat.stack.back().empty());
+
+            // For 'd' nodes, a dissatisfaction must exist, and they must not need a signature. If it is non-malleable,
+            // it must be canonical.
             if (node.GetType() << "d"_mst) assert(ret.nsat.available != Availability::NO);
+            if (node.GetType() << "d"_mst) assert(!ret.nsat.has_sig);
+            if (node.GetType() << "d"_mst && !ret.nsat.malleable) assert(!ret.nsat.non_canon);
+
+            // For 'f'/'s' nodes, dissatisfactions/satisfactions must have a signature.
             if (node.GetType() << "f"_mst && ret.nsat.available != Availability::NO) assert(ret.nsat.has_sig);
             if (node.GetType() << "s"_mst && ret.sat.available != Availability::NO) assert(ret.sat.has_sig);
-            if (nonmal) {
-                if (node.GetType() << "d"_mst) assert(!ret.nsat.has_sig);
-                if (node.GetType() << "d"_mst && !ret.nsat.malleable) assert(!ret.nsat.non_canon);
-                if (node.GetType() << "e"_mst) assert(!ret.nsat.malleable);
-                if (node.GetType() << "m"_mst && ret.sat.available != Availability::NO) assert(!ret.sat.malleable);
-                if (ret.sat.available != Availability::NO && !ret.sat.malleable) assert(!ret.sat.non_canon);
-            }
+
+            // For 'e' nodes, a non-malleable dissatisfaction must exist.
+            if (node.GetType() << "e"_mst) assert(ret.nsat.available != Availability::NO);
+            if (node.GetType() << "e"_mst) assert(!ret.nsat.malleable);
+
+            // For 'm' nodes, if a satisfaction exists, it must be non-malleable.
+            if (node.GetType() << "m"_mst && ret.sat.available != Availability::NO) assert(!ret.sat.malleable);
+
+            // If a non-malleable satisfaction exists, it must be canonical.
+            if (ret.sat.available != Availability::NO && !ret.sat.malleable) assert(!ret.sat.non_canon);
+
             return ret;
         };
 
@@ -998,16 +1023,22 @@ public:
     //! Check whether there is no satisfaction path that contains both timelocks and heightlocks
     bool CheckTimeLocksMix() const { return GetType() << "k"_mst; }
 
-    //! Do all sanity checks.
-    bool IsSane() const { return IsValid() && IsNonMalleable() && CheckTimeLocksMix() && CheckOpsLimit() && CheckStackSize(); }
+    //! Whether successful non-malleable satisfactions are guaranteed to be valid.
+    bool ValidSatisfactions() const { return IsValid() && CheckOpsLimit() && CheckStackSize(); }
+
+    //! Whether the apparent policy of this node matches its script semantics.
+    bool IsSane() const { return ValidSatisfactions() && IsNonMalleable() && CheckTimeLocksMix(); }
 
     //! Check whether this node is safe as a script on its own.
     bool IsSaneTopLevel() const { return IsValidTopLevel() && IsSane() && NeedsSignature(); }
 
     //! Produce a witness for this script, if possible and given the information available in the context.
+    //! The non-malleable satisfaction is guaranteed to be valid if it exists, and ValidSatisfaction()
+    //! is true. If IsSane() holds, this satisfaction is guaranteed to succeed in case the node's
+    //! conditions are satisfied (private keys and hash preimages available, locktimes satsified).
     template<typename Ctx>
     Availability Satisfy(const Ctx& ctx, std::vector<std::vector<unsigned char>>& stack, bool nonmalleable = true) const {
-        auto ret = ProduceInput(ctx, nonmalleable);
+        auto ret = ProduceInput(ctx);
         if (nonmalleable && (ret.sat.malleable || !ret.sat.has_sig)) return Availability::NO;
         stack = std::move(ret.sat.stack);
         return ret.sat.available;

@@ -390,23 +390,47 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
     assert(parsed);
     assert(*parsed == *node);
 
-    // Check both malleable and non-malleable satisfaction. Note that we only assert the produced witness
-    // is valid if the Miniscript was sane, as otherwise it could overflow the limits.
-    CScriptWitness witness;
+    // Run malleable satisfaction algorithm.
     const CScript script_pubkey = CScript() << OP_0 << WitnessV0ScriptHash(script);
-    const bool mal_success = node->Satisfy(SATISFIER_CTX, witness.stack, false) == miniscript::Availability::YES;
-    if (mal_success && node->IsSaneTopLevel()) {
-        witness.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
-        assert(VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX));
+    CScriptWitness witness_mal;
+    const bool mal_success = node->Satisfy(SATISFIER_CTX, witness_mal.stack, false) == miniscript::Availability::YES;
+    witness_mal.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
+
+    // Run non-malleable satisfaction algorithm.
+    CScriptWitness witness_nonmal;
+    const bool nonmal_success = node->Satisfy(SATISFIER_CTX, witness_nonmal.stack, true) == miniscript::Availability::YES;
+    witness_nonmal.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
+
+    if (nonmal_success) {
+        // Non-malleable satisfactions are bounded by GetStackSize().
+        assert(witness_nonmal.stack.size() <= node->GetStackSize());
+        // If a non-malleable satisfaction exists, the malleable one must also exist, and be identical to it.
+        assert(mal_success);
+        assert(witness_nonmal.stack == witness_mal.stack);
+
+        // Test non-malleable satisfaction.
+        ScriptError serror;
+        bool res = VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness_nonmal, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX, &serror);
+        // Non-malleable satisfactions are guaranteed to be valid if ValidSatisfactions().
+        if (node->ValidSatisfactions()) assert(res);
+        // More detailed: non-malleable satisfactions must be valid, or could fail with ops count error (if CheckOpsLimit failed),
+        // or with a stack size error (if CheckStackSize check failed).
+        assert(res ||
+               (!node->CheckOpsLimit() && serror == ScriptError::SCRIPT_ERR_OP_COUNT) ||
+               (!node->CheckStackSize() && serror == ScriptError::SCRIPT_ERR_STACK_SIZE));
     }
-    witness.stack.clear();
-    const bool nonmal_success = node->Satisfy(SATISFIER_CTX, witness.stack, true) == miniscript::Availability::YES;
-    if (nonmal_success && node->IsSaneTopLevel()) {
-        witness.stack.push_back(std::vector<unsigned char>(script.begin(), script.end()));
-        assert(VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX));
+
+    if (mal_success && (!nonmal_success || witness_mal.stack != witness_nonmal.stack)) {
+        // Test malleable satisfaction only if it's different from the non-malleable one.
+        ScriptError serror;
+        bool res = VerifyScript(DUMMY_SCRIPTSIG, script_pubkey, &witness_mal, STANDARD_SCRIPT_VERIFY_FLAGS, CHECKER_CTX, &serror);
+        // Malleable satisfactions are not guaranteed to be valid under any conditions, but they can only
+        // fail due to stack or ops limits.
+        assert(res || serror == ScriptError::SCRIPT_ERR_OP_COUNT || serror == ScriptError::SCRIPT_ERR_STACK_SIZE);
     }
-    // If a nonmalleable solution exists, a solution whatsoever must also exist.
-    assert(mal_success >= nonmal_success);
-    // If a miniscript is nonmalleable and needs a signature, and a solution exists, a non-malleable solution must also exist.
-    if (node->IsNonMalleable() && node->NeedsSignature()) assert(nonmal_success == mal_success);
+
+    if (node->IsSaneTopLevel()) {
+        // For sane nodes, the two algorithms behave identically.
+        assert(mal_success == nonmal_success);
+    }
 }
