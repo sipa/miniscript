@@ -41,41 +41,41 @@ std::string Props(const miniscript::NodeRef<std::string>& node, std::string in) 
 }
 
 std::string Analyze(const miniscript::NodeRef<std::string>& node) {
-    switch (node->nodetype) {
-        case miniscript::NodeType::PK_K: {
+    switch (node->fragment) {
+        case miniscript::Fragment::PK_K: {
             std::string str;
             COMPILER_CTX.ToString(node->keys[0], str);
             return Props(node, "pk_k(" + std::move(str) + ")");
         }
-        case miniscript::NodeType::PK_H: {
+        case miniscript::Fragment::PK_H: {
             std::string str;
             COMPILER_CTX.ToString(node->keys[0], str);
             return Props(node, "pk_h(" + std::move(str) + ")");
         }
-        case miniscript::NodeType::MULTI: return Props(node, "multi(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")");
-        case miniscript::NodeType::AFTER: return Props(node, "after(" + std::to_string(node->k) + ")");
-        case miniscript::NodeType::OLDER: return Props(node, "older(" + std::to_string(node->k) + ")");
-        case miniscript::NodeType::SHA256: return Props(node, "sha256()");
-        case miniscript::NodeType::RIPEMD160: return Props(node, "ripemd160()");
-        case miniscript::NodeType::HASH256: return Props(node, "hash256()");
-        case miniscript::NodeType::HASH160: return Props(node, "hash160()");
-        case miniscript::NodeType::JUST_0: return Props(node, "false");
-        case miniscript::NodeType::JUST_1: return Props(node, "true");
-        case miniscript::NodeType::WRAP_A: return Props(node, "a:") + " " + Analyze(node->subs[0]);
-        case miniscript::NodeType::WRAP_S: return Props(node, "s:") + " " + Analyze(node->subs[0]);
-        case miniscript::NodeType::WRAP_C: return Props(node, "c:") + " " + Analyze(node->subs[0]);
-        case miniscript::NodeType::WRAP_D: return Props(node, "d:") + " " + Analyze(node->subs[0]);
-        case miniscript::NodeType::WRAP_V: return Props(node, "v:") + " " + Analyze(node->subs[0]);
-        case miniscript::NodeType::WRAP_N: return Props(node, "n:") + " " + Analyze(node->subs[0]);
-        case miniscript::NodeType::WRAP_J: return Props(node, "j:") + " " + Analyze(node->subs[0]);
-        case miniscript::NodeType::AND_V: return Props(node, "and_v") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
-        case miniscript::NodeType::AND_B: return Props(node, "and_b") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
-        case miniscript::NodeType::OR_B: return Props(node, "or_b") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
-        case miniscript::NodeType::OR_C: return Props(node, "or_c") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
-        case miniscript::NodeType::OR_D: return Props(node, "or_d") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
-        case miniscript::NodeType::OR_I: return Props(node, "or_i") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
-        case miniscript::NodeType::ANDOR: return Props(node, "andor [or]") + "<ul style=\"list-style-type: disc;\"><li>andor [and]<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul></li><li>" + Analyze(node->subs[2]) + "</li></ul>";
-        case miniscript::NodeType::THRESH: {
+        case miniscript::Fragment::MULTI: return Props(node, "multi(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")");
+        case miniscript::Fragment::AFTER: return Props(node, "after(" + std::to_string(node->k) + ")");
+        case miniscript::Fragment::OLDER: return Props(node, "older(" + std::to_string(node->k) + ")");
+        case miniscript::Fragment::SHA256: return Props(node, "sha256()");
+        case miniscript::Fragment::RIPEMD160: return Props(node, "ripemd160()");
+        case miniscript::Fragment::HASH256: return Props(node, "hash256()");
+        case miniscript::Fragment::HASH160: return Props(node, "hash160()");
+        case miniscript::Fragment::JUST_0: return Props(node, "false");
+        case miniscript::Fragment::JUST_1: return Props(node, "true");
+        case miniscript::Fragment::WRAP_A: return Props(node, "a:") + " " + Analyze(node->subs[0]);
+        case miniscript::Fragment::WRAP_S: return Props(node, "s:") + " " + Analyze(node->subs[0]);
+        case miniscript::Fragment::WRAP_C: return Props(node, "c:") + " " + Analyze(node->subs[0]);
+        case miniscript::Fragment::WRAP_D: return Props(node, "d:") + " " + Analyze(node->subs[0]);
+        case miniscript::Fragment::WRAP_V: return Props(node, "v:") + " " + Analyze(node->subs[0]);
+        case miniscript::Fragment::WRAP_N: return Props(node, "n:") + " " + Analyze(node->subs[0]);
+        case miniscript::Fragment::WRAP_J: return Props(node, "j:") + " " + Analyze(node->subs[0]);
+        case miniscript::Fragment::AND_V: return Props(node, "and_v") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
+        case miniscript::Fragment::AND_B: return Props(node, "and_b") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
+        case miniscript::Fragment::OR_B: return Props(node, "or_b") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
+        case miniscript::Fragment::OR_C: return Props(node, "or_c") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
+        case miniscript::Fragment::OR_D: return Props(node, "or_d") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
+        case miniscript::Fragment::OR_I: return Props(node, "or_i") + "<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul>";
+        case miniscript::Fragment::ANDOR: return Props(node, "andor [or]") + "<ul style=\"list-style-type: disc;\"><li>andor [and]<ul style=\"list-style-type: disc;\"><li>" + Analyze(node->subs[0]) + "</li><li>" + Analyze(node->subs[1]) + "</li></ul></li><li>" + Analyze(node->subs[2]) + "</li></ul>";
+        case miniscript::Fragment::THRESH: {
              auto ret = Props(node, "thresh(" + std::to_string(node->k) + " of " + std::to_string(node->subs.size()) + ")") + "<ul style=\"list-style-type: disc;\">";
              for (const auto& sub : node->subs) {
                  ret += "<li>" + Analyze(sub) + "</li>";

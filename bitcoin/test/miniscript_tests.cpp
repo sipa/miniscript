@@ -240,17 +240,17 @@ std::set<Challenge> FindChallenges(const NodeRef& ref) {
     for (const auto& key : ref->keys) {
         chal.emplace(ChallengeType::PK, ChallengeNumber(key));
     }
-    if (ref->nodetype == miniscript::Fragment::OLDER) {
+    if (ref->fragment == miniscript::Fragment::OLDER) {
         chal.emplace(ChallengeType::OLDER, ref->k);
-    } else if (ref->nodetype == miniscript::Fragment::AFTER) {
+    } else if (ref->fragment == miniscript::Fragment::AFTER) {
         chal.emplace(ChallengeType::AFTER, ref->k);
-    } else if (ref->nodetype == miniscript::Fragment::SHA256) {
+    } else if (ref->fragment == miniscript::Fragment::SHA256) {
         chal.emplace(ChallengeType::SHA256, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::Fragment::RIPEMD160) {
+    } else if (ref->fragment == miniscript::Fragment::RIPEMD160) {
         chal.emplace(ChallengeType::RIPEMD160, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::Fragment::HASH256) {
+    } else if (ref->fragment == miniscript::Fragment::HASH256) {
         chal.emplace(ChallengeType::HASH256, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::Fragment::HASH160) {
+    } else if (ref->fragment == miniscript::Fragment::HASH160) {
         chal.emplace(ChallengeType::HASH160, ChallengeNumber(ref->data));
     }
     for (const auto& sub : ref->subs) {

@@ -518,7 +518,7 @@ CostPair CalcCostPair(Fragment nt, const std::vector<const Result*>& s, double l
             return CostPair{Mul(l, sat) + Mul(r, nsat), nsat};
         }
     }
-    throw std::runtime_error("Computing CostPair of unknown nodetype");
+    throw std::runtime_error("Computing CostPair of unknown fragment");
 }
 
 std::pair<std::vector<double>, std::vector<double>> GetPQs(Fragment nt, double p, double q, double l, int m) {
@@ -890,7 +890,7 @@ std::string Disassembler(CScript::const_iterator& it, CScript::const_iterator en
 
 /*
 std::string DebugNode(const Node& node) {
-    switch (node->nodetype) {
+    switch (node->fragment) {
         case Fragment::PK_K: return "pk";
         case Fragment::PK_H: return "pk_h";
         case Fragment::MULTI: return "multi(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")";

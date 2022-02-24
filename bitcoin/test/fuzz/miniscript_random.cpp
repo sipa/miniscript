@@ -318,7 +318,7 @@ NodeRef GenNode(FuzzedDataProvider& provider) {
             todo.back() = std::move(node_info);
             for (uint8_t i = 0; i < n_subs; i++) todo.push_back({});
         } else {
-            // The back of todo has nodetype and number of children decided, and
+            // The back of todo has fragment and number of children decided, and
             // those children have been constructed at the back of stack. Pop
             // that entry off todo, and use it to construct a new NodeRef on
             // stack.
