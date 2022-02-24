@@ -383,6 +383,8 @@ private:
      *   computes the result of the node. If std::nullopt is returned by upfn,
      *   TreeEvalMaybe() immediately returns std::nullopt.
      * The return value of TreeEvalMaybe is the result of the root node.
+     *
+     * Result type cannot be bool due to the std::vector<bool> specialization.
      */
     template<typename Result, typename State, typename DownFn, typename UpFn>
     std::optional<Result> TreeEvalMaybe(State root_state, DownFn downfn, UpFn upfn) const
@@ -1005,6 +1007,47 @@ public:
             for (auto& sub: subs) if (sub) return sub;
             if (!node.IsSane()) return &node;
             return nullptr;
+        });
+    }
+
+    //! Determine whether a Miniscript node is satisfiable. fn(node) will be invoked for all
+    //! key, time, and hashing nodes, and should return their satisfiability.
+    template<typename F>
+    bool IsSatisfiable(F fn) const
+    {
+        // TreeEval() doesn't support bool as NodeType, so use int instead.
+        return TreeEval<int>([&fn](const Node& node, Span<int> subs) {
+            switch (node.nodetype) {
+                case Fragment::JUST_0:
+                    return false;
+                case Fragment::JUST_1:
+                    return true;
+                case Fragment::PK_K:
+                case Fragment::PK_H:
+                case Fragment::MULTI:
+                case Fragment::AFTER:
+                case Fragment::OLDER:
+                case Fragment::HASH256:
+                case Fragment::HASH160:
+                case Fragment::SHA256:
+                case Fragment::RIPEMD160:
+                    return bool{fn(node)};
+                case Fragment::ANDOR:
+                    return (subs[0] && subs[1]) || subs[2];
+                case Fragment::AND_V:
+                case Fragment::AND_B:
+                    return subs[0] && subs[1];
+                case Fragment::OR_B:
+                case Fragment::OR_C:
+                case Fragment::OR_D:
+                case Fragment::OR_I:
+                    return subs[0] || subs[1];
+                case Fragment::THRESH:
+                    return std::count(subs.begin(), subs.end(), true) >= node.k;
+                default: // wrappers
+                    assert(subs.size() == 1);
+                    return !!subs[0];
+            }
         });
     }
 
