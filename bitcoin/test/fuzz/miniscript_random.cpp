@@ -380,7 +380,7 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
     assert(*parsed == *node);
 
     // Check consistency between script size estimation and real size.
-    const auto script = node->ToScript(PARSER_CTX);
+    auto script = node->ToScript(PARSER_CTX);
     assert(node->ScriptSize() == script.size());
 
     // Check consistency of "x" property with the script (type K is excluded, because it can end
@@ -401,6 +401,22 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
     // - The type matches exactly
     assert(decoded->ToScript(PARSER_CTX) == script);
     assert(decoded->GetType() == node->GetType());
+
+    if (fuzzed_data_provider.ConsumeBool()) {
+        // Optionally pad the script with OP_NOPs to max op the ops limit of the constructed script.
+        // This makes the script obviously not actually miniscript-compatible anymore, but the
+        // signatures constructed in this test don't commit to the script anyway, so the same
+        // miniscript satisfier will work. This increases the sensitivity of the test to the ops
+        // counting logic being too low, especially for simple scripts.
+        // Do this optionally because we're not solely interested in cases where the number of ops is
+        // maximal.
+        // Do not pad more than what would cause MAX_STANDARD_P2WSH_SCRIPT_SIZE to be reached, however,
+        // as that also invalidates scripts.
+        int add = std::min<int>(
+            MAX_OPS_PER_SCRIPT - node->GetOps(),
+            MAX_STANDARD_P2WSH_SCRIPT_SIZE - node->ScriptSize());
+        for (int i = 0; i < add; ++i) script.push_back(OP_NOP);
+    }
 
     // Run malleable satisfaction algorithm.
     const CScript script_pubkey = CScript() << OP_0 << WitnessV0ScriptHash(script);
