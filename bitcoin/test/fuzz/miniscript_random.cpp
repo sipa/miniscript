@@ -200,8 +200,8 @@ struct NodeInfo {
     NodeInfo(Fragment frag, CPubKey key): fragment(frag), n_subs(0), k(0), keys({key}) {}
     NodeInfo(Fragment frag, uint32_t _k): fragment(frag), n_subs(0), k(_k) {}
     NodeInfo(Fragment frag, std::vector<unsigned char> h): fragment(frag), n_subs(0), k(0), hash(std::move(h)) {}
-    NodeInfo(Fragment frag, uint8_t subs): fragment(frag), n_subs(subs), k(0) {}
-    NodeInfo(Fragment frag, uint32_t _k, uint8_t subs): fragment(frag), n_subs(subs), k(_k) {}
+    NodeInfo(uint8_t subs, Fragment frag): fragment(frag), n_subs(subs), k(0) {}
+    NodeInfo(uint8_t subs, Fragment frag, uint32_t _k): fragment(frag), n_subs(subs), k(_k) {}
     NodeInfo(Fragment frag, uint32_t _k, std::vector<CPubKey> _keys): fragment(frag), n_subs(0), k(_k), keys(std::move(_keys)) {}
 };
 
@@ -253,54 +253,55 @@ std::optional<uint32_t> ConsumeTimeLock(FuzzedDataProvider& provider) {
  */
 std::optional<NodeInfo> ConsumeNode(FuzzedDataProvider& provider) {
     switch (provider.ConsumeIntegral<uint8_t>()) {
-        case 0: return NodeInfo(Fragment::JUST_0);
-        case 1: return NodeInfo(Fragment::JUST_1);
-        case 2: return NodeInfo(Fragment::PK_K, ConsumePubKey(provider));
-        case 3: return NodeInfo(Fragment::PK_H, ConsumePubKey(provider));
+        case 0: return {{Fragment::JUST_0}};
+        case 1: return {{Fragment::JUST_1}};
+        case 2: return {{Fragment::PK_K, ConsumePubKey(provider)}};
+        case 3: return {{Fragment::PK_H, ConsumePubKey(provider)}};
         case 4: {
             const auto k = ConsumeTimeLock(provider);
-            return k ? NodeInfo(Fragment::OLDER, *k) : std::optional<NodeInfo>{};
+            if (!k) return {};
+            return {{Fragment::OLDER, *k}};
         }
         case 5: {
             const auto k = ConsumeTimeLock(provider);
-            return k ? NodeInfo(Fragment::AFTER, *k) : std::optional<NodeInfo>{};
+            if (!k) return {};
+            return {{Fragment::AFTER, *k}};
         }
-        case 6: return NodeInfo(Fragment::SHA256, ConsumeSha256(provider));
-        case 7: return NodeInfo(Fragment::HASH256, ConsumeHash256(provider));
-        case 8: return NodeInfo(Fragment::RIPEMD160, ConsumeRipemd160(provider));
-        case 9: return NodeInfo(Fragment::HASH160, ConsumeHash160(provider));
+        case 6: return {{Fragment::SHA256, ConsumeSha256(provider)}};
+        case 7: return {{Fragment::HASH256, ConsumeHash256(provider)}};
+        case 8: return {{Fragment::RIPEMD160, ConsumeRipemd160(provider)}};
+        case 9: return {{Fragment::HASH160, ConsumeHash160(provider)}};
         case 10: {
             const auto k = provider.ConsumeIntegral<uint8_t>();
             const auto n_keys = provider.ConsumeIntegral<uint8_t>();
             if (n_keys > 20 || k == 0 || k > n_keys) return {};
             std::vector<CPubKey> keys{n_keys};
             for (auto& key: keys) key = ConsumePubKey(provider);
-            return NodeInfo(Fragment::MULTI, k, keys);
+            return {{Fragment::MULTI, k, keys}};
         }
-        case 11: return NodeInfo(Fragment::ANDOR, uint8_t{3});
-        case 12: return NodeInfo(Fragment::AND_V, uint8_t{2});
-        case 13: return NodeInfo(Fragment::AND_B, uint8_t{2});
-        case 15: return NodeInfo(Fragment::OR_B, uint8_t{2});
-        case 16: return NodeInfo(Fragment::OR_C, uint8_t{2});
-        case 17: return NodeInfo(Fragment::OR_D, uint8_t{2});
-        case 18: return NodeInfo(Fragment::OR_I, uint8_t{2});
+        case 11: return {{3, Fragment::ANDOR}};
+        case 12: return {{2, Fragment::AND_V}};
+        case 13: return {{2, Fragment::AND_B}};
+        case 15: return {{2, Fragment::OR_B}};
+        case 16: return {{2, Fragment::OR_C}};
+        case 17: return {{2, Fragment::OR_D}};
+        case 18: return {{2, Fragment::OR_I}};
         case 19: {
             auto k = provider.ConsumeIntegral<uint8_t>();
             auto n_subs = provider.ConsumeIntegral<uint8_t>();
             if (k == 0 || k > n_subs) return {};
-            return NodeInfo(Fragment::THRESH, k, n_subs);
+            return {{n_subs, Fragment::THRESH, k}};
         }
-        case 20: return NodeInfo(Fragment::WRAP_A, uint8_t{1});
-        case 21: return NodeInfo(Fragment::WRAP_S, uint8_t{1});
-        case 22: return NodeInfo(Fragment::WRAP_C, uint8_t{1});
-        case 23: return NodeInfo(Fragment::WRAP_D, uint8_t{1});
-        case 24: return NodeInfo(Fragment::WRAP_V, uint8_t{1});
-        case 25: return NodeInfo(Fragment::WRAP_J, uint8_t{1});
-        case 26: return NodeInfo(Fragment::WRAP_N, uint8_t{1});
-        default: return {};
+        case 20: return {{1, Fragment::WRAP_A}};
+        case 21: return {{1, Fragment::WRAP_S}};
+        case 22: return {{1, Fragment::WRAP_C}};
+        case 23: return {{1, Fragment::WRAP_D}};
+        case 24: return {{1, Fragment::WRAP_V}};
+        case 25: return {{1, Fragment::WRAP_J}};
+        case 26: return {{1, Fragment::WRAP_N}};
+        default:
+            break;
     }
-
-    assert(false);
     return {};
 }
 
