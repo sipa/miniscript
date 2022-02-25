@@ -368,25 +368,9 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
 {
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
 
-    // Generate a top-level node
+    // Generate a node
     const auto node = GenNode(fuzzed_data_provider);
-    if (!node || !node->IsValidTopLevel()) return;
-
-    // Check roundtrip to Script, and consistency between script size estimation and real size
-    const auto script = node->ToScript(PARSER_CTX);
-    assert(node->ScriptSize() == script.size());
-    auto decoded = miniscript::FromScript(script, PARSER_CTX);
-    assert(decoded);
-    // Note we can't use *decoded == *node because the miniscript representation may differ, so we check that:
-    // - The script corresponding to that decoded form matchs exactly
-    // - The type matches exactly
-    assert(decoded->ToScript(PARSER_CTX) == script);
-    assert(decoded->GetType() == node->GetType());
-
-    // Check consistency of "x" property with the script (relying on the fact that no
-    // top-level scripts end with a hash or key push, whose last byte could match these opcodes).
-    bool ends_in_verify = !(node->GetType() << "x"_mst);
-    assert(ends_in_verify == (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
+    if (!node) return;
 
     // Check that it roundtrips to text representation
     std::string str;
@@ -394,6 +378,29 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
     auto parsed = miniscript::FromString(str, PARSER_CTX);
     assert(parsed);
     assert(*parsed == *node);
+
+    // Check consistency between script size estimation and real size.
+    const auto script = node->ToScript(PARSER_CTX);
+    assert(node->ScriptSize() == script.size());
+
+    // Check consistency of "x" property with the script (type K is excluded, because it can end
+    // with a push of a key, which could match these opcodes).
+    if (!(node->GetType() << "K"_mst)) {
+        bool ends_in_verify = !(node->GetType() << "x"_mst);
+        assert(ends_in_verify == (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
+    }
+
+    // The rest of the checks only apply when testing a valid top-level script.
+    if (!node->IsValidTopLevel()) return;
+
+    // Check roundtrip to script
+    auto decoded = miniscript::FromScript(script, PARSER_CTX);
+    assert(decoded);
+    // Note we can't use *decoded == *node because the miniscript representation may differ, so we check that:
+    // - The script corresponding to that decoded form matchs exactly
+    // - The type matches exactly
+    assert(decoded->ToScript(PARSER_CTX) == script);
+    assert(decoded->GetType() == node->GetType());
 
     // Run malleable satisfaction algorithm.
     const CScript script_pubkey = CScript() << OP_0 << WitnessV0ScriptHash(script);
