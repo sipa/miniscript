@@ -177,6 +177,7 @@ const CScript DUMMY_SCRIPTSIG;
 
 using Fragment = miniscript::Fragment;
 using NodeRef = miniscript::NodeRef<CPubKey>;
+using Node = miniscript::Node<CPubKey>;
 using miniscript::operator"" _mst;
 
 //! Construct a miniscript node as a shared_ptr.
@@ -437,4 +438,43 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
         // For sane nodes, the two algorithms behave identically.
         assert(mal_success == nonmal_success);
     }
+
+    // Verify that if a node is policy-satisfiable, the malleable satisfaction
+    // algorithm succeeds. Given that under IsSaneTopLevel() both satisfactions
+    // are identical, this implies that for such nodes, the non-malleable
+    // satisfaction will also match the expected policy.
+    bool satisfiable = node->IsSatisfiable([](const Node& node) -> bool {
+        switch (node.fragment) {
+        case Fragment::PK_K:
+        case Fragment::PK_H: {
+            auto it = TEST_DATA.dummy_sigs.find(node.keys[0]);
+            assert(it != TEST_DATA.dummy_sigs.end());
+            return it->second.second;
+        }
+        case Fragment::MULTI: {
+            size_t sats = 0;
+            for (const auto& key : node.keys) {
+                auto it = TEST_DATA.dummy_sigs.find(key);
+                assert(it != TEST_DATA.dummy_sigs.end());
+                sats += it->second.second;
+            }
+            return sats >= node.k;
+        }
+        case Fragment::OLDER:
+        case Fragment::AFTER:
+            return node.k & 1;
+        case Fragment::SHA256:
+            return TEST_DATA.sha256_preimages.count(node.data);
+        case Fragment::HASH256:
+            return TEST_DATA.hash256_preimages.count(node.data);
+        case Fragment::RIPEMD160:
+            return TEST_DATA.ripemd160_preimages.count(node.data);
+        case Fragment::HASH160:
+            return TEST_DATA.hash160_preimages.count(node.data);
+        default:
+            assert(false);
+        }
+        return false;
+    });
+    assert(mal_success == satisfiable);
 }
