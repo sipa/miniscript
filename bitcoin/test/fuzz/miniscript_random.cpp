@@ -20,7 +20,7 @@ struct TestData {
     // Precomputed public keys, and a dummy signature for each of them.
     std::vector<Key> dummy_keys;
     std::map<CKeyID, Key> dummy_keys_map;
-    std::map<Key, std::vector<unsigned char>> dummy_sigs;
+    std::map<Key, std::pair<std::vector<unsigned char>, bool>> dummy_sigs;
 
     // Precomputed hashes of each kind.
     std::vector<std::vector<unsigned char>> sha256;
@@ -46,24 +46,24 @@ struct TestData {
             std::vector<unsigned char> sig;
             privkey.Sign(uint256S(""), sig);
             sig.push_back(1); // SIGHASH_ALL
-            dummy_sigs.insert({pubkey, sig});
+            dummy_sigs.insert({pubkey, {sig, i & 1}});
 
             std::vector<unsigned char> hash;
             hash.resize(32);
             CSHA256().Write(keydata, 32).Finalize(hash.data());
             sha256.push_back(hash);
-            sha256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            if (i & 1) sha256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
             CHash256().Write(keydata).Finalize(hash);
             hash256.push_back(hash);
-            hash256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            if (i & 1) hash256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
             hash.resize(20);
             CRIPEMD160().Write(keydata, 32).Finalize(hash.data());
             assert(hash.size() == 20);
             ripemd160.push_back(hash);
-            ripemd160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            if (i & 1) ripemd160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
             CHash160().Write(keydata).Finalize(hash);
             hash160.push_back(hash);
-            hash160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            if (i & 1) hash160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
         }
     }
 };
@@ -118,8 +118,13 @@ struct SatisfierContext: ParserContext {
     miniscript::Availability Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
         const auto it = test_data->dummy_sigs.find(key);
         if (it == test_data->dummy_sigs.end()) return miniscript::Availability::NO;
-        sig = it->second;
-        return miniscript::Availability::YES;
+        if (it->second.second) {
+            // Key is "available"
+            sig = it->second.first;
+            return miniscript::Availability::YES;
+        } else {
+            return miniscript::Availability::NO;
+        }
     }
 
     //! Lookup generalization for all the hash satisfactions below
@@ -149,18 +154,17 @@ struct SatisfierContext: ParserContext {
 struct CheckerContext: BaseSignatureChecker {
     TestData *test_data;
 
-    // Signature checker methods. Checks the right dummy signature is used. Always assumes timelocks are
-    // correct.
+    // Signature checker methods. Checks the right dummy signature is used.
     bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey,
                              const CScript& scriptCode, SigVersion sigversion) const override
     {
         const CPubKey key{vchPubKey};
         const auto it = test_data->dummy_sigs.find(key);
         if (it == test_data->dummy_sigs.end()) return false;
-        return it->second == sig;
+        return it->second.first == sig;
     }
-    bool CheckLockTime(const CScriptNum& nLockTime) const override { return true; }
-    bool CheckSequence(const CScriptNum& nSequence) const override { return true; }
+    bool CheckLockTime(const CScriptNum& nLockTime) const override { return nLockTime.GetInt64() & 1; }
+    bool CheckSequence(const CScriptNum& nSequence) const override { return nSequence.GetInt64() & 1; }
 };
 
 // The various contexts
