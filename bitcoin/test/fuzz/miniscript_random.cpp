@@ -178,6 +178,7 @@ const CScript DUMMY_SCRIPTSIG;
 using Fragment = miniscript::Fragment;
 using NodeRef = miniscript::NodeRef<CPubKey>;
 using Node = miniscript::Node<CPubKey>;
+using Type = miniscript::Type;
 using miniscript::operator"" _mst;
 
 //! Construct a miniscript node as a shared_ptr.
@@ -195,13 +196,17 @@ struct NodeInfo {
     std::vector<CPubKey> keys;
     //! The hash value for this node, if it has one
     std::vector<unsigned char> hash;
+    //! The type requirements for the children of this node.
+    std::vector<Type> subtypes;
 
     NodeInfo(Fragment frag): fragment(frag), n_subs(0), k(0) {}
     NodeInfo(Fragment frag, CPubKey key): fragment(frag), n_subs(0), k(0), keys({key}) {}
     NodeInfo(Fragment frag, uint32_t _k): fragment(frag), n_subs(0), k(_k) {}
     NodeInfo(Fragment frag, std::vector<unsigned char> h): fragment(frag), n_subs(0), k(0), hash(std::move(h)) {}
-    NodeInfo(uint8_t subs, Fragment frag): fragment(frag), n_subs(subs), k(0) {}
-    NodeInfo(uint8_t subs, Fragment frag, uint32_t _k): fragment(frag), n_subs(subs), k(_k) {}
+    NodeInfo(uint8_t subs, Fragment frag): fragment(frag), n_subs(subs), k(0), subtypes(subs, ""_mst) {}
+    NodeInfo(uint8_t subs, Fragment frag, uint32_t _k): fragment(frag), n_subs(subs), k(_k), subtypes(subs, ""_mst)  {}
+    NodeInfo(std::vector<Type> subt, Fragment frag): fragment(frag), n_subs(subt.size()), k(0), subtypes(std::move(subt)) {}
+    NodeInfo(std::vector<Type> subt, Fragment frag, uint32_t _k): fragment(frag), n_subs(subt.size()), k(_k), subtypes(std::move(subt))  {}
     NodeInfo(Fragment frag, uint32_t _k, std::vector<CPubKey> _keys): fragment(frag), n_subs(0), k(_k), keys(std::move(_keys)) {}
 };
 
@@ -312,23 +317,29 @@ NodeRef GenNode(FuzzedDataProvider& provider) {
     /** A stack of miniscript Nodes being built up. */
     std::vector<NodeRef> stack;
     /** The queue of instructions. */
-    std::vector<std::optional<NodeInfo>> todo{{}};
+    std::vector<std::pair<Type, std::optional<NodeInfo>>> todo{{""_mst, {}}};
 
     while (!todo.empty()) {
         // The expected type we have to construct.
-        if (!todo.back()) {
+        auto type_needed = todo.back().first;
+        if (!todo.back().second) {
             // Fragment/children have not been decided yet. Decide them.
             auto node_info = ConsumeNode(provider);
-            uint8_t n_subs = node_info->n_subs;
             if (!node_info) return {};
-            todo.back() = std::move(node_info);
-            for (uint8_t i = 0; i < n_subs; i++) todo.push_back({});
+            auto subtypes = std::move(node_info)->subtypes;
+            todo.back().second = std::move(node_info);
+            todo.reserve(todo.size() + subtypes.size());
+            // As elements on the todo stack are processed back to front, construct
+            // them in reverse order (so that the first subnode is generated first).
+            for (size_t i = 0; i < subtypes.size(); ++i) {
+                todo.emplace_back(*(subtypes.rbegin() + i), std::nullopt);
+            }
         } else {
             // The back of todo has fragment and number of children decided, and
             // those children have been constructed at the back of stack. Pop
             // that entry off todo, and use it to construct a new NodeRef on
             // stack.
-            const NodeInfo& info = *todo.back();
+            const NodeInfo& info = *todo.back().second;
             // Gather children from the back of stack.
             std::vector<NodeRef> sub;
             sub.reserve(info.n_subs);
@@ -346,7 +357,7 @@ NodeRef GenNode(FuzzedDataProvider& provider) {
                 node = MakeNodeRef(info.fragment, std::move(info.keys), info.k);
             }
             // Verify acceptability.
-            if (!node || !node->IsValid()) return {};
+            if (!node || !node->IsValid() || !(node->GetType() << type_needed)) return {};
             // Move it to the stack.
             stack.push_back(std::move(node));
             todo.pop_back();
