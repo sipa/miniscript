@@ -20,6 +20,7 @@ struct TestData {
 
     // Precomputed public keys, and a dummy signature for each of them.
     std::vector<Key> dummy_keys;
+    std::map<Key, int> dummy_key_idx_map;
     std::map<CKeyID, Key> dummy_keys_map;
     std::map<Key, std::pair<std::vector<unsigned char>, bool>> dummy_sigs;
 
@@ -43,7 +44,9 @@ struct TestData {
             const Key pubkey = privkey.GetPubKey();
 
             dummy_keys.push_back(pubkey);
+            dummy_key_idx_map.emplace(pubkey, i);
             dummy_keys_map.insert({pubkey.GetID(), pubkey});
+
             std::vector<unsigned char> sig;
             privkey.Sign(uint256S(""), sig);
             sig.push_back(1); // SIGHASH_ALL
@@ -73,20 +76,33 @@ struct TestData {
 struct ParserContext {
     typedef CPubKey Key;
 
-    bool ToString(const Key& key, std::string& ret) const { ret = HexStr(key); return true; }
+    bool ToString(const Key& key, std::string& ret) const
+    {
+        auto it = TEST_DATA.dummy_key_idx_map.find(key);
+        if (it == TEST_DATA.dummy_key_idx_map.end()) return false;
+        uint8_t idx = it->second;
+        ret = HexStr(Span{&idx, 1});
+        return true;
+    }
 
-    const std::vector<unsigned char> ToPKBytes(const Key& key) const { return {key.begin(), key.end()}; }
+    const std::vector<unsigned char> ToPKBytes(const Key& key) const
+    {
+        return {key.begin(), key.end()};
+    }
 
-    const std::vector<unsigned char> ToPKHBytes(const Key& key) const {
+    const std::vector<unsigned char> ToPKHBytes(const Key& key) const
+    {
         const auto h = Hash160(key);
         return {h.begin(), h.end()};
     }
 
     template<typename I>
     bool FromString(I first, I last, Key& key) const {
-        const auto bytes = ParseHex(std::string(first, last));
-        key.Set(bytes.begin(), bytes.end());
-        return key.IsValid();
+        if (last - first != 2) return false;
+        auto idx = ParseHex(std::string(first, last));
+        if (idx.size() != 1) return false;
+        key = TEST_DATA.dummy_keys[idx[0]];
+        return true;
     }
 
     template<typename I>
