@@ -123,6 +123,43 @@ struct ParserContext {
     }
 } PARSER_CTX;
 
+//! Context that implements naive conversion from/to script only, for roundtrip testing.
+struct ScriptParserContext {
+    struct Key {
+        bool is_hash;
+        std::vector<unsigned char> data;
+    };
+
+    const std::vector<unsigned char>& ToPKBytes(const Key& key) const
+    {
+        assert(!key.is_hash);
+        return key.data;
+    }
+
+    const std::vector<unsigned char> ToPKHBytes(const Key& key) const
+    {
+        if (key.is_hash) return key.data;
+        const auto h = Hash160(key.data);
+        return {h.begin(), h.end()};
+    }
+
+    template<typename I>
+    bool FromPKBytes(I first, I last, Key& key) const
+    {
+        key.data.assign(first, last);
+        key.is_hash = false;
+        return true;
+    }
+
+    template<typename I>
+    bool FromPKHBytes(I first, I last, Key& key) const
+    {
+        key.data.assign(first, last);
+        key.is_hash = true;
+        return true;
+    }
+} SCRIPT_PARSER_CONTEXT;
+
 //! Context to produce a satisfaction for a Miniscript node using the pre-computed data.
 struct SatisfierContext: ParserContext {
     // Timelock challenges satisfaction. Make the value (deterministically) vary to explore different
@@ -886,4 +923,17 @@ FUZZ_TARGET_INIT(miniscript_string, FuzzInit)
     auto parsed2 = miniscript::FromString(str2, PARSER_CTX);
     assert(parsed2);
     assert(*parsed == *parsed2);
+}
+
+/* Fuzz tests that test parsing from a script, and roundtripping via script. */
+FUZZ_TARGET(miniscript_script)
+{
+    FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
+    const std::optional<CScript> script = ConsumeDeserializable<CScript>(fuzzed_data_provider);
+    if (!script) return;
+
+    const auto ms = miniscript::FromScript(*script, SCRIPT_PARSER_CONTEXT);
+    if (!ms) return;
+
+    assert(ms->ToScript(SCRIPT_PARSER_CONTEXT) == *script);
 }
