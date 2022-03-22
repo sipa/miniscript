@@ -234,50 +234,23 @@ using Fragment = miniscript::Fragment;
 using NodeRef = miniscript::NodeRef<CPubKey>;
 using miniscript::operator"" _mst;
 
-//! Determine whether a Miniscript node is satisfiable at all (and thus isn't equivalent to just "false").
-bool Satisfiable(const NodeRef& ref) {
-    switch (ref->nodetype) {
-        case Fragment::JUST_0:
-            return false;
-        case Fragment::AND_B: case Fragment::AND_V:
-            return Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1]);
-        case Fragment::OR_B: case Fragment::OR_C: case Fragment::OR_D: case Fragment::OR_I:
-            return Satisfiable(ref->subs[0]) || Satisfiable(ref->subs[1]);
-        case Fragment::ANDOR:
-            return (Satisfiable(ref->subs[0]) && Satisfiable(ref->subs[1])) || Satisfiable(ref->subs[2]);
-        case Fragment::WRAP_A: case Fragment::WRAP_C: case Fragment::WRAP_S:
-        case Fragment::WRAP_D: case Fragment::WRAP_V: case Fragment::WRAP_J:
-        case Fragment::WRAP_N:
-            return Satisfiable(ref->subs[0]);
-        case Fragment::PK_K: case Fragment::PK_H: case Fragment::MULTI:
-        case Fragment::AFTER: case Fragment::OLDER: case Fragment::HASH256:
-        case Fragment::HASH160: case Fragment::SHA256: case Fragment::RIPEMD160:
-        case Fragment::JUST_1:
-            return true;
-        case Fragment::THRESH:
-            return std::accumulate(ref->subs.begin(), ref->subs.end(), (size_t)0, [](size_t acc, const NodeRef& ref){return acc + Satisfiable(ref);}) >= ref->k;
-    }
-    assert(false);
-    return false;
-}
-
 /** Compute all challenges (pubkeys, hashes, timelocks) that occur in a given Miniscript. */
 std::set<Challenge> FindChallenges(const NodeRef& ref) {
     std::set<Challenge> chal;
     for (const auto& key : ref->keys) {
         chal.emplace(ChallengeType::PK, ChallengeNumber(key));
     }
-    if (ref->nodetype == miniscript::Fragment::OLDER) {
+    if (ref->fragment == miniscript::Fragment::OLDER) {
         chal.emplace(ChallengeType::OLDER, ref->k);
-    } else if (ref->nodetype == miniscript::Fragment::AFTER) {
+    } else if (ref->fragment == miniscript::Fragment::AFTER) {
         chal.emplace(ChallengeType::AFTER, ref->k);
-    } else if (ref->nodetype == miniscript::Fragment::SHA256) {
+    } else if (ref->fragment == miniscript::Fragment::SHA256) {
         chal.emplace(ChallengeType::SHA256, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::Fragment::RIPEMD160) {
+    } else if (ref->fragment == miniscript::Fragment::RIPEMD160) {
         chal.emplace(ChallengeType::RIPEMD160, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::Fragment::HASH256) {
+    } else if (ref->fragment == miniscript::Fragment::HASH256) {
         chal.emplace(ChallengeType::HASH256, ChallengeNumber(ref->data));
-    } else if (ref->nodetype == miniscript::Fragment::HASH160) {
+    } else if (ref->fragment == miniscript::Fragment::HASH160) {
         chal.emplace(ChallengeType::HASH160, ChallengeNumber(ref->data));
     }
     for (const auto& sub : ref->subs) {
@@ -357,10 +330,12 @@ void TestSatisfy(const std::string& testcase, const NodeRef& node) {
             prev_mal_success = mal_success;
             prev_nonmal_success = nonmal_success;
         }
+
+        bool satisfiable = node->IsSatisfiable([](const Node&) { return true; });
         // If the miniscript was satisfiable at all, a satisfaction must be found after all conditions are added.
-        BOOST_CHECK_EQUAL(prev_mal_success, Satisfiable(node));
+        BOOST_CHECK_EQUAL(prev_mal_success, satisfiable);
         // If the miniscript is sane and satisfiable, a nonmalleable satisfaction must eventually be found.
-        if (node->IsSaneTopLevel()) BOOST_CHECK_EQUAL(prev_nonmal_success, Satisfiable(node));
+        if (node->IsSaneTopLevel()) BOOST_CHECK_EQUAL(prev_nonmal_success, satisfiable);
     }
 }
 

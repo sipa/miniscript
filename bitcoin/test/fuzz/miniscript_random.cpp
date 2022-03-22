@@ -20,7 +20,7 @@ struct TestData {
     // Precomputed public keys, and a dummy signature for each of them.
     std::vector<Key> dummy_keys;
     std::map<CKeyID, Key> dummy_keys_map;
-    std::map<Key, std::vector<unsigned char>> dummy_sigs;
+    std::map<Key, std::pair<std::vector<unsigned char>, bool>> dummy_sigs;
 
     // Precomputed hashes of each kind.
     std::vector<std::vector<unsigned char>> sha256;
@@ -46,24 +46,24 @@ struct TestData {
             std::vector<unsigned char> sig;
             privkey.Sign(uint256S(""), sig);
             sig.push_back(1); // SIGHASH_ALL
-            dummy_sigs.insert({pubkey, sig});
+            dummy_sigs.insert({pubkey, {sig, i & 1}});
 
             std::vector<unsigned char> hash;
             hash.resize(32);
             CSHA256().Write(keydata, 32).Finalize(hash.data());
             sha256.push_back(hash);
-            sha256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            if (i & 1) sha256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
             CHash256().Write(keydata).Finalize(hash);
             hash256.push_back(hash);
-            hash256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            if (i & 1) hash256_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
             hash.resize(20);
             CRIPEMD160().Write(keydata, 32).Finalize(hash.data());
             assert(hash.size() == 20);
             ripemd160.push_back(hash);
-            ripemd160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            if (i & 1) ripemd160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
             CHash160().Write(keydata).Finalize(hash);
             hash160.push_back(hash);
-            hash160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
+            if (i & 1) hash160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
         }
     }
 };
@@ -118,8 +118,13 @@ struct SatisfierContext: ParserContext {
     miniscript::Availability Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
         const auto it = test_data->dummy_sigs.find(key);
         if (it == test_data->dummy_sigs.end()) return miniscript::Availability::NO;
-        sig = it->second;
-        return miniscript::Availability::YES;
+        if (it->second.second) {
+            // Key is "available"
+            sig = it->second.first;
+            return miniscript::Availability::YES;
+        } else {
+            return miniscript::Availability::NO;
+        }
     }
 
     //! Lookup generalization for all the hash satisfactions below
@@ -149,18 +154,17 @@ struct SatisfierContext: ParserContext {
 struct CheckerContext: BaseSignatureChecker {
     TestData *test_data;
 
-    // Signature checker methods. Checks the right dummy signature is used. Always assumes timelocks are
-    // correct.
+    // Signature checker methods. Checks the right dummy signature is used.
     bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& vchPubKey,
                              const CScript& scriptCode, SigVersion sigversion) const override
     {
         const CPubKey key{vchPubKey};
         const auto it = test_data->dummy_sigs.find(key);
         if (it == test_data->dummy_sigs.end()) return false;
-        return it->second == sig;
+        return it->second.first == sig;
     }
-    bool CheckLockTime(const CScriptNum& nLockTime) const override { return true; }
-    bool CheckSequence(const CScriptNum& nSequence) const override { return true; }
+    bool CheckLockTime(const CScriptNum& nLockTime) const override { return nLockTime.GetInt64() & 1; }
+    bool CheckSequence(const CScriptNum& nSequence) const override { return nSequence.GetInt64() & 1; }
 };
 
 // The various contexts
@@ -173,6 +177,7 @@ const CScript DUMMY_SCRIPTSIG;
 
 using Fragment = miniscript::Fragment;
 using NodeRef = miniscript::NodeRef<CPubKey>;
+using Node = miniscript::Node<CPubKey>;
 using miniscript::operator"" _mst;
 
 //! Construct a miniscript node as a shared_ptr.
@@ -318,7 +323,7 @@ NodeRef GenNode(FuzzedDataProvider& provider) {
             todo.back() = std::move(node_info);
             for (uint8_t i = 0; i < n_subs; i++) todo.push_back({});
         } else {
-            // The back of todo has nodetype and number of children decided, and
+            // The back of todo has fragment and number of children decided, and
             // those children have been constructed at the back of stack. Pop
             // that entry off todo, and use it to construct a new NodeRef on
             // stack.
@@ -363,13 +368,32 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
 {
     FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
 
-    // Generate a top-level node
+    // Generate a node
     const auto node = GenNode(fuzzed_data_provider);
-    if (!node || !node->IsValidTopLevel()) return;
+    if (!node) return;
 
-    // Check roundtrip to Script, and consistency between script size estimation and real size
-    const auto script = node->ToScript(PARSER_CTX);
+    // Check that it roundtrips to text representation
+    std::string str;
+    assert(node->ToString(PARSER_CTX, str));
+    auto parsed = miniscript::FromString(str, PARSER_CTX);
+    assert(parsed);
+    assert(*parsed == *node);
+
+    // Check consistency between script size estimation and real size.
+    auto script = node->ToScript(PARSER_CTX);
     assert(node->ScriptSize() == script.size());
+
+    // Check consistency of "x" property with the script (type K is excluded, because it can end
+    // with a push of a key, which could match these opcodes).
+    if (!(node->GetType() << "K"_mst)) {
+        bool ends_in_verify = !(node->GetType() << "x"_mst);
+        assert(ends_in_verify == (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
+    }
+
+    // The rest of the checks only apply when testing a valid top-level script.
+    if (!node->IsValidTopLevel()) return;
+
+    // Check roundtrip to script
     auto decoded = miniscript::FromScript(script, PARSER_CTX);
     assert(decoded);
     // Note we can't use *decoded == *node because the miniscript representation may differ, so we check that:
@@ -378,17 +402,21 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
     assert(decoded->ToScript(PARSER_CTX) == script);
     assert(decoded->GetType() == node->GetType());
 
-    // Check consistency of "x" property with the script (relying on the fact that no
-    // top-level scripts end with a hash or key push, whose last byte could match these opcodes).
-    bool ends_in_verify = !(node->GetType() << "x"_mst);
-    assert(ends_in_verify == (script.back() == OP_CHECKSIG || script.back() == OP_CHECKMULTISIG || script.back() == OP_EQUAL));
-
-    // Check that it roundtrips to text representation
-    std::string str;
-    assert(node->ToString(PARSER_CTX, str));
-    auto parsed = miniscript::FromString(str, PARSER_CTX);
-    assert(parsed);
-    assert(*parsed == *node);
+    if (fuzzed_data_provider.ConsumeBool()) {
+        // Optionally pad the script with OP_NOPs to max op the ops limit of the constructed script.
+        // This makes the script obviously not actually miniscript-compatible anymore, but the
+        // signatures constructed in this test don't commit to the script anyway, so the same
+        // miniscript satisfier will work. This increases the sensitivity of the test to the ops
+        // counting logic being too low, especially for simple scripts.
+        // Do this optionally because we're not solely interested in cases where the number of ops is
+        // maximal.
+        // Do not pad more than what would cause MAX_STANDARD_P2WSH_SCRIPT_SIZE to be reached, however,
+        // as that also invalidates scripts.
+        int add = std::min<int>(
+            MAX_OPS_PER_SCRIPT - node->GetOps(),
+            MAX_STANDARD_P2WSH_SCRIPT_SIZE - node->ScriptSize());
+        for (int i = 0; i < add; ++i) script.push_back(OP_NOP);
+    }
 
     // Run malleable satisfaction algorithm.
     const CScript script_pubkey = CScript() << OP_0 << WitnessV0ScriptHash(script);
@@ -433,4 +461,43 @@ FUZZ_TARGET_INIT(miniscript_random, initialize_miniscript_random)
         // For sane nodes, the two algorithms behave identically.
         assert(mal_success == nonmal_success);
     }
+
+    // Verify that if a node is policy-satisfiable, the malleable satisfaction
+    // algorithm succeeds. Given that under IsSaneTopLevel() both satisfactions
+    // are identical, this implies that for such nodes, the non-malleable
+    // satisfaction will also match the expected policy.
+    bool satisfiable = node->IsSatisfiable([](const Node& node) -> bool {
+        switch (node.fragment) {
+        case Fragment::PK_K:
+        case Fragment::PK_H: {
+            auto it = TEST_DATA.dummy_sigs.find(node.keys[0]);
+            assert(it != TEST_DATA.dummy_sigs.end());
+            return it->second.second;
+        }
+        case Fragment::MULTI: {
+            size_t sats = 0;
+            for (const auto& key : node.keys) {
+                auto it = TEST_DATA.dummy_sigs.find(key);
+                assert(it != TEST_DATA.dummy_sigs.end());
+                sats += it->second.second;
+            }
+            return sats >= node.k;
+        }
+        case Fragment::OLDER:
+        case Fragment::AFTER:
+            return node.k & 1;
+        case Fragment::SHA256:
+            return TEST_DATA.sha256_preimages.count(node.data);
+        case Fragment::HASH256:
+            return TEST_DATA.hash256_preimages.count(node.data);
+        case Fragment::RIPEMD160:
+            return TEST_DATA.ripemd160_preimages.count(node.data);
+        case Fragment::HASH160:
+            return TEST_DATA.hash160_preimages.count(node.data);
+        default:
+            assert(false);
+        }
+        return false;
+    });
+    assert(mal_success == satisfiable);
 }
