@@ -126,27 +126,33 @@ struct KeyConverter {
 
     //! Parse a public key from a range of hex characters.
     template<typename I>
-    bool FromString(I first, I last, CPubKey& key) const {
+    std::optional<CPubKey> FromString(I first, I last) const
+    {
         auto bytes = ParseHex(std::string(first, last));
+        CPubKey key;
         key.Set(bytes.begin(), bytes.end());
-        return key.IsValid();
+        if (!key.IsValid()) return {};
+        return key;
     }
 
     template<typename I>
-    bool FromPKBytes(I first, I last, CPubKey& key) const {
+    std::optional<CPubKey> bool FromPKBytes(I first, I last) const
+    {
+        CPubKey key;
         key.Set(first, last);
-        return key.IsValid();
+        if (!key.IsValid()) return {};
+        return key;
     }
 
     template<typename I>
-    bool FromPKHBytes(I first, I last, CPubKey& key) const {
+    std::optional<CPubKey> FromPKHBytes(I first, I last) const
+    {
         assert(last - first == 20);
         CKeyID keyid;
         std::copy(first, last, keyid.begin());
         auto it = g_testdata->pkmap.find(keyid);
         assert(it != g_testdata->pkmap.end());
-        key = it->second;
-        return true;
+        return it->second;
     }
 };
 

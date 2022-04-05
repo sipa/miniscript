@@ -12,13 +12,12 @@
 struct CompilerContext {
     typedef std::string Key;
 
-    bool ToString(const Key& key, std::string& str) const { str = key; return true; }
+    std::optional<std::string> ToString(const Key& key) const { return key; }
 
     template<typename I>
-    bool FromString(I first, I last, Key& key) const {
-        if (std::distance(first, last) == 0 || std::distance(first, last) > 17) return false;
-        key = std::string(first, last);
-        return true;
+    std::optional<Key> FromString(I first, I last) const {
+        if (std::distance(first, last) == 0 || std::distance(first, last) > 17) return {};
+        return std::string(first, last);
     }
 
     std::vector<unsigned char> ToPKBytes(const Key& key) const {
