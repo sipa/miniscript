@@ -40,7 +40,7 @@ namespace miniscript {
  *   - For example: older(n) = <n> OP_CHECKSEQUENCEVERIFY.
  * - "V" Verify:
  *   - Takes its inputs from the top of the stack.
- *   - When satisfactied, pushes nothing.
+ *   - When satisfied, pushes nothing.
  *   - Cannot be dissatisfied.
  *   - This is obtained by adding an OP_VERIFY to a B, modifying the last opcode
  *     of a B to its -VERIFY version (only for OP_CHECKSIG, OP_CHECKSIGVERIFY
