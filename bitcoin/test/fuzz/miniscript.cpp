@@ -127,6 +127,8 @@ struct ScriptParserContext {
     struct Key {
         bool is_hash;
         std::vector<unsigned char> data;
+
+        bool operator<(Key k) const { return data < k.data; }
     };
 
     const std::vector<unsigned char>& ToPKBytes(const Key& key) const

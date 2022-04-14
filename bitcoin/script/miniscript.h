@@ -352,6 +352,8 @@ private:
     const Type typ;
     //! Cached script length (computed by CalcScriptLen).
     const size_t scriptlen;
+    //! Whether a public key appears more than once in this node.
+    const bool duplicate_key;
 
     //! Compute the length of the script for this miniscript (including children).
     size_t CalcScriptLen() const {
@@ -449,6 +451,20 @@ private:
         return std::move(results[0]);
     }
 
+    /** Like TreeEvalMaybe, but without downfn or State type.
+     * upfn takes (const Node&, Span<Result>) and returns std::optional<Result>. */
+    template<typename Result, typename UpFn>
+    std::optional<Result> TreeEvalMaybe(UpFn upfn) const
+    {
+        struct DummyState {};
+        return TreeEvalMaybe<Result>(DummyState{},
+            [](DummyState, const Node&, size_t) { return DummyState{}; },
+            [&upfn](DummyState, const Node& node, Span<Result> subs) {
+                return upfn(node, subs);
+            }
+        );
+    }
+
     /** Like TreeEvalMaybe, but always produces a result. upfn must return Result. */
     template<typename Result, typename State, typename DownFn, typename UpFn>
     Result TreeEval(State root_state, DownFn&& downfn, UpFn upfn) const
@@ -514,6 +530,30 @@ private:
         Type z = subs.size() > 2 ? subs[2]->GetType() : ""_mst;
 
         return SanitizeType(ComputeType(fragment, x, y, z, sub_types, k, data.size(), subs.size(), keys.size()));
+    }
+
+    //! Returns true if the node contains at least one duplicate key.
+    bool ContainsDuplicateKey() const {
+        auto upfn = [this](const Node& node, Span<std::set<Key>> subs) -> std::optional<std::set<Key>> {
+            if (&node != this && node.duplicate_key) return {};
+
+            size_t keys_count = node.keys.size();
+            std::set<Key> key_set{node.keys.begin(), node.keys.end()};
+            if (key_set.size() != keys_count) return {};
+
+            for (auto& sub: subs) {
+                keys_count += sub.size();
+                // Small optimization: std::set::merge is linear in the size of the second arg but
+                // logarithmic in the size of the first.
+                if (key_set.size() < sub.size()) std::swap(key_set, sub);
+                key_set.merge(sub);
+                if (key_set.size() != keys_count) return {};
+            }
+
+            return key_set;
+        };
+
+        return !TreeEvalMaybe<std::set<Key>>(upfn);
     }
 
 public:
@@ -1088,7 +1128,8 @@ public:
     bool ValidSatisfactions() const { return IsValid() && CheckOpsLimit() && CheckStackSize(); }
 
     //! Whether the apparent policy of this node matches its script semantics.
-    bool IsSane() const { return ValidSatisfactions() && IsNonMalleable() && CheckTimeLocksMix(); }
+    bool IsSane() const { return ValidSatisfactions() && IsNonMalleable() && CheckTimeLocksMix() && !duplicate_key; }
+
 
     //! Check whether this node is safe as a script on its own.
     bool IsSaneTopLevel() const { return IsValidTopLevel() && IsSane() && NeedsSignature(); }
@@ -1109,12 +1150,12 @@ public:
     bool operator==(const Node<Key>& arg) const { return Compare(*this, arg) == 0; }
 
     // Constructors with various argument combinations.
-    Node(Fragment nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : fragment(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(Fragment nt, std::vector<unsigned char> arg, uint32_t val = 0) : fragment(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(Fragment nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : fragment(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(Fragment nt, std::vector<Key> key, uint32_t val = 0) : fragment(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(Fragment nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : fragment(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
-    Node(Fragment nt, uint32_t val = 0) : fragment(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()) {}
+    Node(Fragment nt, std::vector<NodeRef<Key>> sub, std::vector<unsigned char> arg, uint32_t val = 0) : fragment(nt), k(val), data(std::move(arg)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), duplicate_key(ContainsDuplicateKey()) {}
+    Node(Fragment nt, std::vector<unsigned char> arg, uint32_t val = 0) : fragment(nt), k(val), data(std::move(arg)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), duplicate_key(ContainsDuplicateKey()) {}
+    Node(Fragment nt, std::vector<NodeRef<Key>> sub, std::vector<Key> key, uint32_t val = 0) : fragment(nt), k(val), keys(std::move(key)), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), duplicate_key(ContainsDuplicateKey()) {}
+    Node(Fragment nt, std::vector<Key> key, uint32_t val = 0) : fragment(nt), k(val), keys(std::move(key)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), duplicate_key(ContainsDuplicateKey()) {}
+    Node(Fragment nt, std::vector<NodeRef<Key>> sub, uint32_t val = 0) : fragment(nt), k(val), subs(std::move(sub)), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), duplicate_key(ContainsDuplicateKey()) {}
+    Node(Fragment nt, uint32_t val = 0) : fragment(nt), k(val), ops(CalcOps()), ss(CalcStackSize()), typ(CalcType()), scriptlen(CalcScriptLen()), duplicate_key(ContainsDuplicateKey()) {}
 };
 
 namespace internal {
