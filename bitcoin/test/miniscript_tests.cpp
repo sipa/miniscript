@@ -490,6 +490,15 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     BOOST_CHECK(ms_multi);
     BOOST_CHECK_EQUAL(ms_multi->GetOps(), 4); // 3 pubkeys + CMS
     BOOST_CHECK_EQUAL(ms_multi->GetStackSize(), 3); // 1 sig + dummy elem + script push
+    // The 'd:' wrapper leaves on the stack what was DUP'ed at the beginning of its execution.
+    // Since it contains an OP_IF just after on the same element, we can make sure that the element
+    // in question must be OP_1 if OP_IF enforces that its argument must only be OP_1 or the empty
+    // vector (since otherwise the execution would immediately fail). This is the MINIMALIF rule.
+    // Unfortunately, this rule is consensus for Taproot but only policy for P2WSH. Therefore we can't
+    // (for now) have 'd:' be 'u'. This tests we can't use a 'd:' wrapper for a thresh, which requires
+    // its subs to all be 'u' (taken from https://github.com/rust-bitcoin/rust-miniscript/discussions/341).
+    const auto ms_minimalif = miniscript::FromString("thresh(3,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),sc:pk_k(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556),sc:pk_k(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798),sdv:older(32))", CONVERTER);
+    BOOST_CHECK(!ms_minimalif);
 
     // Timelock tests
     Test("after(100)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // only heightlock
