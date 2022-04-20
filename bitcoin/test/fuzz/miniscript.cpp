@@ -20,6 +20,7 @@ struct TestData {
 
     // Precomputed public keys, and a dummy signature for each of them.
     std::vector<Key> dummy_keys;
+    std::map<Key, int> dummy_key_idx_map;
     std::map<CKeyID, Key> dummy_keys_map;
     std::map<Key, std::pair<std::vector<unsigned char>, bool>> dummy_sigs;
 
@@ -43,7 +44,9 @@ struct TestData {
             const Key pubkey = privkey.GetPubKey();
 
             dummy_keys.push_back(pubkey);
+            dummy_key_idx_map.emplace(pubkey, i);
             dummy_keys_map.insert({pubkey.GetID(), pubkey});
+
             std::vector<unsigned char> sig;
             privkey.Sign(uint256S(""), sig);
             sig.push_back(1); // SIGHASH_ALL
@@ -67,27 +70,39 @@ struct TestData {
             if (i & 1) hash160_preimages[hash] = std::vector<unsigned char>(keydata, keydata + 32);
         }
     }
-};
+} TEST_DATA;
 
 //! Context to parse a Miniscript node to and from Script or text representation.
 struct ParserContext {
     typedef CPubKey Key;
-    TestData *test_data;
 
-    bool ToString(const Key& key, std::string& ret) const { ret = HexStr(key); return true; }
+    bool ToString(const Key& key, std::string& ret) const
+    {
+        auto it = TEST_DATA.dummy_key_idx_map.find(key);
+        if (it == TEST_DATA.dummy_key_idx_map.end()) return false;
+        uint8_t idx = it->second;
+        ret = HexStr(Span{&idx, 1});
+        return true;
+    }
 
-    const std::vector<unsigned char> ToPKBytes(const Key& key) const { return {key.begin(), key.end()}; }
+    const std::vector<unsigned char> ToPKBytes(const Key& key) const
+    {
+        return {key.begin(), key.end()};
+    }
 
-    const std::vector<unsigned char> ToPKHBytes(const Key& key) const {
+    const std::vector<unsigned char> ToPKHBytes(const Key& key) const
+    {
         const auto h = Hash160(key);
         return {h.begin(), h.end()};
     }
 
     template<typename I>
     bool FromString(I first, I last, Key& key) const {
-        const auto bytes = ParseHex(std::string(first, last));
-        key.Set(bytes.begin(), bytes.end());
-        return key.IsValid();
+        if (last - first != 2) return false;
+        auto idx = ParseHex(std::string(first, last));
+        if (idx.size() != 1) return false;
+        key = TEST_DATA.dummy_keys[idx[0]];
+        return true;
     }
 
     template<typename I>
@@ -101,12 +116,49 @@ struct ParserContext {
         assert(last - first == 20);
         CKeyID keyid;
         std::copy(first, last, keyid.begin());
-        const auto it = test_data->dummy_keys_map.find(keyid);
-        if (it == test_data->dummy_keys_map.end()) return false;
+        const auto it = TEST_DATA.dummy_keys_map.find(keyid);
+        if (it == TEST_DATA.dummy_keys_map.end()) return false;
         key = it->second;
         return true;
     }
-};
+} PARSER_CTX;
+
+//! Context that implements naive conversion from/to script only, for roundtrip testing.
+struct ScriptParserContext {
+    struct Key {
+        bool is_hash;
+        std::vector<unsigned char> data;
+    };
+
+    const std::vector<unsigned char>& ToPKBytes(const Key& key) const
+    {
+        assert(!key.is_hash);
+        return key.data;
+    }
+
+    const std::vector<unsigned char> ToPKHBytes(const Key& key) const
+    {
+        if (key.is_hash) return key.data;
+        const auto h = Hash160(key.data);
+        return {h.begin(), h.end()};
+    }
+
+    template<typename I>
+    bool FromPKBytes(I first, I last, Key& key) const
+    {
+        key.data.assign(first, last);
+        key.is_hash = false;
+        return true;
+    }
+
+    template<typename I>
+    bool FromPKHBytes(I first, I last, Key& key) const
+    {
+        key.data.assign(first, last);
+        key.is_hash = true;
+        return true;
+    }
+} SCRIPT_PARSER_CONTEXT;
 
 //! Context to produce a satisfaction for a Miniscript node using the pre-computed data.
 struct SatisfierContext: ParserContext {
@@ -117,8 +169,8 @@ struct SatisfierContext: ParserContext {
 
     // Signature challenges fulfilled with a dummy signature, if it was one of our dummy keys.
     miniscript::Availability Sign(const CPubKey& key, std::vector<unsigned char>& sig) const {
-        const auto it = test_data->dummy_sigs.find(key);
-        if (it == test_data->dummy_sigs.end()) return miniscript::Availability::NO;
+        const auto it = TEST_DATA.dummy_sigs.find(key);
+        if (it == TEST_DATA.dummy_sigs.end()) return miniscript::Availability::NO;
         if (it->second.second) {
             // Key is "available"
             sig = it->second.first;
@@ -138,18 +190,18 @@ struct SatisfierContext: ParserContext {
         return miniscript::Availability::YES;
     }
     miniscript::Availability SatSHA256(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const {
-        return LookupHash(hash, preimage, test_data->sha256_preimages);
+        return LookupHash(hash, preimage, TEST_DATA.sha256_preimages);
     }
     miniscript::Availability SatRIPEMD160(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const {
-        return LookupHash(hash, preimage, test_data->ripemd160_preimages);
+        return LookupHash(hash, preimage, TEST_DATA.ripemd160_preimages);
     }
     miniscript::Availability SatHASH256(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const {
-        return LookupHash(hash, preimage, test_data->hash256_preimages);
+        return LookupHash(hash, preimage, TEST_DATA.hash256_preimages);
     }
     miniscript::Availability SatHASH160(const std::vector<unsigned char>& hash, std::vector<unsigned char>& preimage) const {
-        return LookupHash(hash, preimage, test_data->hash160_preimages);
+        return LookupHash(hash, preimage, TEST_DATA.hash160_preimages);
     }
-};
+} SATISFIER_CTX;
 
 //! Context to check a satisfaction against the pre-computed data.
 struct CheckerContext: BaseSignatureChecker {
@@ -160,19 +212,14 @@ struct CheckerContext: BaseSignatureChecker {
                              const CScript& scriptCode, SigVersion sigversion) const override
     {
         const CPubKey key{vchPubKey};
-        const auto it = test_data->dummy_sigs.find(key);
-        if (it == test_data->dummy_sigs.end()) return false;
+        const auto it = TEST_DATA.dummy_sigs.find(key);
+        if (it == TEST_DATA.dummy_sigs.end()) return false;
         return it->second.first == sig;
     }
     bool CheckLockTime(const CScriptNum& nLockTime) const override { return nLockTime.GetInt64() & 1; }
     bool CheckSequence(const CScriptNum& nSequence) const override { return nSequence.GetInt64() & 1; }
-};
+} CHECKER_CTX;
 
-// The various contexts
-TestData TEST_DATA;
-ParserContext PARSER_CTX;
-SatisfierContext SATISFIER_CTX;
-CheckerContext CHECKER_CTX;
 // A dummy scriptsig to pass to VerifyScript (we always use Segwit v0).
 const CScript DUMMY_SCRIPTSIG;
 
@@ -323,7 +370,7 @@ struct SmartInfo
     using recipe = std::pair<Fragment, std::vector<Type>>;
     std::map<Type, std::vector<recipe>> table;
 
-    SmartInfo()
+    void Init()
     {
         /* Construct a set of interesting type requirements to reason with (sections of BKVWzondu). */
         std::vector<Type> types;
@@ -550,7 +597,7 @@ struct SmartInfo
             );
         }
     }
-};
+} SMARTINFO;
 
 /**
  * Consume a Miniscript node from the fuzzer's output.
@@ -563,11 +610,9 @@ struct SmartInfo
  * everything).
  */
 std::optional<NodeInfo> ConsumeNodeSmart(FuzzedDataProvider& provider, Type type_needed) {
-    /** Precompute table once, but only when this function is invoked (it can take ~seconds). */
-    static const SmartInfo g_smartinfo;
     /** Table entry for the requested type. */
-    auto recipes_it = g_smartinfo.table.find(type_needed);
-    assert(recipes_it != g_smartinfo.table.end());
+    auto recipes_it = SMARTINFO.table.find(type_needed);
+    assert(recipes_it != SMARTINFO.table.end());
     /** Pick one recipe from the available ones for that type. */
     const auto& [frag, subt] = PickValue(provider, recipes_it->second);
 
@@ -693,15 +738,6 @@ NodeRef GenNode(F ConsumeNode, Type root_type = ""_mst, bool strict_valid = fals
     }
     assert(stack.size() == 1);
     return std::move(stack[0]);
-}
-
-//! Pre-compute the test data and point the various contexts to it.
-void initialize_miniscript_random() {
-    ECC_Start();
-    TEST_DATA.Init();
-    PARSER_CTX.test_data = &TEST_DATA;
-    SATISFIER_CTX.test_data = &TEST_DATA;
-    CHECKER_CTX.test_data = &TEST_DATA;
 }
 
 /** Perform various applicable tests on a miniscript Node. */
@@ -839,10 +875,22 @@ void TestNode(const NodeRef& node, FuzzedDataProvider& provider)
     assert(mal_success == satisfiable);
 }
 
+void FuzzInit()
+{
+    ECC_Start();
+    TEST_DATA.Init();
+}
+
+void FuzzInitSmart()
+{
+    FuzzInit();
+    SMARTINFO.Init();
+}
+
 } // namespace
 
 /** Fuzz target that runs TestNode on nodes generated using ConsumeNodeStable. */
-FUZZ_TARGET_INIT(miniscript_random_stable, initialize_miniscript_random)
+FUZZ_TARGET_INIT(miniscript_stable, FuzzInit)
 {
     FuzzedDataProvider provider(buffer.data(), buffer.size());
     TestNode(GenNode([&](Type) {
@@ -851,7 +899,7 @@ FUZZ_TARGET_INIT(miniscript_random_stable, initialize_miniscript_random)
 }
 
 /** Fuzz target that runs TestNode on nodes generated using ConsumeNodeSmart. */
-FUZZ_TARGET_INIT(miniscript_random_smart, initialize_miniscript_random)
+FUZZ_TARGET_INIT(miniscript_smart, FuzzInitSmart)
 {
     /** The set of types we aim to construct nodes for. Together they cover all. */
     static constexpr std::array<Type, 4> BASE_TYPES{"B"_mst, "V"_mst, "K"_mst, "W"_mst};
@@ -860,4 +908,32 @@ FUZZ_TARGET_INIT(miniscript_random_smart, initialize_miniscript_random)
     TestNode(GenNode([&](Type needed_type) {
         return ConsumeNodeSmart(provider, needed_type);
     }, PickValue(provider, BASE_TYPES), true), provider);
+}
+
+/* Fuzz tests that test parsing from a string, and roundtripping via string. */
+FUZZ_TARGET_INIT(miniscript_string, FuzzInit)
+{
+    FuzzedDataProvider provider(buffer.data(), buffer.size());
+    auto str = provider.ConsumeRemainingBytesAsString();
+    auto parsed = miniscript::FromString(str, PARSER_CTX);
+    if (!parsed) return;
+
+    std::string str2;
+    assert(parsed->ToString(PARSER_CTX, str2));
+    auto parsed2 = miniscript::FromString(str2, PARSER_CTX);
+    assert(parsed2);
+    assert(*parsed == *parsed2);
+}
+
+/* Fuzz tests that test parsing from a script, and roundtripping via script. */
+FUZZ_TARGET(miniscript_script)
+{
+    FuzzedDataProvider fuzzed_data_provider(buffer.data(), buffer.size());
+    const std::optional<CScript> script = ConsumeDeserializable<CScript>(fuzzed_data_provider);
+    if (!script) return;
+
+    const auto ms = miniscript::FromScript(*script, SCRIPT_PARSER_CONTEXT);
+    if (!ms) return;
+
+    assert(ms->ToScript(SCRIPT_PARSER_CONTEXT) == *script);
 }
