@@ -671,6 +671,8 @@ std::optional<NodeInfo> ConsumeNodeSmart(FuzzedDataProvider& provider, Type type
             return {{std::move(subs), frag, k}};
         }
     }
+
+    assert(false);
 }
 
 /**
