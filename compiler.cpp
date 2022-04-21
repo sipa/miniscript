@@ -55,15 +55,16 @@ struct Policy {
     Policy& operator=(Policy&& x) = default;
     Policy(Policy&& x) = default;
 
-    explicit Policy(Type nt) : node_type(nt) {}
-    explicit Policy(Type nt, uint32_t kv) : node_type(nt), k(kv) {}
-    explicit Policy(Type nt, std::vector<unsigned char>&& dat) : node_type(nt), data(std::move(dat)) {}
-    explicit Policy(Type nt, std::vector<unsigned char>&& dat, uint32_t kv) : node_type(nt), data(std::move(dat)), k(kv) {}
-    explicit Policy(Type nt, std::vector<Policy>&& subs) : node_type(nt), sub(std::move(subs)) {}
-    explicit Policy(Type nt, std::vector<CompilerContext::Key>&& key) : node_type(nt), keys(std::move(key)) {}
-    explicit Policy(Type nt, std::vector<Policy>&& subs, std::vector<uint32_t>&& probs) : node_type(nt), sub(std::move(subs)), prob(std::move(probs)) {}
-    explicit Policy(Type nt, std::vector<Policy>&& subs, uint32_t kv) : node_type(nt), sub(std::move(subs)), k(kv) {}
-    explicit Policy(Type nt, std::vector<CompilerContext::Key>&& key, uint32_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
+    Policy() {}
+    Policy(Type nt) : node_type(nt) {}
+    Policy(Type nt, uint32_t kv) : node_type(nt), k(kv) {}
+    Policy(Type nt, std::vector<unsigned char>&& dat) : node_type(nt), data(std::move(dat)) {}
+    Policy(Type nt, std::vector<unsigned char>&& dat, uint32_t kv) : node_type(nt), data(std::move(dat)), k(kv) {}
+    Policy(Type nt, std::vector<Policy>&& subs) : node_type(nt), sub(std::move(subs)) {}
+    Policy(Type nt, std::vector<CompilerContext::Key>&& key) : node_type(nt), keys(std::move(key)) {}
+    Policy(Type nt, std::vector<Policy>&& subs, std::vector<uint32_t>&& probs) : node_type(nt), sub(std::move(subs)), prob(std::move(probs)) {}
+    Policy(Type nt, std::vector<Policy>&& subs, uint32_t kv) : node_type(nt), sub(std::move(subs)), k(kv) {}
+    Policy(Type nt, std::vector<CompilerContext::Key>&& key, uint32_t kv) : node_type(nt), keys(std::move(key)), k(kv) {}
 
     bool operator()() const { return node_type != Type::NONE; }
 };
@@ -96,87 +97,85 @@ Policy Parse(Span<const char>& in) {
     using namespace spanparsing;
     auto expr = Expr(in);
     if (Func("pk", expr)) {
-        CompilerContext::Key key;
-        if (COMPILER_CTX.FromString(expr.begin(), expr.end(), key)) {
-            return Policy(Policy::Type::PK_K, Vector(std::move(key)));
-        }
-        return Policy(Policy::Type::NONE);
+        auto key = COMPILER_CTX.FromString(expr.begin(), expr.end());
+        if (key) return {Policy::Type::PK_K, Vector(std::move(*key))};
+        return {};
     } else if (Func("after", expr)) {
         uint64_t num;
         if (!ParseUInt64(std::string(expr.begin(), expr.end()), &num)) {
-            return Policy(Policy::Type::NONE);
+            return Policy::Type::NONE;
         }
         if (num >= 1 && num < 0x80000000UL) {
-            return Policy(Policy::Type::AFTER, num);
+            return {Policy::Type::AFTER, uint32_t(num)};
         }
-        return Policy(Policy::Type::NONE);
+        return {};
     } else if (Func("older", expr)) {
         uint64_t num;
         if (!ParseUInt64(std::string(expr.begin(), expr.end()), &num)) {
-            return Policy(Policy::Type::NONE);
+            return Policy::Type::NONE;
         }
         if (num >= 1 && num < 0x80000000UL) {
-            return Policy(Policy::Type::OLDER, num);
+            return {Policy::Type::OLDER, uint32_t(num)};
         }
-        return Policy(Policy::Type::NONE);
+        return {};
     } else if (Func("sha256", expr)) {
         auto hash = Hash(expr, 32);
-        if (hash.size()) return Policy(Policy::Type::SHA256, std::move(hash));
-        return Policy(Policy::Type::NONE);
+        if (hash.size()) return {Policy::Type::SHA256, std::move(hash)};
+        return {};
     } else if (Func("ripemd160", expr)) {
         auto hash = Hash(expr, 20);
-        if (hash.size()) return Policy(Policy::Type::RIPEMD160, std::move(hash));
-        return Policy(Policy::Type::NONE);
+        if (hash.size()) return {Policy::Type::RIPEMD160, std::move(hash)};
+        return {};
     } else if (Func("hash256", expr)) {
         auto hash = Hash(expr, 32);
-        if (hash.size()) return Policy(Policy::Type::HASH256, std::move(hash));
-        return Policy(Policy::Type::NONE);
+        if (hash.size()) return {Policy::Type::HASH256, std::move(hash)};
+        return {};
     } else if (Func("hash160", expr)) {
         auto hash = Hash(expr, 20);
-        if (hash.size()) return Policy(Policy::Type::HASH160, std::move(hash));
-        return Policy(Policy::Type::NONE);
+        if (hash.size()) return {Policy::Type::HASH160, std::move(hash)};
+        return {};
     } else if (Func("or", expr)) {
         std::vector<Policy> sub;
         std::vector<uint32_t> prob;
         uint32_t p;
         sub.emplace_back(ParseProb(expr, p));
-        if (!sub.back()()) return Policy(Policy::Type::NONE);
+        if (!sub.back()()) return {};
         prob.push_back(p);
         while (expr.size()) {
-            if (!Const(",", expr)) return Policy(Policy::Type::NONE);
+            if (!Const(",", expr)) return {};
             sub.emplace_back(ParseProb(expr, p));
-            if (!sub.back()()) return Policy(Policy::Type::NONE);
+            if (!sub.back()()) return {};
             prob.push_back(p);
         }
-        return Policy(Policy::Type::OR, std::move(sub), std::move(prob));
+        return {Policy::Type::OR, std::move(sub), std::move(prob)};
     } else if (Func("and", expr)) {
         std::vector<Policy> sub;
         sub.emplace_back(Parse(expr));
-        if (!sub.back()()) return Policy(Policy::Type::NONE);
+        if (!sub.back()()) return {};
         while (expr.size()) {
-            if (!Const(",", expr)) return Policy(Policy::Type::NONE);
+            if (!Const(",", expr)) return {};
             sub.emplace_back(Parse(expr));
-            if (!sub.back()()) return Policy(Policy::Type::NONE);
+            if (!sub.back()()) return {};
         }
-        return Policy(Policy::Type::AND, std::move(sub));
+        return {Policy::Type::AND, std::move(sub)};
     } else if (Func("thresh", expr)) {
         auto arg = Expr(expr);
         uint32_t count;
         if (!ParseUInt32(std::string(arg.begin(), arg.end()), &count)) {
-            return Policy(Policy::Type::NONE);
+            return {};
         }
-        if (count < 1) return Policy(Policy::Type::NONE);
+        if (count < 1) return {};
         std::vector<Policy> sub;
         while (expr.size()) {
-            if (!Const(",", expr)) return Policy(Policy::Type::NONE);
+            if (!Const(",", expr)) return {};
             sub.emplace_back(Parse(expr));
-            if (!sub.back()()) return Policy(Policy::Type::NONE);
+            if (!sub.back()()) return {};
         }
-        if (sub.size() > 100 || count > sub.size()) return Policy(Policy::Type::NONE);
-        return Policy(Policy::Type::THRESH, std::move(sub), count);
+        if (sub.size() > 100 || count > sub.size()) return {};
+        return {Policy::Type::THRESH, std::move(sub), count};
     }
 
-    return Policy(Policy::Type::NONE);
+    return {};
 }
 
 Policy Parse(const std::string& in) {

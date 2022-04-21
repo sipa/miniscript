@@ -76,13 +76,12 @@ struct TestData {
 struct ParserContext {
     typedef CPubKey Key;
 
-    bool ToString(const Key& key, std::string& ret) const
+    std::optional<std::string> ToString(const Key& key) const
     {
         auto it = TEST_DATA.dummy_key_idx_map.find(key);
-        if (it == TEST_DATA.dummy_key_idx_map.end()) return false;
+        if (it == TEST_DATA.dummy_key_idx_map.end()) return {};
         uint8_t idx = it->second;
-        ret = HexStr(Span{&idx, 1});
-        return true;
+        return HexStr(Span{&idx, 1});
     }
 
     const std::vector<unsigned char> ToPKBytes(const Key& key) const
@@ -97,29 +96,29 @@ struct ParserContext {
     }
 
     template<typename I>
-    bool FromString(I first, I last, Key& key) const {
-        if (last - first != 2) return false;
+    std::optional<Key> FromString(I first, I last) const {
+        if (last - first != 2) return {};
         auto idx = ParseHex(std::string(first, last));
-        if (idx.size() != 1) return false;
-        key = TEST_DATA.dummy_keys[idx[0]];
-        return true;
+        if (idx.size() != 1) return {};
+        return TEST_DATA.dummy_keys[idx[0]];
     }
 
     template<typename I>
-    bool FromPKBytes(I first, I last, CPubKey& key) const {
+    std::optional<CPubKey> FromPKBytes(I first, I last) const {
+        CPubKey key;
         key.Set(first, last);
-        return key.IsValid();
+        if (!key.IsValid()) return {};
+        return key;
     }
 
     template<typename I>
-    bool FromPKHBytes(I first, I last, CPubKey& key) const {
+    std::optional<CPubKey> FromPKHBytes(I first, I last) const {
         assert(last - first == 20);
         CKeyID keyid;
         std::copy(first, last, keyid.begin());
         const auto it = TEST_DATA.dummy_keys_map.find(keyid);
-        if (it == TEST_DATA.dummy_keys_map.end()) return false;
-        key = it->second;
-        return true;
+        if (it == TEST_DATA.dummy_keys_map.end()) return {};
+        return it->second;
     }
 } PARSER_CTX;
 
@@ -144,19 +143,21 @@ struct ScriptParserContext {
     }
 
     template<typename I>
-    bool FromPKBytes(I first, I last, Key& key) const
+    std::optional<Key> FromPKBytes(I first, I last) const
     {
+        Key key;
         key.data.assign(first, last);
         key.is_hash = false;
-        return true;
+        return key;
     }
 
     template<typename I>
-    bool FromPKHBytes(I first, I last, Key& key) const
+    std::optional<Key> FromPKHBytes(I first, I last) const
     {
+        Key key;
         key.data.assign(first, last);
         key.is_hash = true;
-        return true;
+        return key;
     }
 } SCRIPT_PARSER_CONTEXT;
 
