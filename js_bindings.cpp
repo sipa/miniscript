@@ -119,7 +119,7 @@ void miniscript_analyze(const char* ms, char* costout, int costoutlen, char* asm
         str.erase(str.find_last_not_of(" \n\r\t") + 1);
         miniscript::NodeRef<std::string> ret;
         ret = miniscript::FromString(Expand(str), COMPILER_CTX);
-        if (!ret) {
+        if (!ret || !ret->IsValidTopLevel()) {
             Output("[analysis error]", costout, costoutlen);
             Output("[analysis error]", asmout, asmoutlen);
             return;
