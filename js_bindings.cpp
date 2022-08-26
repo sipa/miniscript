@@ -43,14 +43,10 @@ std::string Props(const miniscript::NodeRef<std::string>& node, std::string in) 
 std::string Analyze(const miniscript::NodeRef<std::string>& node) {
     switch (node->fragment) {
         case miniscript::Fragment::PK_K: {
-            std::string str;
-            COMPILER_CTX.ToString(node->keys[0], str);
-            return Props(node, "pk_k(" + std::move(str) + ")");
+            return Props(node, "pk_k(" + (*COMPILER_CTX.ToString(node->keys[0])) + ")");
         }
         case miniscript::Fragment::PK_H: {
-            std::string str;
-            COMPILER_CTX.ToString(node->keys[0], str);
-            return Props(node, "pk_h(" + std::move(str) + ")");
+            return Props(node, "pk_h(" + (*COMPILER_CTX.ToString(node->keys[0])) + ")");
         }
         case miniscript::Fragment::MULTI: return Props(node, "multi(" + std::to_string(node->k) + " of " + std::to_string(node->keys.size()) + ")");
         case miniscript::Fragment::AFTER: return Props(node, "after(" + std::to_string(node->k) + ")");
@@ -101,8 +97,7 @@ void miniscript_compile(const char* desc, char* msout, int msoutlen, char* costo
             Output("[compile error]", asmout, asmoutlen);
             return;
         }
-        ret->ToString(COMPILER_CTX, str);
-        Output(Abbreviate(std::move(str)), msout, msoutlen);
+        Output(Abbreviate(*(ret->ToString(COMPILER_CTX))), msout, msoutlen);
         std::string coststr = "<ul><li>Script: " + std::to_string(ret->ScriptSize()) + " WU</li><li>Input: " + std::to_string(avgcost) + " WU</li><li>Total: " + std::to_string(ret->ScriptSize() + avgcost) + " WU</li></ul>";
         Output(coststr, costout, costoutlen);
         Output(Disassemble(ret->ToScript(COMPILER_CTX)), asmout, asmoutlen);
