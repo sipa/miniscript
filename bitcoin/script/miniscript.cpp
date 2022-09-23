@@ -2,13 +2,17 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <string>
-#include <vector>
 #include <script/script.h>
 #include <script/standard.h>
 #include <script/miniscript.h>
 
-#include <assert.h>
+#include <algorithm>
+#include <cassert>
+#include <limits>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace miniscript {
 namespace internal {

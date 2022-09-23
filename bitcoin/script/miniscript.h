@@ -5,16 +5,6 @@
 #ifndef BITCOIN_SCRIPT_MINISCRIPT_H
 #define BITCOIN_SCRIPT_MINISCRIPT_H
 
-#include <algorithm>
-#include <numeric>
-#include <memory>
-#include <optional>
-#include <string>
-#include <vector>
-
-#include <stdlib.h>
-#include <assert.h>
-
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <script/script.h>
@@ -23,6 +13,19 @@
 #include <util/strencodings.h>
 #include <util/string.h>
 #include <util/vector.h>
+
+#include <algorithm>
+#include <cassert>
+#include <cstdlib>
+#include <numeric>
+#include <memory>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 namespace miniscript {
 
