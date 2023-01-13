@@ -398,7 +398,7 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <tr><td><code>or_d(<em>X</em>,<em>Z</em>)</code></td><td><em>X</em> is Bdu; <em>Z</em> is B</td><td>B</td><td>z=z<sub>X</sub>z<sub>Z</sub>; o=o<sub>X</sub>z<sub>Z</sub>; d=d<sub>Z</sub>; u=u<sub>Z</sub></td></tr>
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>both are B, K, or V</td><td>same as X/Z</td><td>o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>1 &le; k &le; n; <em>X<sub>1</sub></em> is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
-<tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
+<tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n &le; 20</td><td>B</td><td>n; d; u</td></tr>
 <tr><td><code>a:X</code></td><td><em>X</em> is B</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
 <tr><td><code>s:X</code></td><td><em>X</em> is Bo</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
 <tr><td><code>c:X</code></td><td><em>X</em> is K</td><td>B</td><td>o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
