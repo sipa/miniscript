@@ -850,7 +850,7 @@ std::string Disassembler(CScript::const_iterator& it, CScript::const_iterator en
             } else if (data[0] == 'P' && data[1] == 'K' && data[2] == 'h') {
                 while (data.size() && data.back() == 0) data.pop_back();
                 ret += "<HASH160(" + std::string((const char*)data.data() + 3, data.size() - 3) + ")>";
-            } else {
+            } else if (data.size() > 0) {
                 ret += "<" + HexStr(data.begin(), data.end()) + ">";
             }
         } else if (data.size() == 32 && data == std::vector<unsigned char>(32, 0x88)) {
