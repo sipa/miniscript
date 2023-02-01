@@ -338,7 +338,11 @@ wrapper applied to the <code>v:</code> wrapper applied to the <code>older</code>
 </div>
 The <code>pk</code>, <code>pkh</code>, and <code>and_n</code> fragments and <code>t:</code>, <code>l:</code>, and <code>u:</code> wrappers are syntactic sugar for other Miniscripts, as listed in the table above.
 In what follows, they will not be included anymore, as their properties can be derived by looking at their expansion.
-
+<p>
+<p>
+Hash preimages are constrained to 32 bytes to disallow various forms of griefing, including making non-standard(un-relayable) transactions,
+consensus-invalid swaps across blockchains, as well as ensure that satisfaction cost can be accurately calculated. Finally, note that <code>&lt20&gt</code>
+are in hex representation in this document.
 <p>
 
 <h4>Correctness properties</h4>
