@@ -101,8 +101,9 @@ statically analyze for various properties (spending conditions, correctness, sec
 (see below). Finally, compatible scripts can easily be converted to Miniscript form - avoiding the need for additional metadata for e.g. signing devices that support it.
 
 <p>
-For now, Miniscript is really only designed for P2WSH and P2SH-P2WSH embedded scripts. Most of its constructions works fine in P2SH as well, but some of the (optional) security properties
-rely on Segwit-specific rules. Furthermore, the implemented policy compilers assume a Segwit-specific cost model.
+Miniscript is designed for (P2SH-)P2WSH and Tapscript (as defined in BIP342) embedded scripts. Most of its constructions
+work fine in P2SH as well, but some of the (optional) security properties rely on Segwit-specific rules. Furthermore,
+the implemented policy compilers assume a Segwit-specific cost model.
 
 <p>
 Miniscript was designed and implemented by Pieter Wuille, Andrew Poelstra, and Sanket Kanjalkar at Blockstream Research, but is the result of discussions with several other people.
@@ -122,7 +123,7 @@ Links:<ul>
 <h3 class="card-header">Policy to Miniscript compiler</h3>
 <div class="card-block">
 
-<p>Here you can see a demonstration of the Miniscript compiler. Write a spending policy according to the instructions below, and observe how it affects the constructed Miniscript.
+<p>Here you can see a demonstration of the P2WSH Miniscript compiler. Write a spending policy according to the instructions below, and observe how it affects the constructed Miniscript.
 <form>
   <div class="form-group">
     <label for="source">Policy</label>
@@ -178,7 +179,14 @@ Links:<ul>
 
 <div class="card mb-3 text-left">
 <h3 class="card-header">Miniscript reference</h3>
+
 <div class="card-block">
+<h4>P2WSH or Tapscript?</h4>
+<p>
+The Miniscript specifications vary only slightly between P2WSH and Tapscript embedded scripts. Differences are pointed
+inline. If no information specific to the context is given you can assume it is valid for both P2WSH and Tapscript.
+</p>
+
 <h4>Translation table</h4>
 <p>
 This table shows all Miniscript <em>fragments</em> and their associated semantics and Bitcoin Script.
