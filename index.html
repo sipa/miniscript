@@ -297,9 +297,16 @@ wrapper applied to the <code>v:</code> wrapper applied to the <code>older</code>
   <td><samp><em>[X<sub>1</sub>]</em> <em>[X<sub>2</sub>]</em> ADD ... <em>[X<sub>n</sub>]</em> ADD ... &lt;k&gt; EQUAL</samp></td>
 </tr>
 <tr>
-  <td>check(key<sub>1</sub>) + ... + check(key<sub>n</sub>) = k</td>
+  <td>check(key<sub>1</sub>) + ... + check(key<sub>n</sub>) = k <small><em>(P2WSH only)</em></small></td>
   <td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td>
   <td><samp>&lt;k&gt; &lt;key<sub>1</sub>&gt; ... &lt;key<sub>n</sub>&gt; &lt;n&gt; CHECKMULTISIG</samp></td>
+</tr>
+<tr>
+  <td>check(key<sub>1</sub>) + ... + check(key<sub>n</sub>) = k <small><em>(Tapscript only)</em></small></td>
+  <td><code>multi_a(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td>
+  <td>
+    <samp>&lt;key<sub>1</sub>&gt; CHECKSIG &lt;key<sub>2</sub>&gt; CHECKSIGADD ... &lt;key<sub>n</sub>&gt; CHECKSIGADD &lt;k&gt; NUMEQUAL</samp>
+  </td>
 </tr>
 <tr>
   <td rowspan="10"><em>X</em> (identities)</td>
@@ -407,6 +414,7 @@ This tables lists the correctness requirements for each of the Miniscript expres
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>both are B, K, or V</td><td>same as X/Z</td><td>o=z<sub>X</sub>z<sub>Z</sub>; u=u<sub>X</sub>u<sub>Z</sub>; d=d<sub>X</sub> or d<sub>Z</sub></td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>1 &le; k &le; n; <em>X<sub>1</sub></em> is Bdu; others are Wdu</td><td>B</td><td>z=all are z; o=all are z except one is o; d; u</td></tr>
 <tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n</td><td>B</td><td>n; d; u</td></tr>
+<tr><td><code>multi_a(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>1 &le; k &le; n</td><td>B</td><td>d; u</td></tr>
 <tr><td><code>a:X</code></td><td><em>X</em> is B</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
 <tr><td><code>s:X</code></td><td><em>X</em> is Bo</td><td>W</td><td>d=d<sub>X</sub>; u=u<sub>X</sub></td></tr>
 <tr><td><code>c:X</code></td><td><em>X</em> is K</td><td>B</td><td>o=o<sub>X</sub>; n=n<sub>X</sub>; d=d<sub>X</sub>; u</td></tr>
@@ -497,6 +505,7 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>X</em>) 1; dsat(<em>Z</em>) 0</td><td>sat(<em>X</em>) 1; sat(<em>Z</em>) 0</td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>All dsats <span class="text-muted">[Sats/dsats with 1 &le; #(sats) &ne; k]</span></td><td>Sats/dsats with #(sats) = k</td></tr>
 <tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 0 ... 0 (k+1 times)</td><td>0 sig ... sig</td></tr>
+<tr><td><code>multi_a(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 ... 0 (n times)</td><td>sig/0 with #(sig) = k and #(sigs/0) = n </td></tr>
 <tr><td><code>a:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>s:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>c:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
@@ -633,6 +642,7 @@ The following table lists these additional properties, and the requirements for 
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>s<sub>X</sub> or s<sub>Z</sub></td><td>s=s<sub>X</sub>s<sub>Z</sub>; f=f<sub>X</sub>f<sub>Z</sub>; e=e<sub>X</sub>f<sub>Z</sub> or e<sub>Z</sub>f<sub>X</sub></td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>all are e; at most k are non-s</td><td>s=at most k-1 are non-s; e=all are s</td></tr>
 <tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td></td><td>s; e</td></tr>
+<tr><td><code>multi_a(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td></td><td>s; e</td></tr>
 <tr><td><code>a:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
 <tr><td><code>s:<em>X</em></code></td><td></td><td>s=s<sub>X</sub>; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
 <tr><td><code>c:<em>X</em></code></td><td></td><td>s; f=f<sub>X</sub>; e=e<sub>X</sub></td></tr>
