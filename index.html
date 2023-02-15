@@ -193,7 +193,9 @@ This table shows all Miniscript <em>fragments</em> and their associated semantic
 Fragments that do not change the semantics of their subexpressions are called <em>wrappers</em>. Normal fragments use
 a "fragment(arguments,...)" notation, while wrappers are written using prefixes separated from other fragments
 by a colon. The colon is dropped between subsequent wrappers; e.g. <code>dv:older(144)</code> is the <code>d:</code>
-wrapper applied to the <code>v:</code> wrapper applied to the <code>older</code> fragment for 144 blocks.
+wrapper applied to the <code>v:</code> wrapper applied to the <code>older</code> fragment for 144 blocks. Note how
+<samp>key</samp> expressions in this table and the followings are implicitly 32 bytes "x-only" public key in Tapscript
+and 33 bytes compressed public keys in P2WSH.
 
 <div class="table-responsive">
 <table class="table table-sm">
