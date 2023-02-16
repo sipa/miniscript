@@ -33,6 +33,10 @@ struct CompilerContext {
         std::copy(key.begin(), key.end(), ret.begin() + 3);
         return ret;
     }
+
+    bool KeyCompare(const Key& a, const Key& b) const {
+        return a < b;
+    }
 };
 
 extern const CompilerContext COMPILER_CTX;
