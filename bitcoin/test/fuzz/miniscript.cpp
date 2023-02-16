@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Bitcoin Core developers
+// Copyright (c) 2021-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,7 +14,7 @@
 
 namespace {
 
-//! Some pre-computed data to simulate challenges.
+//! Some pre-computed data for more efficient string roundtrips and to simulate challenges.
 struct TestData {
     typedef CPubKey Key;
 
@@ -72,9 +72,17 @@ struct TestData {
     }
 } TEST_DATA;
 
-//! Context to parse a Miniscript node to and from Script or text representation.
+/**
+ * Context to parse a Miniscript node to and from Script or text representation.
+ * Uses an integer (an index in the dummy keys array from the test data) as keys in order
+ * to focus on fuzzing the Miniscript nodes' test representation, not the key representation.
+ */
 struct ParserContext {
     typedef CPubKey Key;
+
+    bool KeyCompare(const Key& a, const Key& b) const {
+        return a < b;
+    }
 
     std::optional<std::string> ToString(const Key& key) const
     {
@@ -84,12 +92,12 @@ struct ParserContext {
         return HexStr(Span{&idx, 1});
     }
 
-    const std::vector<unsigned char> ToPKBytes(const Key& key) const
+    std::vector<unsigned char> ToPKBytes(const Key& key) const
     {
         return {key.begin(), key.end()};
     }
 
-    const std::vector<unsigned char> ToPKHBytes(const Key& key) const
+    std::vector<unsigned char> ToPKHBytes(const Key& key) const
     {
         const auto h = Hash160(key);
         return {h.begin(), h.end()};
@@ -104,7 +112,7 @@ struct ParserContext {
     }
 
     template<typename I>
-    std::optional<CPubKey> FromPKBytes(I first, I last) const {
+    std::optional<Key> FromPKBytes(I first, I last) const {
         CPubKey key;
         key.Set(first, last);
         if (!key.IsValid()) return {};
@@ -112,7 +120,7 @@ struct ParserContext {
     }
 
     template<typename I>
-    std::optional<CPubKey> FromPKHBytes(I first, I last) const {
+    std::optional<Key> FromPKHBytes(I first, I last) const {
         assert(last - first == 20);
         CKeyID keyid;
         std::copy(first, last, keyid.begin());
@@ -124,12 +132,15 @@ struct ParserContext {
 
 //! Context that implements naive conversion from/to script only, for roundtrip testing.
 struct ScriptParserContext {
+    //! For Script roundtrip we never need the key from a key hash.
     struct Key {
         bool is_hash;
         std::vector<unsigned char> data;
-
-        bool operator<(Key k) const { return data < k.data; }
     };
+
+    bool KeyCompare(const Key& a, const Key& b) const {
+        return a.data < b.data;
+    }
 
     const std::vector<unsigned char>& ToPKBytes(const Key& key) const
     {
@@ -137,7 +148,7 @@ struct ScriptParserContext {
         return key.data;
     }
 
-    const std::vector<unsigned char> ToPKHBytes(const Key& key) const
+    std::vector<unsigned char> ToPKHBytes(const Key& key) const
     {
         if (key.is_hash) return key.data;
         const auto h = Hash160(key.data);
@@ -223,6 +234,13 @@ struct CheckerContext: BaseSignatureChecker {
     bool CheckSequence(const CScriptNum& nSequence) const override { return nSequence.GetInt64() & 1; }
 } CHECKER_CTX;
 
+//! Context to check for duplicates when instancing a Node.
+struct KeyComparator {
+    bool KeyCompare(const CPubKey& a, const CPubKey& b) const {
+        return a < b;
+    }
+} KEY_COMP;
+
 // A dummy scriptsig to pass to VerifyScript (we always use Segwit v0).
 const CScript DUMMY_SCRIPTSIG;
 
@@ -230,10 +248,12 @@ using Fragment = miniscript::Fragment;
 using NodeRef = miniscript::NodeRef<CPubKey>;
 using Node = miniscript::Node<CPubKey>;
 using Type = miniscript::Type;
+// https://github.com/llvm/llvm-project/issues/53444
+// NOLINTNEXTLINE(misc-unused-using-decls)
 using miniscript::operator"" _mst;
 
 //! Construct a miniscript node as a shared_ptr.
-template<typename... Args> NodeRef MakeNodeRef(Args&&... args) { return miniscript::MakeNodeRef<CPubKey>(std::forward<Args>(args)...); }
+template<typename... Args> NodeRef MakeNodeRef(Args&&... args) { return miniscript::MakeNodeRef<CPubKey>(KEY_COMP, std::forward<Args>(args)...); }
 
 /** Information about a yet to be constructed Miniscript node. */
 struct NodeInfo {
@@ -577,7 +597,7 @@ struct SmartInfo
             // Remove all recipes which involve non-constructible types.
             type_it->second.erase(std::remove_if(type_it->second.begin(), type_it->second.end(),
                 [&](const recipe& rec) {
-                    return !std::all_of(rec.second.begin(), rec.second.end(), known_constructible); 
+                    return !std::all_of(rec.second.begin(), rec.second.end(), known_constructible);
                 }), type_it->second.end());
             // Delete types entirely which have no recipes left.
             if (type_it->second.empty()) {
@@ -700,7 +720,7 @@ NodeRef GenNode(F ConsumeNode, Type root_type = ""_mst, bool strict_valid = fals
             // Fragment/children have not been decided yet. Decide them.
             auto node_info = ConsumeNode(type_needed);
             if (!node_info) return {};
-            auto subtypes = std::move(node_info)->subtypes;
+            auto subtypes = node_info->subtypes;
             todo.back().second = std::move(node_info);
             todo.reserve(todo.size() + subtypes.size());
             // As elements on the todo stack are processed back to front, construct
@@ -713,7 +733,7 @@ NodeRef GenNode(F ConsumeNode, Type root_type = ""_mst, bool strict_valid = fals
             // those children have been constructed at the back of stack. Pop
             // that entry off todo, and use it to construct a new NodeRef on
             // stack.
-            const NodeInfo& info = *todo.back().second;
+            NodeInfo& info = *todo.back().second;
             // Gather children from the back of stack.
             std::vector<NodeRef> sub;
             sub.reserve(info.n_subs);
@@ -751,9 +771,9 @@ void TestNode(const NodeRef& node, FuzzedDataProvider& provider)
     if (!node) return;
 
     // Check that it roundtrips to text representation
-    std::string str;
-    assert(node->ToString(PARSER_CTX, str));
-    auto parsed = miniscript::FromString(str, PARSER_CTX);
+    std::optional<std::string> str{node->ToString(PARSER_CTX)};
+    assert(str);
+    auto parsed = miniscript::FromString(*str, PARSER_CTX);
     assert(parsed);
     assert(*parsed == *node);
 
@@ -780,7 +800,7 @@ void TestNode(const NodeRef& node, FuzzedDataProvider& provider)
     assert(decoded->ToScript(PARSER_CTX) == script);
     assert(decoded->GetType() == node->GetType());
 
-    if (provider.ConsumeBool()) {
+    if (provider.ConsumeBool() && node->GetOps() < MAX_OPS_PER_SCRIPT && node->ScriptSize() < MAX_STANDARD_P2WSH_SCRIPT_SIZE) {
         // Optionally pad the script with OP_NOPs to max op the ops limit of the constructed script.
         // This makes the script obviously not actually miniscript-compatible anymore, but the
         // signatures constructed in this test don't commit to the script anyway, so the same
@@ -835,13 +855,13 @@ void TestNode(const NodeRef& node, FuzzedDataProvider& provider)
         assert(res || serror == ScriptError::SCRIPT_ERR_OP_COUNT || serror == ScriptError::SCRIPT_ERR_STACK_SIZE);
     }
 
-    if (node->IsSaneTopLevel()) {
+    if (node->IsSane()) {
         // For sane nodes, the two algorithms behave identically.
         assert(mal_success == nonmal_success);
     }
 
     // Verify that if a node is policy-satisfiable, the malleable satisfaction
-    // algorithm succeeds. Given that under IsSaneTopLevel() both satisfactions
+    // algorithm succeeds. Given that under IsSane() both satisfactions
     // are identical, this implies that for such nodes, the non-malleable
     // satisfaction will also match the expected policy.
     bool satisfiable = node->IsSatisfiable([](const Node& node) -> bool {
@@ -880,6 +900,8 @@ void TestNode(const NodeRef& node, FuzzedDataProvider& provider)
     assert(mal_success == satisfiable);
 }
 
+} // namespace
+
 void FuzzInit()
 {
     ECC_Start();
@@ -891,8 +913,6 @@ void FuzzInitSmart()
     FuzzInit();
     SMARTINFO.Init();
 }
-
-} // namespace
 
 /** Fuzz target that runs TestNode on nodes generated using ConsumeNodeStable. */
 FUZZ_TARGET_INIT(miniscript_stable, FuzzInit)
@@ -923,9 +943,9 @@ FUZZ_TARGET_INIT(miniscript_string, FuzzInit)
     auto parsed = miniscript::FromString(str, PARSER_CTX);
     if (!parsed) return;
 
-    std::string str2;
-    assert(parsed->ToString(PARSER_CTX, str2));
-    auto parsed2 = miniscript::FromString(str2, PARSER_CTX);
+    const auto str2 = parsed->ToString(PARSER_CTX);
+    assert(str2);
+    auto parsed2 = miniscript::FromString(*str2, PARSER_CTX);
     assert(parsed2);
     assert(*parsed == *parsed2);
 }

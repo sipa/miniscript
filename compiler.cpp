@@ -24,7 +24,7 @@ using Fragment = miniscript::Fragment;
 using miniscript::operator"" _mst;
 
 template<typename... Args>
-Node MakeNode(Args&&... args) { return miniscript::MakeNodeRef<CompilerContext::Key>(std::forward<Args>(args)...); }
+Node MakeNode(Args&&... args) { return miniscript::MakeNodeRef<CompilerContext::Key>(miniscript::internal::NoDupCheck{}, std::forward<Args>(args)...); }
 
 struct Policy {
     enum class Type {
@@ -952,6 +952,7 @@ bool Compile(const std::string& policy, miniscript::NodeRef<CompilerContext::Key
     bool ok = false;
     if (res.size() == 1) {
         ret = std::move(res[0].node);
+        ret->DuplicateKeyCheck(COMPILER_CTX);
         avgcost = res[0].pair.sat;
         ok = true;
     }

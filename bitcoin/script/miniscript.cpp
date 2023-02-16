@@ -1,4 +1,4 @@
-// Copyright (c) 2019 The Bitcoin Core developers
+// Copyright (c) 2019-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -172,8 +172,8 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
             (y & "B"_mst).If(x << "Bdu"_mst) | // B=B_y*B_x*d_x*u_x
             (x & "o"_mst).If(y << "z"_mst) | // o=o_x*z_y
             (x & y & "m"_mst).If(x << "e"_mst && (x | y) << "s"_mst) | // m=m_x*m_y*e_x*(s_x+s_y)
-            (x & y & "zes"_mst) | // z=z_x*z_y, e=e_x*e_y, s=s_x*s_y
-            (y & "ufd"_mst) | // u=u_y, f=f_y, d=d_y
+            (x & y & "zs"_mst) | // z=z_x*z_y, s=s_x*s_y
+            (y & "ufde"_mst) | // u=u_y, f=f_y, d=d_y, e=e_y
             "x"_mst | // x
             ((x | y) & "ghij"_mst) | // g=g_x+g_y, h=h_x+h_y, i=i_x+i_y, j=j_x+j_y
             (x & y & "k"_mst); // k=k_x*k_y
@@ -201,7 +201,7 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
             (y & z & "u"_mst) | // u=u_y*u_z
             (z & "f"_mst).If((x << "s"_mst) || (y << "f"_mst)) | // f=(s_x+f_y)*f_z
             (z & "d"_mst) | // d=d_z
-            (x & z & "e"_mst).If(x << "s"_mst || y << "f"_mst) | // e=e_x*e_z*(s_x+f_y)
+            (z & "e"_mst).If(x << "s"_mst || y << "f"_mst) | // e=e_z*(s_x+f_y)
             (x & y & z & "m"_mst).If(x << "e"_mst && (x | y | z) << "s"_mst) | // m=m_x*m_y*m_z*e_x*(s_x+s_y+s_z)
             (z & (x | y) & "s"_mst) | // s=s_z*(s_x+s_y)
             "x"_mst | // x
@@ -245,7 +245,6 @@ Type ComputeType(Fragment fragment, Type x, Type y, Type z, const std::vector<Ty
             }
     }
     assert(false);
-    return ""_mst;
 }
 
 size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_t k, size_t n_subs, size_t n_keys) {
@@ -260,7 +259,7 @@ size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_
         case Fragment::SHA256: return 4 + 2 + 33;
         case Fragment::HASH160:
         case Fragment::RIPEMD160: return 4 + 2 + 21;
-        case Fragment::MULTI: return 3 + (n_keys > 16) + (k > 16) + 34 * n_keys;
+        case Fragment::MULTI: return 1 + BuildScript(n_keys).size() + BuildScript(k).size() + 34 * n_keys;
         case Fragment::AND_V: return subsize;
         case Fragment::WRAP_V: return subsize + (sub0typ << "x"_mst);
         case Fragment::WRAP_S:
@@ -278,10 +277,9 @@ size_t ComputeScriptLen(Fragment fragment, Type sub0typ, size_t subsize, uint32_
         case Fragment::THRESH: return subsize + n_subs + BuildScript(k).size();
     }
     assert(false);
-    return 0;
 }
 
-InputStack& InputStack::Available(Availability avail) {
+InputStack& InputStack::SetAvailable(Availability avail) {
     available = avail;
     if (avail == Availability::NO) {
         stack.clear();
@@ -293,37 +291,37 @@ InputStack& InputStack::Available(Availability avail) {
     return *this;
 }
 
-InputStack& InputStack::WithSig() {
+InputStack& InputStack::SetWithSig() {
     has_sig = true;
     return *this;
 }
 
-InputStack& InputStack::NonCanon() {
+InputStack& InputStack::SetNonCanon() {
     non_canon = true;
     return *this;
 }
 
-InputStack& InputStack::Malleable(bool x) {
+InputStack& InputStack::SetMalleable(bool x) {
     malleable = x;
     return *this;
 }
 
 InputStack operator+(InputStack a, InputStack b) {
     a.stack = Cat(std::move(a.stack), std::move(b.stack));
-    a.size += b.size;
+    if (a.available != Availability::NO && b.available != Availability::NO) a.size += b.size;
     a.has_sig |= b.has_sig;
     a.malleable |= b.malleable;
     a.non_canon |= b.non_canon;
     if (a.available == Availability::NO || b.available == Availability::NO) {
-        a.Available(Availability::NO);
+        a.SetAvailable(Availability::NO);
     } else if (a.available == Availability::MAYBE || b.available == Availability::MAYBE) {
-        a.Available(Availability::MAYBE);
+        a.SetAvailable(Availability::MAYBE);
     }
     return a;
 }
 
 InputStack operator|(InputStack a, InputStack b) {
-    // If only one (or neither) is valid, pick the other one.
+    // If only one is invalid, pick the other one. If both are invalid, pick an arbitrary one.
     if (a.available == Availability::NO) return b;
     if (b.available == Availability::NO) return a;
     // If only one of the solutions has a signature, we must pick the other one.
@@ -351,9 +349,9 @@ InputStack operator|(InputStack a, InputStack b) {
     }
 }
 
-std::optional<std::vector<std::pair<opcodetype, std::vector<unsigned char>>>> DecomposeScript(const CScript& script)
+std::optional<std::vector<Opcode>> DecomposeScript(const CScript& script)
 {
-    std::vector<std::pair<opcodetype, std::vector<unsigned char>>> out;
+    std::vector<Opcode> out;
     CScript::const_iterator it = script.begin(), itend = script.end();
     while (it != itend) {
         std::vector<unsigned char> push_data;
@@ -387,7 +385,7 @@ std::optional<std::vector<std::pair<opcodetype, std::vector<unsigned char>>>> De
     return out;
 }
 
-std::optional<int64_t> ParseScriptNumber(const std::pair<opcodetype, std::vector<unsigned char>>& in) {
+std::optional<int64_t> ParseScriptNumber(const Opcode& in) {
     if (in.first == OP_0) {
         return 0;
     }
