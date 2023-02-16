@@ -1,4 +1,4 @@
-// Copyright (c) 2019 The Bitcoin Core developers
+// Copyright (c) 2019-2022 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -113,6 +113,10 @@ typedef std::pair<ChallengeType, uint32_t> Challenge;
 struct KeyConverter {
     typedef CPubKey Key;
 
+    bool KeyCompare(const Key& a, const Key& b) const {
+        return a < b;
+    }
+
     //! Convert a public key to bytes.
     std::vector<unsigned char> ToPKBytes(const CPubKey& key) const { return {key.begin(), key.end()}; }
 
@@ -126,33 +130,32 @@ struct KeyConverter {
 
     //! Parse a public key from a range of hex characters.
     template<typename I>
-    std::optional<CPubKey> FromString(I first, I last) const
-    {
+    std::optional<Key> FromString(I first, I last) const {
         auto bytes = ParseHex(std::string(first, last));
-        CPubKey key;
-        key.Set(bytes.begin(), bytes.end());
-        if (!key.IsValid()) return {};
-        return key;
+        Key key{bytes.begin(), bytes.end()};
+        if (key.IsValid()) return key;
+        return {};
     }
 
     template<typename I>
-    std::optional<CPubKey> bool FromPKBytes(I first, I last) const
-    {
-        CPubKey key;
-        key.Set(first, last);
-        if (!key.IsValid()) return {};
-        return key;
+    std::optional<Key> FromPKBytes(I first, I last) const {
+        Key key{first, last};
+        if (key.IsValid()) return key;
+        return {};
     }
 
     template<typename I>
-    std::optional<CPubKey> FromPKHBytes(I first, I last) const
-    {
+    std::optional<Key> FromPKHBytes(I first, I last) const {
         assert(last - first == 20);
         CKeyID keyid;
         std::copy(first, last, keyid.begin());
         auto it = g_testdata->pkmap.find(keyid);
         assert(it != g_testdata->pkmap.end());
         return it->second;
+    }
+
+    std::optional<std::string> ToString(const Key& key) const {
+        return HexStr(ToPKBytes(key));
     }
 };
 
@@ -208,10 +211,10 @@ struct Satisfier : public KeyConverter {
  * It holds a pointer to a Satisfier object, to determine which timelocks are supposed to be available.
  */
 class TestSignatureChecker : public BaseSignatureChecker {
-    const Satisfier *ctx;
+    const Satisfier& ctx;
 
 public:
-    TestSignatureChecker(const Satisfier *in_ctx) : ctx(in_ctx) {}
+    TestSignatureChecker(const Satisfier& in_ctx LIFETIMEBOUND) : ctx(in_ctx) {}
 
     bool CheckECDSASignature(const std::vector<unsigned char>& sig, const std::vector<unsigned char>& pubkey, const CScript& scriptcode, SigVersion sigversion) const override {
         CPubKey pk(pubkey);
@@ -224,12 +227,12 @@ public:
 
     bool CheckLockTime(const CScriptNum& locktime) const override {
         // Delegate to Satisfier.
-        return ctx->CheckAfter(locktime.GetInt64());
+        return ctx.CheckAfter(locktime.GetInt64());
     }
 
     bool CheckSequence(const CScriptNum& sequence) const override {
         // Delegate to Satisfier.
-        return ctx->CheckOlder(sequence.GetInt64());
+        return ctx.CheckOlder(sequence.GetInt64());
     }
 };
 
@@ -238,7 +241,10 @@ const KeyConverter CONVERTER{};
 
 using Fragment = miniscript::Fragment;
 using NodeRef = miniscript::NodeRef<CPubKey>;
+// https://github.com/llvm/llvm-project/issues/53444
+// NOLINTNEXTLINE(misc-unused-using-decls)
 using miniscript::operator"" _mst;
+using Node = miniscript::Node<CPubKey>;
 
 /** Compute all challenges (pubkeys, hashes, timelocks) that occur in a given Miniscript. */
 std::set<Challenge> FindChallenges(const NodeRef& ref) {
@@ -274,7 +280,7 @@ void TestSatisfy(const std::string& testcase, const NodeRef& node) {
     for (int iter = 0; iter < 3; ++iter) {
         Shuffle(challist.begin(), challist.end(), g_insecure_rand_ctx);
         Satisfier satisfier;
-        TestSignatureChecker checker(&satisfier);
+        TestSignatureChecker checker(satisfier);
         bool prev_mal_success = false, prev_nonmal_success = false;
         // Go over all challenges involved in this miniscript in random order.
         for (int add = -1; add < (int)challist.size(); ++add) {
@@ -319,7 +325,7 @@ void TestSatisfy(const std::string& testcase, const NodeRef& node) {
                 BOOST_CHECK(res || serror == ScriptError::SCRIPT_ERR_OP_COUNT || serror == ScriptError::SCRIPT_ERR_STACK_SIZE);
             }
 
-            if (node->IsSaneTopLevel()) {
+            if (node->IsSane()) {
                 // For sane nodes, the two algorithms behave identically.
                 BOOST_CHECK_EQUAL(mal_success, nonmal_success);
             }
@@ -329,7 +335,7 @@ void TestSatisfy(const std::string& testcase, const NodeRef& node) {
             // For nonmalleable solutions this is only true if the added condition is PK;
             // for other conditions, adding one may make an valid satisfaction become malleable. If the script
             // is sane, this cannot happen however.
-            if (node->IsSaneTopLevel() || add < 0 || challist[add].first == ChallengeType::PK) {
+            if (node->IsSane() || add < 0 || challist[add].first == ChallengeType::PK) {
                 BOOST_CHECK(nonmal_success >= prev_nonmal_success);
             }
             // Remember results for the next added challenge.
@@ -341,7 +347,7 @@ void TestSatisfy(const std::string& testcase, const NodeRef& node) {
         // If the miniscript was satisfiable at all, a satisfaction must be found after all conditions are added.
         BOOST_CHECK_EQUAL(prev_mal_success, satisfiable);
         // If the miniscript is sane and satisfiable, a nonmalleable satisfaction must eventually be found.
-        if (node->IsSaneTopLevel()) BOOST_CHECK_EQUAL(prev_nonmal_success, satisfiable);
+        if (node->IsSane()) BOOST_CHECK_EQUAL(prev_nonmal_success, satisfiable);
     }
 }
 
@@ -457,7 +463,7 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     Test("and_b(hash256(32ba476771d01e37807990ead8719f08af494723de1d228f2c2c07cc0aa40bac),a:and_b(hash256(131772552c01444cd81360818376a040b7c3b2b7b0a53550ee3edde216cec61b),a:older(1)))", "82012088aa2032ba476771d01e37807990ead8719f08af494723de1d228f2c2c07cc0aa40bac876b82012088aa20131772552c01444cd81360818376a040b7c3b2b7b0a53550ee3edde216cec61b876b51b26c9a6c9a", TESTMODE_VALID | TESTMODE_NONMAL, 15, 3);
     Test("thresh(2,multi(2,03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7,036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00),a:multi(1,036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00),ac:pk_k(022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01))", "522103a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c721036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a0052ae6b5121036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a0051ae6c936b21022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01ac6c935287", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 13, 7);
     Test("and_n(sha256(d1ec675902ef1633427ca360b290b0b3045a0d9058ddb5e648b4c3c3224c5c68),t:or_i(v:older(4252898),v:older(144)))", "82012088a820d1ec675902ef1633427ca360b290b0b3045a0d9058ddb5e648b4c3c3224c5c68876400676303e2e440b26967029000b269685168", TESTMODE_VALID, 14, 3);
-    Test("or_d(d:and_v(v:older(4252898),v:older(4252898)),sha256(38df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b6))", "766303e2e440b26903e2e440b26968736482012088a82038df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b68768", TESTMODE_VALID, 14, 3);
+    Test("or_d(nd:and_v(v:older(4252898),v:older(4252898)),sha256(38df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b6))", "766303e2e440b26903e2e440b2696892736482012088a82038df1c1f64a24a77b23393bca50dff872e31edc4f3b5aa3b90ad0b82f4f089b68768", TESTMODE_VALID, 15, 3);
     Test("c:and_v(or_c(sha256(9267d3dbed802941483f1afa2a6bc68de5f653128aca9bf1461c5d0a3ad36ed2),v:multi(1,02c44d12c7065d812e8acf28d7cbb19f9011ecd9e9fdf281b0e6a3b5e87d22e7db)),pk_k(03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe))", "82012088a8209267d3dbed802941483f1afa2a6bc68de5f653128aca9bf1461c5d0a3ad36ed28764512102c44d12c7065d812e8acf28d7cbb19f9011ecd9e9fdf281b0e6a3b5e87d22e7db51af682103acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbeac", TESTMODE_VALID | TESTMODE_NEEDSIG, 8, 3);
     Test("c:and_v(or_c(multi(2,036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a00,02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5),v:ripemd160(1b0f3c404d12075c68c938f9f60ebea4f74941a0)),pk_k(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556))", "5221036d2b085e9e382ed10b69fc311a03f8641ccfff21574de0927513a49d9a688a002102352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d552ae6482012088a6141b0f3c404d12075c68c938f9f60ebea4f74941a088682103fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556ac", TESTMODE_VALID | TESTMODE_NONMAL | TESTMODE_NEEDSIG, 10, 6);
     Test("and_v(andor(hash256(8a35d9ca92a48eaade6f53a64985e9e2afeb74dcf8acb4c3721e0dc7e4294b25),v:hash256(939894f70e6c3a25da75da0cc2071b4076d9b006563cf635986ada2e93c0d735),v:older(50000)),after(499999999))", "82012088aa208a35d9ca92a48eaade6f53a64985e9e2afeb74dcf8acb4c3721e0dc7e4294b2587640350c300b2696782012088aa20939894f70e6c3a25da75da0cc2071b4076d9b006563cf635986ada2e93c0d735886804ff64cd1db1", TESTMODE_VALID, 14, 3);
@@ -504,20 +510,32 @@ BOOST_AUTO_TEST_CASE(fixed_tests)
     // (for now) have 'd:' be 'u'. This tests we can't use a 'd:' wrapper for a thresh, which requires
     // its subs to all be 'u' (taken from https://github.com/rust-bitcoin/rust-miniscript/discussions/341).
     const auto ms_minimalif = miniscript::FromString("thresh(3,c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),sc:pk_k(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556),sc:pk_k(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798),sdv:older(32))", CONVERTER);
-    BOOST_CHECK(!ms_minimalif);
+    BOOST_CHECK(ms_minimalif && !ms_minimalif->IsValid());
     // A Miniscript with duplicate keys is not sane
     const auto ms_dup1 = miniscript::FromString("and_v(v:pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65))", CONVERTER);
     BOOST_CHECK(ms_dup1);
-    BOOST_CHECK(!ms_dup1->IsSane());
+    BOOST_CHECK(!ms_dup1->IsSane() && !ms_dup1->CheckDuplicateKey());
     // Same with a disjunction, and different key nodes (pk and pkh)
     const auto ms_dup2 = miniscript::FromString("or_b(c:pk_k(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),ac:pk_h(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65))", CONVERTER);
-    BOOST_CHECK(ms_dup2 && !ms_dup2->IsSane());
+    BOOST_CHECK(ms_dup2 && !ms_dup2->IsSane() && !ms_dup2->CheckDuplicateKey());
     // Same when the duplicates are leaves or a larger tree
     const auto ms_dup3 = miniscript::FromString("or_i(and_b(pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),s:pk(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556)),and_b(older(1),s:pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65)))", CONVERTER);
-    BOOST_CHECK(ms_dup3 && !ms_dup3->IsSane());
+    BOOST_CHECK(ms_dup3 && !ms_dup3->IsSane() && !ms_dup3->CheckDuplicateKey());
     // Same when the duplicates are on different levels in the tree
     const auto ms_dup4 = miniscript::FromString("thresh(2,pkh(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65),s:pk(03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556),a:and_b(dv:older(1),s:pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65)))", CONVERTER);
-    BOOST_CHECK(ms_dup4 && !ms_dup4->IsSane());
+    BOOST_CHECK(ms_dup4 && !ms_dup4->IsSane() && !ms_dup4->CheckDuplicateKey());
+    // Sanity check the opposite is true, too. An otherwise sane Miniscript with no duplicate keys is sane.
+    const auto ms_nondup = miniscript::FromString("pk(03d30199d74fb5a22d47b6e054e2f378cedacffcb89904a61d75d0dbd407143e65)", CONVERTER);
+    BOOST_CHECK(ms_nondup && ms_nondup->CheckDuplicateKey() && ms_nondup->IsSane());
+    // Test we find the first insane sub closer to be a leaf node. This fragment is insane for two reasons:
+    // 1. It can be spent without a signature
+    // 2. It contains timelock mixes
+    // We'll report the timelock mix error, as it's "deeper" (closer to be a leaf node) than the "no 's' property"
+    // error is.
+    const auto ms_ins = miniscript::FromString("or_i(and_b(after(1),a:after(1000000000)),pk(03cdabb7f2dce7bfbd8a0b9570c6fd1e712e5d64045e9d6b517b3d5072251dc204))", CONVERTER);
+    BOOST_CHECK(ms_ins && ms_ins->IsValid() && !ms_ins->IsSane());
+    const auto insane_sub = ms_ins->FindInsaneSub();
+    BOOST_CHECK(insane_sub && *insane_sub->ToString(CONVERTER) == "and_b(after(1),a:after(1000000000))");
 
     // Timelock tests
     Test("after(100)", "?", TESTMODE_VALID | TESTMODE_NONMAL); // only heightlock
