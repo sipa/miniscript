@@ -407,7 +407,9 @@ struct Compilation {
     }
 
     void Add(const CostPair& pair, Node node) {
-        if (!node->IsSane()) return;
+        /* We cannot use IsSaneSubexpression(), as it includes CheckDuplicates which we don't evaluate for
+         * interim expressions here. */
+        if (!(node->ValidSatisfactions() && node->IsNonMalleable() && node->CheckTimeLocksMix())) return;
         auto new_typ = node->GetType();
         double cost = Cost(pair, node);
         if (cost > 10000) return;
@@ -951,10 +953,12 @@ bool Compile(const std::string& policy, miniscript::NodeRef<CompilerContext::Key
     auto res = compilation.Query("Bms"_mstf);
     bool ok = false;
     if (res.size() == 1) {
-        ret = std::move(res[0].node);
-        ret->DuplicateKeyCheck(COMPILER_CTX);
-        avgcost = res[0].pair.sat;
-        ok = true;
+        res[0].node->DuplicateKeyCheck(COMPILER_CTX);
+        if (res[0].node->IsSane()) {
+            ret = std::move(res[0].node);
+            avgcost = res[0].pair.sat;
+            ok = true;
+        }
     }
 
     return ok;
