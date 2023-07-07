@@ -378,8 +378,8 @@ This type is used for most expressions, and required for the top level expressio
 <li><b>"V"</b> Verify expressions. Like "B", these take their inputs from the top of the stack. Upon satisfaction however, they continue without pushing anything. They cannot be
 dissatisfied (will abort instead). A "V" can be obtained using the <code>v:</code> wrapper on a "B" expression, or by combining other "V" expressions using <code>and_v</code>, <code>or_i</code>, <code>or_c</code>, or <code>andor</code>.
 An example is <code>v:pk(key)</code> = <samp>&lt;key&gt; CHECKSIGVERIFY</samp>.</li>
-<li><b>"K"</b> Key expressions. They again take their inputs from the top of the stack, but instead of verifying a condition directly they always push a public key onto the stack, for
-which a signature is still required to satisfy the expression. A "K" can be converted into a "B" using the <code>c:</code> wrapper (<samp>CHECKSIG</samp>).
+<li><b>"K"</b> Key expressions. They again take their inputs from the top of the stack, always push a public key onto the stack, and cannot be dissatisfied (<code>pk_h</code> can abort).
+    The signature input has to come through the <code>c:</code> wrapper, which will convert the wrapped "K" expression into "B", and <samp>CHECKSIG</samp> will determine the satisfaction of the wrapped expression.
 An example is <code>pk_h(key)</code> = <samp>DUP HASH160 &lt;Hash160(key)&gt; EQUALVERIFY</samp></li>
 <li><b>"W"</b> Wrapped expressions. They take their inputs from one below the top of the stack, and push a nonzero (in case of satisfaction) or zero (in case of dissatisfaction)
 either on top of the stack, or one below. So for example a 3-input "W" would take the stack "A B C D E F" and turn it into "A B F 0" or "A B 0 F" in case of dissatisfaction, and
