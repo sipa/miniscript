@@ -512,7 +512,7 @@ are listed for completeness, but marked in <span class="text-muted">[grey]</span
 <tr><td><code>or_i(<em>X</em>,<em>Z</em>)</code></td><td>dsat(<em>X</em>) 1; dsat(<em>Z</em>) 0</td><td>sat(<em>X</em>) 1; sat(<em>Z</em>) 0</td></tr>
 <tr><td><code>thresh(k,<em>X<sub>1</sub></em>,...,<em>X<sub>n</sub></em>)</code></td><td>All dsats <span class="text-muted">[Sats/dsats with 1 &le; #(sats) &ne; k]</span></td><td>Sats/dsats with #(sats) = k</td></tr>
 <tr><td><code>multi(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 0 ... 0 (k+1 times)</td><td>0 sig ... sig</td></tr>
-<tr><td><code>multi_a(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 ... 0 (n times)</td><td>sig/0 with #(sig) = k and #(sigs/0) = n </td></tr>
+<tr><td><code>multi_a(k,key<sub>1</sub>,...,key<sub>n</sub>)</code></td><td>0 ... 0 (n times) <span class="text-muted">[sig/0 with #(sig) &ne; k]</span></td><td>sig/0 with #(sig) = k and #(sigs/0) = n </td></tr>
 <tr><td><code>a:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>s:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
 <tr><td><code>c:<em>X</em></code></td><td>dsat(<em>X</em>)</td><td>sat(<em>X</em>)</td></tr>
