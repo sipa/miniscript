@@ -16,7 +16,7 @@ struct CompilerContext {
 
     template<typename I>
     std::optional<Key> FromString(I first, I last) const {
-        if (std::distance(first, last) == 0 || std::distance(first, last) > 17) return {};
+        if (std::distance(first, last) == 0 || std::distance(first, last) > 16) return {};
         return std::string(first, last);
     }
 
